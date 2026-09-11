@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/api-error";
@@ -39,6 +39,7 @@ export function useDependencyAvailability(
 	return useQuery({
 		queryKey: ["entity-relationship-availability", request],
 		enabled,
+		placeholderData: keepPreviousData,
 		staleTime: 30_000,
 		queryFn: ({ signal }) => getDependencyAvailability(request, { signal }),
 	});

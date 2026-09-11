@@ -11,34 +11,32 @@ export function AgentActivityWorkspace({
 	...timelineProps
 }: { run: Run } & Omit<ComponentProps<typeof Timeline>, "steps">) {
 	const [advanced, setAdvanced] = useState(false);
+	const advancedControl = (
+		<Button
+			variant={advanced ? "secondary" : "ghost"}
+			aria-pressed={advanced}
+			onClick={() => setAdvanced(!advanced)}
+			className="ml-auto min-h-11 shrink-0 text-xs"
+		>
+			<Code2 className="size-4" />
+			Advanced
+		</Button>
+	);
 	return (
 		<section
 			data-slot="run-activity"
 			aria-label="Agent activity workspace"
 			className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1"
 		>
-			<div className="flex shrink-0 items-center justify-between gap-3">
-				<p className="text-sm text-muted-foreground">
-					{advanced
-						? "Recorded inputs, outputs, and executor events"
-						: "Expand delegated work. Select a call to inspect its result."}
-				</p>
-				<Button
-					variant={advanced ? "secondary" : "ghost"}
-					aria-pressed={advanced}
-					onClick={() => setAdvanced(!advanced)}
-					className="shrink-0"
-				>
-					<Code2 className="size-4" />
-					Advanced
-				</Button>
-			</div>
 			{advanced ? (
 				<div
 					className="min-w-0 space-y-5 pb-5 lg:min-h-0 lg:flex-1 lg:overflow-auto"
 					role="region"
 					aria-label="Advanced activity"
 				>
+					<div className="flex justify-end border-b border-border/60 pb-2">
+						{advancedControl}
+					</div>
 					<RunPayloads input={run.input} output={run.output} />
 					<h3 className="text-sm font-semibold">
 						Raw executor trace
@@ -50,6 +48,7 @@ export function AgentActivityWorkspace({
 					{...timelineProps}
 					steps={run.steps ?? []}
 					inspector="inline"
+					toolbarActions={advancedControl}
 				/>
 			)}
 		</section>

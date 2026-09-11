@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
 
@@ -184,15 +185,19 @@ describe("Timeline activity view", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Close call details" }),
 		);
-		expect(
-			screen.queryByRole("complementary", { name: "Call inspector" }),
-		).not.toBeInTheDocument();
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Call inspector" }),
+			).not.toBeInTheDocument(),
+		);
 		const trigger = screen.getByRole("button", { name: /Ticket details/ });
 		await user.click(trigger);
 		await user.keyboard("{Escape}");
-		expect(
-			screen.queryByRole("complementary", { name: "Call inspector" }),
-		).not.toBeInTheDocument();
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Call inspector" }),
+			).not.toBeInTheDocument(),
+		);
 		expect(trigger).toHaveFocus();
 	});
 	beforeEach(() => {

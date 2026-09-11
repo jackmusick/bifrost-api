@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen } from "@/test-utils";
@@ -6,13 +7,18 @@ import type { components } from "@/lib/v1";
 import { AgentActivityWorkspace } from "./AgentActivityWorkspace";
 
 vi.mock("@/components/agents/Timeline", () => ({
-	Timeline: (props: { steps: unknown[]; inspector?: string }) => (
+	Timeline: (props: {
+		steps: unknown[];
+		inspector?: string;
+		toolbarActions?: ReactNode;
+	}) => (
 		<div
 			role="region"
 			aria-label="Timeline"
 			data-inspector={props.inspector}
 			data-steps={props.steps.length}
 		>
+			{props.toolbarActions}
 			Timeline
 		</div>
 	),

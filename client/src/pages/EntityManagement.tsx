@@ -10,7 +10,7 @@ import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { RefreshCw, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageLoader } from "@/components/PageLoader";
 import {
 	Sheet,
 	SheetContent,
@@ -187,6 +187,12 @@ export function EntityManagement() {
 	];
 	const incompleteEntityData =
 		errorWorkflows || errorForms || errorAgents || errorApps;
+	const initialSourceLoading = collections.some(
+		(collection) => collection.isLoading,
+	);
+	const missingInitialSourceData = collections.some(
+		(collection) => collection.isError && !collection.hasData,
+	);
 
 	// Normalize and combine all entities
 	const normalizedEntities = useMemo(
@@ -218,9 +224,15 @@ export function EntityManagement() {
 	);
 	const availabilityQuery = useDependencyAvailability(
 		availabilityRequest,
-		normalizedEntities.length > 0,
+		!initialSourceLoading &&
+			!missingInitialSourceData &&
+			normalizedEntities.length > 0,
 	);
-	const relationshipAvailabilityKnown = availabilityQuery.isSuccess;
+	const relationshipAvailabilityKnown = availabilityQuery.data !== undefined;
+	const isInitialRelationshipAvailabilityLoading =
+		normalizedEntities.length > 0 &&
+		availabilityQuery.data === undefined &&
+		availabilityQuery.isLoading;
 	const collectionsWithRelationships = [
 		...collections,
 		{
@@ -233,24 +245,23 @@ export function EntityManagement() {
 		},
 	];
 
-	const allEntities = useMemo(
-		() => {
-			const relationshipAvailability =
-				availabilityQuery.data?.has_relationships ?? {};
-			return normalizedEntities.map((entity) => ({
-				...entity,
-				hasRelationships:
-					relationshipAvailabilityKnown
-						? relationshipAvailability[entity.key] === true
-						: true,
-			}));
-		},
-		[
-			normalizedEntities,
-			availabilityQuery.data,
-			relationshipAvailabilityKnown,
-		],
-	);
+	const allEntities = useMemo(() => {
+		const relationshipAvailability =
+			availabilityQuery.data?.has_relationships ?? {};
+		return normalizedEntities.map((entity) => ({
+			...entity,
+			hasRelationships: relationshipAvailabilityKnown
+				? relationshipAvailability[entity.key] === true
+				: false,
+		}));
+	}, [
+		normalizedEntities,
+		availabilityQuery.data,
+		relationshipAvailabilityKnown,
+	]);
+	const isInitialEntityListLoading =
+		!missingInitialSourceData &&
+		(initialSourceLoading || isInitialRelationshipAvailabilityLoading);
 
 	// Apply filters
 	const filteredEntities = useMemo(() => {
@@ -823,7 +834,9 @@ export function EntityManagement() {
 				}
 			/>
 
-			<EntityCollectionStatus collections={collectionsWithRelationships} />
+			<EntityCollectionStatus
+				collections={collectionsWithRelationships}
+			/>
 
 			<div className="flex min-h-0 min-w-0 flex-col xl:flex-1">
 				<EntityListToolbar
@@ -863,12 +876,8 @@ export function EntityManagement() {
 
 				{/* Entity List */}
 				<div className="min-w-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-					{isLoading && allEntities.length === 0 ? (
-						<div className="space-y-2">
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-16 w-full" />
-							))}
-						</div>
+					{isInitialEntityListLoading ? (
+						<PageLoader message="Loading entities…" size="sm" />
 					) : filteredEntities.length > 0 ? (
 						<ResourceTreeTable
 							entities={filteredEntities}

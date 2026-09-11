@@ -65,3 +65,14 @@ Verification for this iteration:
 - Desktop (1440px) and mobile (390px) screenshots of Overview, Activity inspection, and Entity columns were reviewed against the live debug stack. No page errors or document horizontal overflow were reported.
 
 No full-suite or pre-PR gate is claimed for this unmerged review iteration. The debug stack remains running.
+
+
+## Call tree composition refinement — 2026-09-11
+
+Activity uses a call tree rather than table columns. Each selectable entry groups its title, optional context, status and duration; nested lists use restrained connector lines and capped indentation. The page header, tabs and workspace share a 1,100px maximum width, and the unselected tree stays within a 42rem reading measure. A single toolbar places expansion controls and Advanced above both panes.
+
+The attached inspector animates its width, opacity and gap on opening and closing, respecting reduced-motion preferences. The mobile Sheet retains content through its close transition. Headers use consistent insets, and the tree has no enclosing empty table frame. Accessible row labels use instance-unique IDs so repeated or nested renderers cannot point at another row's label.
+
+Entity Management retains its current visual structure in this pass. Its first presentation waits for initial resource, scope and relationship data; it uses the existing neutral PageLoader rather than skeleton strips. Refreshes preserve cached availability and existing rows, and failed queries retain visible retry feedback.
+
+Scoped verification: 70 component tests passed across Timeline, Activity workspace, full run details, the review Sheet, Entity Management and the dependency service. Desktop and mobile screenshots were reviewed in one batch and one confirmation; neither produced page errors or horizontal overflow. A runtime observer confirmed changing inspector widths during both entrance and exit. `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts e2e/entity-management-acceptance.admin.spec.ts` passed all eight journeys plus setup (zero retries). `npm run tsc` and `npm run lint` passed; lint retains the existing review-seed console warning. The complete suites and pre-PR gate were not rerun. This remains an unmerged debug review iteration.

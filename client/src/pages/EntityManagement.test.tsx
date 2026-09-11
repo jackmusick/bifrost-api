@@ -1,12 +1,18 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 import { EntityManagement } from "./EntityManagement";
 
 const authFetch = vi.hoisted(() => vi.fn());
 const apiPost = vi.hoisted(() => vi.fn());
+const sourceState = vi.hoisted(() => ({
+	formsLoading: false,
+	reset() {
+		this.formsLoading = false;
+	},
+}));
 
 vi.mock("@/lib/api-client", () => ({
 	authFetch: (...args: unknown[]) => authFetch(...args),
@@ -57,9 +63,9 @@ vi.mock("@/hooks/useForms", () => ({
 				solution_id: null,
 			},
 		],
-		isLoading: false,
+		isLoading: sourceState.formsLoading,
 		isError: false,
-		isFetching: false,
+		isFetching: sourceState.formsLoading,
 		refetch: vi.fn(),
 	}),
 	useUpdateForm: () => ({ mutateAsync: vi.fn() }),
@@ -172,20 +178,41 @@ vi.mock("@/hooks/useAssignEntityRole", () => ({
 	useAssignEntityRole: () => vi.fn(),
 }));
 
-it("expands related resources inline from a search result", async () => {
-	const user = userEvent.setup();
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-	apiPost.mockResolvedValue({
+beforeEach(() => {
+	authFetch.mockReset();
+	apiPost.mockReset();
+	sourceState.reset();
+});
+
+function relationshipAvailability(overrides: Record<string, boolean> = {}) {
+	return {
 		data: {
 			has_relationships: {
 				"app:app-1": true,
 				"workflow:workflow-1": true,
 				"form:form-1": true,
+				...overrides,
 			},
 		},
+	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason?: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
 	});
+	return { promise, resolve, reject };
+}
+
+it("expands related resources inline from a search result", async () => {
+	const user = userEvent.setup();
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockResolvedValue(relationshipAvailability());
 	render(
 		<QueryClientProvider client={queryClient}>
 			<EntityManagement />
@@ -230,4 +257,73 @@ it("expands related resources inline from a search result", async () => {
 	expect(screen.getByRole("status")).toHaveTextContent(
 		"3 selected (3 outside this view)",
 	);
+});
+
+it("waits for initial relationship availability before rendering resources", () => {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockReturnValue(new Promise(() => {}));
+
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
+
+	expect(screen.queryByText("Covi Portal")).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: "Expand Covi Portal" }),
+	).not.toBeInTheDocument();
+});
+
+it("waits for all initial source queries before requesting availability", () => {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	sourceState.formsLoading = true;
+
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
+
+	expect(
+		screen.getByRole("status", { name: "Loading entities…" }),
+	).toBeInTheDocument();
+	expect(screen.queryByText("Covi Portal")).not.toBeInTheDocument();
+	expect(apiPost).not.toHaveBeenCalled();
+});
+
+it("keeps rendered resources and chevrons while availability refreshes", async () => {
+	const user = userEvent.setup();
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockResolvedValueOnce(relationshipAvailability());
+
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
+
+	expect((await screen.findAllByText("Covi Portal")).length).toBeGreaterThan(
+		0,
+	);
+	expect(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" }).length,
+	).toBeGreaterThan(0);
+
+	const refresh = deferred<ReturnType<typeof relationshipAvailability>>();
+	apiPost.mockReturnValueOnce(refresh.promise);
+	await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+	expect(screen.getAllByText("Covi Portal").length).toBeGreaterThan(0);
+	expect(
+		screen.getAllByRole("button", { name: "Expand Covi Portal" }).length,
+	).toBeGreaterThan(0);
+
+	refresh.resolve(relationshipAvailability());
 });

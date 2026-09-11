@@ -17,7 +17,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  * - AdvancedTimeline: the exact step sequence with raw payload disclosure.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
 	AlertCircle,
@@ -65,6 +73,7 @@ const EMPTY_CHILD_RUN_IDS: string[] = [];
 const EMPTY_CHILD_RUNS: AgentRunChildResponse[] = [];
 
 export interface TimelineProps {
+	toolbarActions?: ReactNode;
 	inspector?: "sheet" | "inline";
 	steps: AgentRunStepResponse[] | null | undefined;
 	childRunIds?: string[] | null;
@@ -85,6 +94,7 @@ export interface TimelineProps {
 }
 
 export function Timeline({
+	toolbarActions,
 	inspector = "sheet",
 	steps,
 	childRunIds = EMPTY_CHILD_RUN_IDS,
@@ -104,6 +114,7 @@ export function Timeline({
 	);
 	const compactInspector = useMediaQuery("(max-width: 1023px)");
 	const inlineInspector = inspector === "inline" && !compactInspector;
+	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 	const inspectionTrigger = useRef<HTMLElement | null>(null);
 	// Navigation restoration is one-shot; bulk expansion remounts rows.
 	const [restoredActivity, setRestoredActivity] = useState<string | null>(
@@ -163,13 +174,17 @@ export function Timeline({
 
 	if (!activity.length) {
 		return (
-			<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
-				<p className="text-sm font-medium leading-6">
-					No activity to summarize
-				</p>
-				<p className="mt-1 text-sm leading-6 text-muted-foreground">
-					Any recorded executor steps are still available in Advanced.
-				</p>
+			<div>
+				<div className="flex justify-end">{toolbarActions}</div>
+				<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
+					<p className="text-sm font-medium leading-6">
+						No activity to summarize
+					</p>
+					<p className="mt-1 text-sm leading-6 text-muted-foreground">
+						Any recorded executor steps are still available in
+						Advanced.
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -181,8 +196,8 @@ export function Timeline({
 	return (
 		<div
 			className={cn(
-				"min-w-0",
-				inlineInspector && "flex min-h-0 flex-1 gap-4",
+				"flex min-w-0 flex-col gap-3",
+				inlineInspector && "min-h-0 flex-1",
 			)}
 			onKeyDown={(event) => {
 				if (
@@ -196,60 +211,58 @@ export function Timeline({
 				}
 			}}
 		>
+			{(expandableActivityIds.length > 0 || toolbarActions) && (
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
+					{expandableActivityIds.length ? (
+						<div className="flex flex-wrap items-center gap-2">
+							<Button
+								type="button"
+								variant="ghost"
+								className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
+								onClick={() => {
+									setBulkExpansionRequest((current) => ({
+										expanded: true,
+										token: (current?.token ?? 0) + 1,
+									}));
+								}}
+							>
+								Expand all
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground"
+								onClick={() => {
+									setBulkExpansionRequest((current) => ({
+										expanded: false,
+										token: (current?.token ?? 0) + 1,
+									}));
+								}}
+							>
+								Collapse all
+							</Button>
+						</div>
+					) : null}
+					{toolbarActions}
+				</div>
+			)}
 			<div
 				className={cn(
-					"grid min-w-0 gap-3",
-					inlineInspector && "flex min-h-0 flex-1 flex-col",
+					"flex min-w-0 items-start",
+					inlineInspector && "min-h-0 flex-1 items-stretch",
 				)}
 			>
-				{expandableActivityIds.length ? (
-					<div className="flex flex-wrap items-center gap-2">
-						<Button
-							type="button"
-							variant="ghost"
-							className="min-h-11 px-2 text-primary"
-							onClick={() => {
-								setBulkExpansionRequest((current) => ({
-									expanded: true,
-									token: (current?.token ?? 0) + 1,
-								}));
-							}}
-						>
-							Expand all
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							className="min-h-11 px-2 text-primary"
-							onClick={() => {
-								setBulkExpansionRequest((current) => ({
-									expanded: false,
-									token: (current?.token ?? 0) + 1,
-								}));
-							}}
-						>
-							Collapse all
-						</Button>
-					</div>
-				) : null}
 				<div
 					className={cn(
-						"min-w-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70",
-						inlineInspector && "min-h-0 flex-1 overflow-auto",
+						"min-w-0 flex-1",
+						inlineInspector &&
+							"min-h-0 overflow-y-auto overflow-x-hidden",
+						"max-w-2xl",
 					)}
 					role="region"
 					aria-label="Activity calls"
 				>
-					<div className="sticky top-0 z-10 hidden grid-cols-[minmax(0,1fr)_6rem_4rem] gap-3 border-b bg-card px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
-						<div>Name</div>
-
-						<div>Status</div>
-						<div>Duration</div>
-					</div>
-					<ol
-						aria-label="Run activity"
-						className="divide-y divide-border/70"
-					>
+					<ol aria-label="Run activity" className="space-y-1 pb-2">
 						{activity.map((item) => (
 							<ActivityTreeRow
 								key={`${item.id}:${bulkExpansionRequest?.token ?? 0}`}
@@ -277,58 +290,82 @@ export function Timeline({
 						))}
 					</ol>
 				</div>
-			</div>
-			{inlineInspector ? (
-				selectedActivity ? (
-					<aside
-						className="flex w-[min(42%,28rem)] min-w-80 shrink-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border bg-card"
-						aria-label="Call inspector"
+				{inlineInspector ? (
+					<AnimatePresence initial={false}>
+						{selectedActivity && (
+							<motion.aside
+								key="call-inspector"
+								initial={{
+									width: 0,
+									opacity: 0,
+									marginLeft: 0,
+								}}
+								animate={{
+									width: "52%",
+									opacity: 1,
+									marginLeft: 24,
+								}}
+								exit={{ width: 0, opacity: 0, marginLeft: 0 }}
+								transition={{
+									duration: reducedMotion ? 0 : 0.24,
+									ease: [0.22, 1, 0.36, 1],
+								}}
+								className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] bg-card"
+								aria-label="Call inspector"
+							>
+								<div className="flex min-h-0 min-w-80 flex-1 flex-col">
+									<ActivityDetailPanel
+										item={selectedActivity}
+										childRunOrigin={childRunOrigin}
+										onOpenChildRun={onOpenChildRun}
+										onClose={() => {
+											setSelectedActivityId(null);
+											inspectionTrigger.current?.focus({
+												preventScroll: true,
+											});
+										}}
+									/>
+								</div>
+							</motion.aside>
+						)}
+					</AnimatePresence>
+				) : (
+					<Sheet
+						modal={compactInspector}
+						open={!!selectedActivity}
+						onOpenChange={(open) => {
+							if (!open) setSelectedActivityId(null);
+						}}
 					>
-						<ActivityDetailPanel
-							item={selectedActivity}
-							childRunOrigin={childRunOrigin}
-							onOpenChildRun={onOpenChildRun}
-							onClose={() => {
-								setSelectedActivityId(null);
-								inspectionTrigger.current?.focus({
-									preventScroll: true,
-								});
-							}}
-						/>
-					</aside>
-				) : null
-			) : (
-				<Sheet
-					modal={compactInspector}
-					open={!!selectedActivity}
-					onOpenChange={(open) => {
-						if (!open) setSelectedActivityId(null);
-					}}
-				>
-					{selectedActivity && (
-						<SheetContent
-							aria-describedby={undefined}
-							className="w-full overflow-hidden sm:max-w-xl"
-							onInteractOutside={(event) => {
-								if (!compactInspector) event.preventDefault();
-							}}
-							onCloseAutoFocus={(event) => {
-								event.preventDefault();
-								if (inspectionTrigger.current?.isConnected)
-									inspectionTrigger.current.focus({
-										preventScroll: true,
-									});
-							}}
-						>
-							<ActivityDetailPanel
-								item={selectedActivity}
-								childRunOrigin={childRunOrigin}
-								onOpenChildRun={onOpenChildRun}
-							/>
-						</SheetContent>
-					)}
-				</Sheet>
-			)}
+						{selectedSnapshot && (
+							<SheetContent
+								aria-describedby={undefined}
+								className="w-full overflow-hidden sm:max-w-xl"
+								onInteractOutside={(event) => {
+									if (!compactInspector)
+										event.preventDefault();
+								}}
+								onCloseAutoFocus={(event) => {
+									event.preventDefault();
+									if (inspectionTrigger.current?.isConnected)
+										inspectionTrigger.current.focus({
+											preventScroll: true,
+										});
+								}}
+							>
+								<ActivityDetailPanel
+									item={
+										selectedActivity ??
+										selectedSnapshot.item
+									}
+									childRunOrigin={childRunOrigin}
+									onOpenChildRun={onOpenChildRun}
+								/>
+							</SheetContent>
+						)}
+					</Sheet>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -372,6 +409,7 @@ function ActivityTreeRow({
 	const [localOpen, setLocalOpen] = useState(
 		() => bulkExpansionRequest?.expanded ?? false,
 	);
+	const labelId = useId();
 	const rowRef = useRef<HTMLLIElement>(null);
 	const lastRestoreActivityId = useRef<string | null>(null);
 	const lastBulkToken = useRef<number | null>(null);
@@ -450,7 +488,7 @@ function ActivityTreeRow({
 	const status =
 		childStatus ??
 		(failed ? "failed" : item.resultStep ? "completed" : null);
-	const statusId = status ? `${activityDomId(item.id)}-status` : undefined;
+	const statusId = status ? `${labelId}-status` : undefined;
 	const childActivity = useMemo(
 		() =>
 			child
@@ -496,15 +534,12 @@ function ActivityTreeRow({
 		>
 			<div
 				className={cn(
-					"grid min-w-0 grid-cols-[auto_1fr] gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_6rem_4rem] md:gap-3",
+					"relative min-w-0 rounded-[var(--bf-radius-control)] px-2 py-3 transition-colors hover:bg-muted/35 motion-reduce:transition-none",
 					selected && "bg-[var(--bf-info-soft)]/55",
 					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
 			>
-				<div
-					className="col-span-2 flex min-w-0 items-start gap-2 md:col-span-1"
-					style={{ paddingLeft: `${rowDepth * 1.5}rem` }}
-				>
+				<div className="flex min-w-0 items-start gap-1">
 					<button
 						type="button"
 						onClick={toggleOpen}
@@ -517,7 +552,7 @@ function ActivityTreeRow({
 						}
 						aria-describedby={statusId}
 						className={cn(
-							"mt-1 grid size-7 shrink-0 place-items-center rounded-[var(--bf-radius-control)] text-muted-foreground",
+							"mt-0.5 grid size-8 shrink-0 place-items-center rounded-[var(--bf-radius-control)] text-muted-foreground",
 							expandable &&
 								"hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 						)}
@@ -537,6 +572,8 @@ function ActivityTreeRow({
 					<button
 						type="button"
 						aria-description={rowType}
+						aria-labelledby={`${labelId}-title${caption ? ` ${labelId}-caption` : ""}`}
+						aria-describedby={statusId}
 						onClick={() => onSelect(item, sourceRunId)}
 						className="flex min-w-0 flex-1 items-start gap-3 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
@@ -552,12 +589,18 @@ function ActivityTreeRow({
 						>
 							<Icon className="size-4" aria-hidden="true" />
 						</span>
-						<span className="min-w-0">
-							<span className="block break-words text-sm font-medium leading-5">
+						<span className="min-w-0 flex-1">
+							<span
+								id={`${labelId}-title`}
+								className="block break-words text-sm font-medium leading-5"
+							>
 								{title}
 							</span>
 							{caption ? (
-								<span className="mt-0.5 line-clamp-2 break-words text-xs leading-5 text-muted-foreground">
+								<span
+									id={`${labelId}-caption`}
+									className="mt-0.5 line-clamp-2 break-words text-xs leading-5 text-muted-foreground"
+								>
 									{caption && (
 										<MarkdownContent
 											content={caption}
@@ -566,24 +609,28 @@ function ActivityTreeRow({
 									)}
 								</span>
 							) : null}
+							<span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+								{status ? (
+									<DelegationStatusBadge
+										id={statusId}
+										status={status}
+									/>
+								) : (
+									<span>
+										{runStatus === "running"
+											? "In progress"
+											: "No status"}
+									</span>
+								)}
+								<span aria-hidden="true">·</span>
+								<span className="tabular-nums">
+									{item.durationMs != null
+										? formatDuration(item.durationMs)
+										: "—"}
+								</span>
+							</span>
 						</span>
 					</button>
-				</div>
-				<div className="flex items-start pt-1">
-					{status ? (
-						<DelegationStatusBadge id={statusId} status={status} />
-					) : (
-						<span className="text-xs text-muted-foreground">
-							{runStatus === "running"
-								? "In progress"
-								: "No status"}
-						</span>
-					)}
-				</div>
-				<div className="flex items-start pt-1 text-xs tabular-nums text-muted-foreground">
-					{item.durationMs != null
-						? formatDuration(item.durationMs)
-						: "—"}
 				</div>
 			</div>
 			{isError ? (
@@ -609,7 +656,12 @@ function ActivityTreeRow({
 				</div>
 			) : null}
 			{open && childActivity.length ? (
-				<ol className="divide-y divide-border/70 border-t border-border/70">
+				<ol
+					className={cn(
+						"space-y-1 border-l border-border/70",
+						rowDepth < 2 ? "ml-5 pl-2 sm:ml-6" : "ml-1 pl-1",
+					)}
+				>
 					{childActivity.map((childItem) => (
 						<ActivityTreeRow
 							key={`${childItem.id}:${bulkExpansionRequest?.token ?? 0}`}
@@ -715,8 +767,8 @@ function ActivityDetailPanel({
 			aria-label="Selected call details"
 		>
 			{onClose ? (
-				<header className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4">
-					<h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
+				<header className="flex min-h-16 shrink-0 items-start justify-between gap-3 border-b border-border/60 px-5 py-3">
+					<h3 className="min-w-0 pt-1 text-sm font-semibold [overflow-wrap:anywhere]">
 						{title}
 					</h3>
 					<Button
@@ -734,13 +786,13 @@ function ActivityDetailPanel({
 					<SheetTitle>{title}</SheetTitle>
 				</SheetHeader>
 			)}
-			<div className="min-h-0 flex-1 overflow-y-auto p-5">
+			<div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2">
 				<div className="flex shrink-0 flex-wrap items-center gap-2">
 					{item.executionId ? (
 						<Link
 							to={`/history/${item.executionId}`}
 							onClick={() => onOpenChildRun?.(item.id)}
-							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-0 text-xs font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							View execution
 							<ArrowUpRight className="size-4" />
@@ -757,7 +809,7 @@ function ActivityDetailPanel({
 									: undefined
 							}
 							onClick={() => onOpenChildRun?.(item.id)}
-							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-3 text-sm font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-0 text-xs font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							Open run
 							<ArrowUpRight className="size-4" />
@@ -795,7 +847,7 @@ function ActivityDetailPanel({
 				<Tabs
 					key={item.id}
 					defaultValue={isDelegation ? "overview" : "output"}
-					className="mt-4 min-w-0 gap-4"
+					className="mt-1 min-w-0 gap-3"
 				>
 					<TabsList
 						variant="line"

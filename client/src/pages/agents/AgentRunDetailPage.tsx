@@ -395,7 +395,7 @@ export function AgentRunDetailPage() {
 
 	if (isLoading) {
 		return (
-			<div className="flex flex-col gap-5 max-w-7xl mx-auto">
+			<div className="flex flex-col gap-4 w-full max-w-[1100px] mx-auto">
 				<Skeleton className="h-6 w-32" />
 				<Skeleton className="h-12 w-1/2" />
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -487,7 +487,7 @@ export function AgentRunDetailPage() {
 
 	return (
 		<PageWorkspace
-			className="flex flex-col gap-5 max-w-7xl mx-auto"
+			className="flex flex-col gap-4 w-full max-w-[1100px] mx-auto"
 			data-testid="agent-run-detail-page"
 		>
 			<div className="shrink-0 space-y-3">
