@@ -434,9 +434,10 @@ export function FilesExplorer({
 					</div>
 				)}
 				{isPlatformAdmin && !install && (
-					<div className="min-w-0 w-full px-4 py-2 sm:w-[17rem] sm:shrink-0 sm:self-stretch sm:border-r">
+					<div className="flex min-w-0 w-full items-stretch border-b sm:w-[17rem] sm:shrink-0 sm:self-stretch sm:border-b-0 sm:border-r">
 						<OrganizationSelect
 							aria-label="File scope"
+							triggerClassName="h-full min-h-14 rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-muted/50 focus-visible:ring-inset lg:min-h-14"
 							value={selectorScope}
 							onChange={handleScopeChange}
 							showGlobal
