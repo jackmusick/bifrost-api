@@ -10,12 +10,14 @@ vi.mock("@/components/agents/Timeline", () => ({
 	Timeline: (props: {
 		steps: unknown[];
 		inspector?: string;
+		joinedRows?: boolean;
 		toolbarActions?: ReactNode;
 	}) => (
 		<div
 			role="region"
 			aria-label="Timeline"
 			data-inspector={props.inspector}
+			data-joined-rows={props.joinedRows ? "true" : "false"}
 			data-steps={props.steps.length}
 		>
 			{props.toolbarActions}
@@ -85,6 +87,9 @@ describe("AgentActivityWorkspace", () => {
 		expect(
 			screen.getByRole("region", { name: "Timeline" }),
 		).toHaveAttribute("data-inspector", "inline");
+		expect(
+			screen.getByRole("region", { name: "Timeline" }),
+		).toHaveAttribute("data-joined-rows", "true");
 		expect(
 			screen.getByRole("region", { name: "Timeline" }),
 		).toHaveAttribute("data-steps", "1");

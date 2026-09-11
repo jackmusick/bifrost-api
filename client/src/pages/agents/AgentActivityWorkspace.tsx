@@ -10,12 +10,16 @@ type Run = components["schemas"]["AgentRunDetailResponse"];
 export function AgentActivityWorkspace({
 	run,
 	focused = false,
+	expanded = false,
 	onFocusedChange,
+	onInspectionChange,
 	...timelineProps
 }: {
 	run: Run;
 	focused?: boolean;
+	expanded?: boolean;
 	onFocusedChange?: (focused: boolean) => void;
+	onInspectionChange?: (inspecting: boolean) => void;
 } & Omit<ComponentProps<typeof Timeline>, "steps">) {
 	const [advanced, setAdvanced] = useState(false);
 	const heading = (
@@ -49,7 +53,10 @@ export function AgentActivityWorkspace({
 			<Button
 				variant={advanced ? "secondary" : "ghost"}
 				aria-pressed={advanced}
-				onClick={() => setAdvanced(!advanced)}
+				onClick={() => {
+					onInspectionChange?.(false);
+					setAdvanced(!advanced);
+				}}
 				className="min-h-11 shrink-0 text-xs"
 			>
 				<Code2 className="size-4" />
@@ -62,33 +69,41 @@ export function AgentActivityWorkspace({
 			data-slot="run-activity"
 			aria-label="Agent activity workspace"
 			className={cn(
-				"flex min-w-0 flex-col lg:min-h-0 lg:flex-1",
+				"flex min-w-0 flex-col lg:min-h-0",
+				(focused || expanded) && "lg:min-h-0 lg:flex-1",
 				advanced && "gap-3",
 			)}
 		>
 			{advanced ? (
 				<div
-					className="min-w-0 space-y-5 pb-5 lg:min-h-0 lg:flex-1 lg:overflow-auto"
+					className="min-w-0 lg:min-h-0 lg:flex-1 lg:overflow-auto"
 					role="region"
 					aria-label="Advanced activity"
 				>
-					<div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
-						{heading}
-						{advancedControl}
+					<div
+						data-slot="activity-advanced-content"
+						className="space-y-5 pb-5"
+					>
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+							{heading}
+							{advancedControl}
+						</div>
+						<RunPayloads input={run.input} output={run.output} />
+						<h3 className="text-sm font-semibold">
+							Raw executor trace
+						</h3>
+						<AdvancedTimeline steps={run.steps ?? []} />
 					</div>
-					<RunPayloads input={run.input} output={run.output} />
-					<h3 className="text-sm font-semibold">
-						Raw executor trace
-					</h3>
-					<AdvancedTimeline steps={run.steps ?? []} />
 				</div>
 			) : (
 				<Timeline
 					{...timelineProps}
 					steps={run.steps ?? []}
 					inspector="inline"
+					joinedRows
 					toolbarLeading={heading}
 					toolbarActions={advancedControl}
+					onInspectionChange={onInspectionChange}
 				/>
 			)}
 		</section>

@@ -48,13 +48,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAgent } from "@/hooks/useAgents";
 import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
 	createAgentRunNavigationState,
 	getLocationHref,
 	readAgentRunNavigationOrigin,
 	type AgentRunNavigationOrigin,
 } from "@/lib/agent-run-navigation";
-import { formatDuration } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import {
 	useAgentRun,
 	useAgentRunStream,
@@ -89,6 +90,13 @@ export function AgentRunDetailPage() {
 			? "activity"
 			: "overview";
 	const pendingActivity = useRef<string | null>(null);
+	const activityHeaderRef = useRef<HTMLDivElement>(null);
+	const activityFrameRef = useRef<HTMLDivElement>(null);
+	const pageScrollRef = useRef<HTMLDivElement>(null);
+	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+	const desktopActivity = useMediaQuery("(min-width: 1024px)");
+	const [activityInspecting, setActivityInspecting] = useState(false);
+	const [activityHeight, setActivityHeight] = useState<number | null>(null);
 	function changeTab(tab: string) {
 		const params = new URLSearchParams(location.search);
 		if (tab === "overview") params.delete("tab");
@@ -108,6 +116,49 @@ export function AgentRunDetailPage() {
 		target.focus({ preventScroll: true });
 		pendingActivity.current = null;
 	}, [activeTab]);
+	useEffect(() => {
+		if (!activityInspecting || activeTab === "activity" || !desktopActivity)
+			return;
+		const header = activityHeaderRef.current;
+		if (!header) return;
+		let innerFrame = 0;
+		const outerFrame = window.requestAnimationFrame(() => {
+			innerFrame = window.requestAnimationFrame(() => {
+				header.scrollIntoView({
+					behavior: reducedMotion ? "auto" : "smooth",
+					block: "start",
+				});
+			});
+		});
+		return () => {
+			window.cancelAnimationFrame(outerFrame);
+			if (innerFrame) window.cancelAnimationFrame(innerFrame);
+		};
+	}, [activeTab, activityInspecting, reducedMotion, desktopActivity]);
+	useEffect(() => {
+		// Reduced motion has no transition-end event: reveal the header after
+		// the final measured height has committed, not against the old scroll range.
+		if (
+			!reducedMotion ||
+			!desktopActivity ||
+			!activityInspecting ||
+			activeTab === "activity"
+		)
+			return;
+		const frame = requestAnimationFrame(() =>
+			activityHeaderRef.current?.scrollIntoView({
+				behavior: "auto",
+				block: "start",
+			}),
+		);
+		return () => cancelAnimationFrame(frame);
+	}, [
+		activityHeight,
+		reducedMotion,
+		desktopActivity,
+		activityInspecting,
+		activeTab,
+	]);
 	const navigationOrigin = readAgentRunNavigationOrigin(location.state);
 
 	// `useAgentRun` returns a hand-rolled `AgentRunDetail` type that predates
@@ -159,6 +210,113 @@ export function AgentRunDetailPage() {
 	const parentRun = parentRunId
 		? (rawParentRun as unknown as AgentRunDetailResponse | undefined)
 		: undefined;
+
+	useEffect(() => {
+		let animationFrame = 0;
+		let settleFrame = 0;
+		const frame = activityFrameRef.current;
+
+		function scheduleHeightUpdate() {
+			window.cancelAnimationFrame(animationFrame);
+			window.cancelAnimationFrame(settleFrame);
+			animationFrame = window.requestAnimationFrame(() => {
+				if (activeTab === "activity" || !desktopActivity || !frame) {
+					setActivityHeight(null);
+					return;
+				}
+				const toolbar = frame.querySelector<HTMLElement>(
+					'[data-slot="activity-toolbar"]',
+				);
+				const activityList = frame.querySelector<HTMLElement>(
+					'ol[aria-label="Run activity"]',
+				);
+				const emptyState = frame.querySelector<HTMLElement>(
+					'[data-slot="activity-empty-state"]',
+				);
+				const advancedContent = frame.querySelector<HTMLElement>(
+					'[data-slot="activity-advanced-content"]',
+				);
+				const naturalHeight = advancedContent
+					? advancedContent.offsetHeight + 2
+					: (toolbar?.offsetHeight ?? 0) +
+						Math.max(
+							activityList?.scrollHeight ?? 0,
+							emptyState?.offsetHeight ?? 0,
+						) +
+						2;
+				const availableHeight =
+					(pageScrollRef.current?.clientHeight ??
+						window.innerHeight) - 16;
+				const viewportCap = Math.max(availableHeight, 1);
+				const target = activityInspecting
+					? Math.min(760, viewportCap)
+					: Math.min(naturalHeight, 520, viewportCap);
+				const current = frame.offsetHeight || target;
+				setActivityHeight(current);
+				settleFrame = window.requestAnimationFrame(() => {
+					setActivityHeight(target);
+				});
+			});
+		}
+
+		scheduleHeightUpdate();
+		if (!frame) {
+			return () => {
+				window.cancelAnimationFrame(animationFrame);
+				window.cancelAnimationFrame(settleFrame);
+			};
+		}
+		const resizeObserver =
+			typeof ResizeObserver === "undefined"
+				? null
+				: new ResizeObserver(scheduleHeightUpdate);
+		function observeIntrinsicContent() {
+			const toolbar = frame?.querySelector<HTMLElement>(
+				'[data-slot="activity-toolbar"]',
+			);
+			const activityList = frame?.querySelector<HTMLElement>(
+				'ol[aria-label="Run activity"]',
+			);
+			const emptyState = frame?.querySelector<HTMLElement>(
+				'[data-slot="activity-empty-state"]',
+			);
+			if (toolbar) resizeObserver?.observe(toolbar);
+			if (activityList) resizeObserver?.observe(activityList);
+			if (emptyState) resizeObserver?.observe(emptyState);
+			const advancedContent = frame?.querySelector<HTMLElement>(
+				'[data-slot="activity-advanced-content"]',
+			);
+			if (advancedContent) resizeObserver?.observe(advancedContent);
+		}
+		observeIntrinsicContent();
+		if (pageScrollRef.current)
+			resizeObserver?.observe(pageScrollRef.current);
+		const mutationObserver =
+			typeof MutationObserver === "undefined"
+				? null
+				: new MutationObserver(() => {
+						resizeObserver?.disconnect();
+						observeIntrinsicContent();
+						if (pageScrollRef.current)
+							resizeObserver?.observe(pageScrollRef.current);
+						scheduleHeightUpdate();
+					});
+		mutationObserver?.observe(frame, { childList: true, subtree: true });
+		window.addEventListener("resize", scheduleHeightUpdate);
+		return () => {
+			mutationObserver?.disconnect();
+			resizeObserver?.disconnect();
+			window.removeEventListener("resize", scheduleHeightUpdate);
+			window.cancelAnimationFrame(animationFrame);
+			window.cancelAnimationFrame(settleFrame);
+		};
+	}, [
+		activeTab,
+		activityInspecting,
+		desktopActivity,
+		run?.id,
+		run?.steps?.length,
+	]);
 
 	// Refetch this run whenever the backend broadcasts an update for it —
 	// covers summarizer transitions (pending → generating → completed) and
@@ -595,6 +753,7 @@ export function AgentRunDetailPage() {
 			</div>
 
 			<PageScrollArea
+				ref={pageScrollRef}
 				className={
 					activeTab === "activity"
 						? "flex flex-col lg:min-h-0 lg:flex-1"
@@ -694,20 +853,55 @@ export function AgentRunDetailPage() {
 				) : null}
 
 				<div
-					className={
+					ref={activityHeaderRef}
+					data-activity-inspecting={activityInspecting}
+					className={cn(
+						"flex min-w-0 flex-col",
 						activeTab === "activity"
-							? "flex min-w-0 flex-col lg:min-h-0 lg:flex-1"
-							: "flex min-w-0 flex-col lg:h-[520px]"
+							? "lg:min-h-0 lg:flex-1"
+							: "lg:overflow-hidden lg:transition-[height] lg:duration-300 lg:ease-out motion-reduce:lg:transition-none",
+					)}
+					onTransitionEnd={(event) => {
+						if (
+							event.propertyName !== "height" ||
+							event.target !== event.currentTarget ||
+							!activityInspecting ||
+							activeTab === "activity"
+						) {
+							return;
+						}
+						activityHeaderRef.current?.scrollIntoView({
+							behavior: reducedMotion ? "auto" : "smooth",
+							block: "start",
+						});
+					}}
+					style={
+						activeTab === "activity" ||
+						!desktopActivity ||
+						activityHeight == null
+							? undefined
+							: {
+									height: activityHeight,
+								}
 					}
 				>
-					<Card className="flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0">
+					<Card
+						ref={activityFrameRef}
+						className={
+							activeTab === "activity" || activityInspecting
+								? "flex min-h-0 min-w-0 flex-1 flex-col gap-0 overflow-hidden py-0"
+								: "flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden py-0"
+						}
+					>
 						<CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
 							<AgentActivityWorkspace
 								run={run}
 								focused={activeTab === "activity"}
+								expanded={activityInspecting}
 								onFocusedChange={(focused) =>
 									changeTab(focused ? "activity" : "overview")
 								}
+								onInspectionChange={setActivityInspecting}
 								childRunIds={run.child_run_ids ?? []}
 								childRuns={run.child_runs ?? []}
 								runStatus={run.status}

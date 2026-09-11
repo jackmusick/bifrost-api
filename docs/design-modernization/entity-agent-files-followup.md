@@ -102,3 +102,39 @@ Scoped verification:
 - `npm run tsc` and `npm run lint` passed. Lint retains the existing console warning in `e2e/support/seed-review-pack.ts`; there are no lint errors.
 
 This is an unmerged debug iteration. The complete suites and pre-PR gate were not rerun.
+
+## Content-sized Activity inspection
+
+The approved follow-up removes Activity's permanent desktop minimum height.
+Short runs fit their visible calls; long runs scroll within the available space.
+Selecting a call expands the contained workspace and brings its header into view,
+while Overview remains above it. Closing returns to the compact list and restores
+focus to the selected call. The selected-row background meets both the header
+and inspector divider without an inset gutter. The mobile detail sheet and
+explicit focused-activity navigation remain available.
+
+## Queued Entity Management refinement
+
+User feedback following the Activity sizing approval:
+- Complete the contained feature treatment across directory, selection, and editor.
+- Clarify selection of parents and expanded related resources; avoid confusing
+  nested highlight/checkbox placement and duplicate-resource selection states.
+- Review Changes should list actual changes only; omit unchanged resource text.
+  Use semantic color/icon cues for scope/access changes.
+- Investigate a related-resource mismatch filter for scope and role differences.
+- Explain and revisit `Add role: Test` in Access; audit whether the shared app
+  access selector supports bulk edits and reuse/evolve it rather than maintaining
+  a visually inconsistent selector.
+
+This follow-up is queued after Activity; it is not part of the Activity delivery.
+
+### Activity verification
+
+- `./test.sh client unit -- Timeline.test.tsx AgentActivityWorkspace.test.tsx AgentRunDetailPage.test.tsx RunReviewSheet.test.tsx ChatRunActivity.test.tsx`: 5 files / 70 tests passed.
+- After correcting reduced-motion scroll timing, `./test.sh client unit -- AgentRunDetailPage.test.tsx`: 33 tests passed.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts`: 8 checks passed, including setup, against the production client build.
+- Live debug review covered compact browsing, inspection, close, and Advanced at 1440×1000, 1100×650, and 390×1000. Light theme and reduced motion were also inspected.
+- Full client type checking and lint passed; lint retains the existing `seed-review-pack.ts` console warning (zero errors).
+- Complete repository suites and the pre-PR gate were not run for this unmerged debug iteration.
+- Final reduced-motion regression: `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts --grep 'groups run activity'` passed (journey plus setup). The selected journey checks normal and reduced-motion inspection, closing, Advanced, nested calls, and mobile inspection.
+- After the final timing fix, `npm run tsc` and `npx eslint src/pages/agents/AgentRunDetailPage.tsx e2e/agents-detail-runs.admin.spec.ts` passed.

@@ -398,6 +398,90 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toBeVisible();
 			await page.getByRole("button", { name: /ai usage/i }).click();
 
+			// Browsing stays compact; inspecting a call opens a useful workspace
+			// without discarding the overview or reserving an empty gutter.
+			const browsingCalls = page.getByRole("region", {
+				name: "Activity calls",
+			});
+			const browsingHeight = await browsingCalls.evaluate(
+				(element) => element.clientHeight,
+			);
+			await browsingCalls
+				.getByRole("button", { name: /ticket details/i })
+				.click();
+			const browsingDetails = page.getByRole("region", {
+				name: "Selected call details",
+			});
+			await expect(browsingDetails).toBeVisible();
+			await expect
+				.poll(() =>
+					browsingCalls.evaluate((element) => element.clientHeight),
+				)
+				.toBeGreaterThan(browsingHeight + 50);
+			await expect(page).toHaveURL(
+				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
+			);
+			await expect(answerHeading).toBeVisible();
+			await expect
+				.poll(() =>
+					page
+						.getByRole("heading", { name: "Activity", exact: true })
+						.evaluate(
+							(element) =>
+								element.getBoundingClientRect().top -
+								(element
+									.closest("[data-page-scroll]")
+									?.getBoundingClientRect().top ?? 0),
+						),
+				)
+				.toBeLessThan(60);
+			await page
+				.getByRole("button", { name: "Close call details" })
+				.click();
+			await expect
+				.poll(() =>
+					browsingCalls.evaluate((element) => element.clientHeight),
+				)
+				.toBeLessThanOrEqual(browsingHeight + 1);
+			await page.emulateMedia({ reducedMotion: "reduce" });
+			await browsingCalls
+				.getByRole("button", { name: /ticket details/i })
+				.click();
+			await expect
+				.poll(() =>
+					page
+						.getByRole("heading", { name: "Activity", exact: true })
+						.evaluate(
+							(element) =>
+								element.getBoundingClientRect().top -
+								(element
+									.closest("[data-page-scroll]")
+									?.getBoundingClientRect().top ?? 0),
+						),
+				)
+				.toBeLessThan(60);
+			await page
+				.getByRole("button", { name: "Close call details" })
+				.click();
+			await page.emulateMedia({ reducedMotion: "no-preference" });
+			await page
+				.getByRole("button", { name: "Advanced", exact: true })
+				.click();
+			const advancedRegion = page.getByRole("region", {
+				name: "Advanced activity",
+			});
+			await expect
+				.poll(() =>
+					advancedRegion.evaluate((element) => element.clientHeight),
+				)
+				.toBeGreaterThan(100);
+			await expect(
+				advancedRegion.getByText("Raw executor trace", { exact: true }),
+			).toBeVisible();
+			await page
+				.getByRole("button", { name: "Advanced", exact: true })
+				.click();
+
 			const ticketReference = page.getByRole("link", {
 				name: "Show Looked up ticket details in Activity",
 			});

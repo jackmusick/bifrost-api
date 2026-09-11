@@ -156,9 +156,12 @@ function grandchildReference(
 
 describe("Timeline activity view", () => {
 	it("attaches selected details to the activity workspace on desktop", async () => {
+		const onInspectionChange = vi.fn();
 		const { user } = renderWithProviders(
 			<Timeline
 				inspector="inline"
+				joinedRows
+				onInspectionChange={onInspectionChange}
 				steps={[
 					step(
 						"tool_result",
@@ -175,9 +178,16 @@ describe("Timeline activity view", () => {
 		await user.click(
 			screen.getByRole("button", { name: /Ticket details/ }),
 		);
+		await waitFor(() =>
+			expect(onInspectionChange).toHaveBeenLastCalledWith(true),
+		);
 		expect(
 			screen.getByRole("complementary", { name: "Call inspector" }),
 		).toBeInTheDocument();
+		const selectedRow = document.querySelector(
+			'[data-activity-id="step-1"] > div',
+		);
+		expect(selectedRow).toHaveClass("rounded-none");
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("heading", { name: "Ticket details" }),
@@ -189,6 +199,9 @@ describe("Timeline activity view", () => {
 			expect(
 				screen.queryByRole("complementary", { name: "Call inspector" }),
 			).not.toBeInTheDocument(),
+		);
+		await waitFor(() =>
+			expect(onInspectionChange).toHaveBeenLastCalledWith(false),
 		);
 		const trigger = screen.getByRole("button", { name: /Ticket details/ });
 		await user.click(trigger);

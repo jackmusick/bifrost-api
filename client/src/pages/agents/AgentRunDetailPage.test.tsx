@@ -50,6 +50,10 @@ vi.mock("@/hooks/useAgents", () => ({
 	useAgent: (id: string | undefined) => mockUseAgent(id),
 }));
 
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useMediaQuery: (query: string) => query.includes("min-width"),
+}));
+
 const mockUseExecution = vi.fn();
 vi.mock("@/hooks/useExecutions", () => ({
 	useExecution: (id: string | undefined) => mockUseExecution(id),
@@ -432,6 +436,72 @@ describe("AgentRunDetailPage — header + summary", () => {
 			block: "center",
 		});
 		expect(activity).toHaveFocus();
+	});
+
+	it("expands Activity in place when a call is selected from Overview", async () => {
+		const scrollIntoView = vi.fn();
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoView,
+		});
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				steps: [
+					{
+						id: "step-1",
+						run_id: "run-1",
+						step_number: 1,
+						type: "tool_result",
+						content: {
+							tool_name: "customer_summary",
+							execution_id: "execution-428950",
+							result: { ticket_id: 428950 },
+						},
+						created_at: "2026-04-20T12:35:00Z",
+					},
+				],
+			}),
+			isLoading: false,
+		});
+		mockUseExecution.mockReturnValue({
+			data: {
+				workflow_name: "Ticket details",
+				result: { ticket_id: 428950 },
+			},
+		});
+
+		const { user, container } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: /Ticket details/ }),
+		);
+
+		expect(screen.getByTestId("run-overview")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Focus activity" }),
+		).toBeInTheDocument();
+		const activityFrame = container.querySelector(
+			"[data-activity-inspecting]",
+		);
+		expect(activityFrame).toHaveAttribute(
+			"data-activity-inspecting",
+			"true",
+		);
+		await waitFor(() =>
+			expect(scrollIntoView).toHaveBeenCalledWith({
+				behavior: "smooth",
+				block: "start",
+			}),
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: "Close call details" }),
+		);
+		await waitFor(() =>
+			expect(activityFrame).toHaveAttribute(
+				"data-activity-inspecting",
+				"false",
+			),
+		);
 	});
 });
 

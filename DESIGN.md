@@ -49,6 +49,11 @@ surface width rather than a separate sidebar. Activity sits below Overview in a
 contained workspace with its own header, bounded desktop scrolling, and an attached
 animated call inspector. Focus activity temporarily prioritizes that workspace;
 Show overview restores the narrative. Mobile inspection uses a full-width pane.
+While browsing, short Activity lists fit their content. Selecting a call expands
+the workspace within the available page pane and reveals its header, preserving
+Overview above. Closing shrinks the list and restores focus. Highlight backgrounds
+meet the header and inspector divider without an inset gutter. Reduced motion
+must still reveal the header after the new height is applied.
 
 Entity Management uses a contained resource directory with expandable relationships,
 not table columns. Resource identity leads; scope, type, and access remain visible

@@ -88,6 +88,8 @@ export interface TimelineProps {
 		expanded: boolean,
 	) => void;
 	restoreActivityId?: string | null;
+	onInspectionChange?: (inspecting: boolean) => void;
+	joinedRows?: boolean;
 	onOpenChildRun?: (activityId: string) => void;
 	childRunOrigin?: AgentRunNavigationOrigin;
 	/** Used only to keep pathological/cyclic history from nesting forever. */
@@ -106,6 +108,8 @@ export function Timeline({
 	expandedDelegationIds,
 	onDelegationExpandedChange,
 	restoreActivityId = null,
+	onInspectionChange,
+	joinedRows = false,
 	onOpenChildRun,
 	childRunOrigin,
 	depth = 0,
@@ -161,6 +165,9 @@ export function Timeline({
 		(selectedSnapshot?.item.id === selectedActivityId
 			? selectedSnapshot.item
 			: null);
+	useEffect(() => {
+		onInspectionChange?.(!!selectedActivity);
+	}, [onInspectionChange, selectedActivity]);
 	const handleSelectActivity = (
 		item: RunActivityItem,
 		sourceRunId?: string,
@@ -181,7 +188,10 @@ export function Timeline({
 					{toolbarLeading}
 					{toolbarActions}
 				</div>
-				<div className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center">
+				<div
+					data-slot="activity-empty-state"
+					className="rounded-[var(--bf-radius-feature)] border border-dashed border-border/70 bg-muted/30 px-4 py-6 text-center"
+				>
 					<p className="text-sm font-medium leading-6">
 						No activity to summarize
 					</p>
@@ -221,6 +231,7 @@ export function Timeline({
 				expandableActivityIds.length > 0 ||
 				toolbarActions) && (
 				<div
+					data-slot="activity-toolbar"
 					className={cn(
 						"flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60",
 						inlineInspector ? "px-4 py-3" : "pb-2",
@@ -300,6 +311,7 @@ export function Timeline({
 										? null
 										: restoreActivityId
 								}
+								joinedRows={joinedRows}
 								onOpenChildRun={onOpenChildRun}
 								childRunOrigin={childRunOrigin}
 							/>
@@ -311,6 +323,7 @@ export function Timeline({
 						{selectedActivity && (
 							<motion.aside
 								key="call-inspector"
+								role="complementary"
 								initial={{
 									width: 0,
 									opacity: 0,
@@ -326,7 +339,7 @@ export function Timeline({
 									duration: reducedMotion ? 0 : 0.24,
 									ease: [0.22, 1, 0.36, 1],
 								}}
-								className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/20"
+								className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/20 motion-reduce:transition-none"
 								aria-label="Call inspector"
 							>
 								<div className="flex min-h-0 min-w-80 flex-1 flex-col">
@@ -400,6 +413,7 @@ function ActivityTreeRow({
 	expandedDelegationIds,
 	onDelegationExpandedChange,
 	restoreActivityId,
+	joinedRows,
 	onOpenChildRun,
 	childRunOrigin,
 }: {
@@ -419,6 +433,7 @@ function ActivityTreeRow({
 		expanded: boolean,
 	) => void;
 	restoreActivityId?: string | null;
+	joinedRows?: boolean;
 	onOpenChildRun?: (activityId: string) => void;
 	childRunOrigin?: AgentRunNavigationOrigin;
 }) {
@@ -551,6 +566,7 @@ function ActivityTreeRow({
 			<div
 				className={cn(
 					"relative min-w-0 rounded-[var(--bf-radius-control)] px-2 py-3 transition-colors hover:bg-muted/35 motion-reduce:transition-none",
+					joinedRows && selected && "rounded-none",
 					selected && "bg-[var(--bf-info-soft)]/55",
 					highlighted && "ring-2 ring-inset ring-[var(--bf-info)]/45",
 				)}
@@ -696,6 +712,7 @@ function ActivityTreeRow({
 								onDelegationExpandedChange
 							}
 							restoreActivityId={restoreActivityId}
+							joinedRows={joinedRows}
 							onOpenChildRun={onOpenChildRun}
 							childRunOrigin={childRunOrigin}
 						/>
