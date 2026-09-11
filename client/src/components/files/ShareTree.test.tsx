@@ -56,7 +56,13 @@ describe("ShareTree", () => {
 		await waitFor(() =>
 			expect(listStructure).toHaveBeenCalledWith("gallery", "", null),
 		);
-		expect(await screen.findByText("team")).toBeInTheDocument();
+		const folder = await screen.findByText("team");
+		expect(folder).toBeInTheDocument();
+		const selectedRow = screen.getByRole("button", { name: "gallery" })
+			.parentElement;
+		expect(selectedRow).toHaveClass("tree-row-selected", "z-20");
+		expect(selectedRow?.closest("li")).not.toHaveClass("tree-row-selected");
+		expect(folder.closest("li")).toHaveClass("before:absolute");
 	});
 	it("expands separately from navigation and retries failed folder loads", async () => {
 		const onSelect = vi.fn();

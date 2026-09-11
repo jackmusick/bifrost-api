@@ -66,7 +66,7 @@ async function expectFileVisible(page: Page) {
 }
 
 function fileRow(page: Page) {
-	return page.getByRole("row").filter({ hasText: FILE_NAME }).first();
+	return page.getByRole("list", { name: "Folders and files" }).getByRole("listitem").filter({ hasText: FILE_NAME }).first();
 }
 
 async function openFileAction(page: Page, actionName: string | RegExp) {
@@ -111,8 +111,8 @@ test.describe("Files management acceptance (admin)", () => {
 		});
 		expect(await fileExists(api)).toBe(true);
 		await page
-			.getByRole("dialog")
-			.getByRole("button", { name: "Close", exact: true })
+			.getByRole("region", { name: "File details", exact: true })
+			.getByRole("button", { name: "Close file details", exact: true })
 			.click();
 
 		const downloadPromise = page.waitForEvent("download");

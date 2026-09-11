@@ -1,11 +1,16 @@
 import { useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
+import { FilesInspector } from "./FilesInspector";
 import {
 	ChevronLeft,
 	Menu,
 	Plus,
 	Upload,
+	Info,
+	FolderOpen,
 	ShieldCheck,
 	HardDrive,
 } from "lucide-react";
@@ -42,8 +47,6 @@ import { TestAccessModal } from "./TestAccessModal";
 import { useFileUpload } from "./useFileUpload";
 
 const READ_ONLY_LOCATIONS = new Set(["uploads"]);
-const PANE =
-	"flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card";
 
 interface FilesExplorerProps {
 	/**
@@ -78,7 +81,8 @@ export function FilesExplorer({
 	const { data: organizations = [] } = useOrganizations({
 		enabled: isPlatformAdmin && !install,
 	});
-	const isWide = useMediaQuery("(min-width: 1440px)");
+	const isWide = useMediaQuery("(min-width: 1024px)");
+	const isThreePane = useMediaQuery("(min-width: 1280px)");
 
 	// When `install` is set, scope and location are pinned — not user-controlled.
 	// Otherwise selectorScope is what OrganizationSelect speaks: null = Global.
@@ -137,6 +141,15 @@ export function FilesExplorer({
 		setDetailOpen(true);
 	}
 
+	function closeDetails() {
+		// Remove inert before restoring focus to the directory on small screens.
+		flushSync(() => setDetailOpen(false));
+		const opener = detailTriggerRef.current;
+		if (opener?.isConnected && opener !== document.body)
+			opener.focus({ preventScroll: true });
+		else explorerRef.current?.focus({ preventScroll: true });
+	}
+
 	function resetTo(nextLocation: string | null, nextPrefix: string) {
 		setLocation(nextLocation);
 		setPrefix(nextPrefix);
@@ -152,6 +165,7 @@ export function FilesExplorer({
 	function handleSelect(nextLocation: string, nextPrefix: string) {
 		resetTo(nextLocation, nextPrefix);
 		setTreeOpen(false);
+		setView("browse");
 	}
 
 	function handleBreadcrumb(depth: number) {
@@ -202,8 +216,10 @@ export function FilesExplorer({
 			if (solutionReadOnly) return;
 			openPolicy(loc, treePrefix);
 		} else if (action === "upload") {
-			if (solutionReadOnly) return;
-			handleSelect(loc, treePrefix);
+			if (solutionReadOnly || READ_ONLY_LOCATIONS.has(loc)) return;
+			// Commit the destination before invoking the browser file chooser.
+			flushSync(() => handleSelect(loc, treePrefix));
+			uploadInputRef.current?.click();
 		}
 	}
 
@@ -265,16 +281,19 @@ export function FilesExplorer({
 		<Tabs
 			key={selectedFile ?? "access"}
 			defaultValue={selectedFile ? "preview" : "access"}
-			className="flex h-full min-h-0 flex-col gap-0"
+			className="flex min-h-0 flex-1 flex-col gap-0"
 			data-testid="detail-pane"
 		>
 			<TabsList
+				variant="line"
 				aria-label="File details"
-				className="m-3 grid w-[calc(100%-1.5rem)] shrink-0 grid-cols-2 group-data-horizontal/tabs:h-auto"
+				className="mx-4 mt-2 shrink-0"
 			>
-				<TabsTrigger value="preview" className="min-h-11">
-					Preview
-				</TabsTrigger>
+				{selectedFile && (
+					<TabsTrigger value="preview" className="min-h-11">
+						Preview
+					</TabsTrigger>
+				)}
 				<TabsTrigger value="access" className="min-h-11">
 					Access
 				</TabsTrigger>
@@ -293,8 +312,8 @@ export function FilesExplorer({
 			</TabsContent>
 		</Tabs>
 	);
-
 	const solutionTitle = installName ?? "Solution";
+	const showTree = isWide && (!detailOpen || isThreePane);
 
 	return (
 		<div
@@ -302,287 +321,289 @@ export function FilesExplorer({
 			tabIndex={-1}
 			role="region"
 			aria-label="Files explorer"
-			className="flex h-full min-h-0 flex-col gap-3 outline-none"
+			className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card outline-none"
 		>
-			<header className="flex shrink-0 flex-wrap items-center gap-2">
-				<div className="flex w-full min-w-0 flex-wrap items-center gap-2 min-[1440px]:w-auto min-[1440px]:flex-1">
-					{install && !embedded && (
-						<>
-							<Button
-								asChild
-								variant="outline"
-								size="sm"
-								className="min-h-11"
-							>
-								<Link
-									to={`/solutions/${install}`}
-									data-testid="files-solution-back"
-									aria-label="Back to Solution"
-								>
-									<ChevronLeft data-icon="inline-start" />
-									Back
-								</Link>
-							</Button>
-							<span
-								className="min-w-0 flex-1 text-sm font-semibold text-foreground [overflow-wrap:anywhere]"
-								title={solutionTitle}
-							>
-								{solutionTitle}
-							</span>
-						</>
-					)}
-					{!isWide && (
-						<Sheet open={treeOpen} onOpenChange={setTreeOpen}>
-							<SheetTrigger asChild>
-								<Button
-									type="button"
-									variant="outline"
-									size="icon-lg"
-									aria-label="Open shares"
-								>
-									<Menu className="h-4 w-4" />
-								</Button>
-							</SheetTrigger>
-							<SheetContent side="left" className="w-72 p-0">
-								<SheetHeader className="min-h-20 px-4 py-5">
-									<SheetTitle>Shares</SheetTitle>
-								</SheetHeader>
-								<div className="flex min-h-0 flex-1 flex-col">
-									{tree}
-								</div>
-							</SheetContent>
-						</Sheet>
-					)}
-					{isPlatformAdmin && !install && (
-						<div className="min-w-0 flex-1 sm:max-w-56">
-							<OrganizationSelect
-								aria-label="File scope"
-								value={selectorScope}
-								onChange={handleScopeChange}
-								showGlobal
-								showAll={false}
-							/>
-						</div>
-					)}
-					{view === "browse" && !install && (
-						<div className="min-w-0 basis-full min-[1440px]:basis-auto min-[1440px]:flex-1">
-							<Breadcrumbs
-								scopeLabel={scopeLabel}
-								location={location}
-								segments={segments}
-								onNavigate={handleBreadcrumb}
-							/>
-						</div>
-					)}
-					{view === "browse" && install && location !== null && (
-						<div className="min-w-0 basis-full min-[1440px]:basis-auto min-[1440px]:flex-1">
-							<Breadcrumbs
-								scopeLabel={solutionTitle}
-								includeScopeRoot={false}
-								location={location}
-								segments={segments}
-								onNavigate={handleBreadcrumb}
-							/>
-						</div>
-					)}
-				</div>
-				<div className="flex w-full min-w-0 flex-wrap items-center gap-2 min-[1440px]:ml-auto min-[1440px]:w-auto min-[1440px]:shrink-0">
-					{!install && (
-						<>
-							<Tabs
-								className="w-full sm:w-auto"
-								value={view}
-								onValueChange={(value) =>
-									setView(value as "browse" | "policies")
-								}
-							>
-								<TabsList className="min-h-11 w-full group-data-horizontal/tabs:h-auto sm:w-auto">
-									<TabsTrigger
-										className="min-h-11"
-										value="browse"
-									>
-										Browse
-									</TabsTrigger>
-									<TabsTrigger
-										className="min-h-11"
-										value="policies"
-									>
-										Policies
-									</TabsTrigger>
-								</TabsList>
-							</Tabs>
-							{view === "browse" && location === null && (
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									className="min-h-11 flex-1 sm:flex-none"
-									onClick={() => setNewShareOpen(true)}
-								>
-									<Plus className="h-4 w-4" /> New Share
-								</Button>
-							)}
-						</>
-					)}
-					{view === "browse" && location !== null && (
+			<header className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-muted/20 px-3 py-2 sm:px-4">
+				{install && !embedded && (
+					<div className="flex min-w-0 flex-1 items-center gap-2">
 						<Button
-							type="button"
-							variant="outline"
-							className="min-h-11"
-							onClick={() => {
-								setSelectedFile(null);
-								openDetails();
-							}}
+							asChild
+							variant="ghost"
+							size="icon"
+							aria-label="Back to Solution"
 						>
-							<ShieldCheck className="size-4" />
-							Folder access
-						</Button>
-					)}
-					{canUpload && (
-						<>
-							<input
-								ref={uploadInputRef}
-								type="file"
-								multiple
-								className="hidden"
-								onChange={(event) => {
-									if (event.target.files?.length)
-										void uploadFiles(event.target.files);
-									event.target.value = "";
-								}}
-							/>
-							<Button
-								type="button"
-								size="sm"
-								className="min-h-11 flex-1 sm:flex-none"
-								onClick={() => uploadInputRef.current?.click()}
-								disabled={uploading}
+							<Link
+								to={`/solutions/${install}`}
+								data-testid="files-solution-back"
 							>
-								<Upload className="h-4 w-4" />{" "}
-								{uploading ? "Uploading…" : "Upload"}
-							</Button>
-						</>
-					)}
-				</div>
-			</header>
-			{uploadProgress && (
-				<p
-					role="status"
-					className="shrink-0 text-sm text-muted-foreground [overflow-wrap:anywhere]"
-				>
-					{uploadProgress}
-				</p>
-			)}
-			{uploadError && (
-				<Alert variant="destructive" className="shrink-0">
-					<AlertTitle>Upload failed</AlertTitle>
-					<AlertDescription>
-						<p className="[overflow-wrap:anywhere]">
-							{uploadError}
-						</p>
-						<Button
-							variant="outline"
-							className="mt-3 min-h-11"
-							disabled={uploading}
-							onClick={() => void retryUpload()}
-						>
-							Retry upload
+								<ChevronLeft className="size-4" />
+							</Link>
 						</Button>
-					</AlertDescription>
-				</Alert>
-			)}
-
-			{view === "policies" && !install ? (
-				<div className="min-h-0 flex-1 overflow-hidden">
-					<PoliciesView
-						scope={scope}
-						refreshKey={refreshKey}
-						onEdit={(policy) =>
-							openPolicy(policy.location, policy.path)
-						}
-						onDelete={(policy) => void handleDeletePolicy(policy)}
-					/>
-				</div>
-			) : (
-				<div className="grid min-h-0 flex-1 gap-3 overflow-hidden min-[1440px]:grid-cols-[16rem_minmax(0,1fr)]">
-					{isWide && (
-						<div className={PANE}>
-							<div className="flex items-center gap-2 border-b px-4 py-4 text-sm font-semibold">
-								<HardDrive className="size-4 text-primary" />
-								Shares
-							</div>
-							{tree}
-						</div>
-					)}
-					{/* No PANE here: FolderListing's DataTable is its own card —
-					    wrapping it in PANE would nest a card in a card. */}
-					<div className="flex min-h-0 flex-col overflow-hidden">
-						<>
-							{location === null ? (
-								<SharesOverview
-									scope={scope}
-									readOnly={solutionReadOnly}
-									onSelect={handleSelect}
-								/>
-							) : (
-								<FolderListing
-									key={`listing-${scope}-${location}-${prefix}`}
-									scope={scope}
-									location={location}
-									prefix={prefix}
-									readOnly={readOnly}
-									managedBySolution={solutionReadOnly}
-									solutionId={install}
-									onOpenFolder={(next) =>
-										resetTo(location, next)
-									}
-									onSelectFile={selectFile}
-									onRowAction={handleRowAction}
-									onFolderAction={(action, folderPrefix) =>
-										location !== null &&
-										handleTreeAction(
-											action,
-											location,
-											folderPrefix,
-										)
-									}
-									onUploaded={refreshFiles}
-								/>
-							)}
-						</>
+						<span
+							className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]"
+							title={solutionTitle}
+						>
+							{solutionTitle}
+						</span>
 					</div>
-				</div>
-			)}
-
-			{
-				<Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-					<SheetContent
-						side="right"
-						className="w-full p-0 sm:max-w-xl"
-						onCloseAutoFocus={(event) => {
-							event.preventDefault();
-							const opener = detailTriggerRef.current;
-							if (opener?.isConnected && opener !== document.body)
-								opener.focus({ preventScroll: true });
-							else
-								explorerRef.current?.focus({
-									preventScroll: true,
-								});
+				)}
+				{isPlatformAdmin && !install && (
+					<div className="min-w-0 w-full sm:w-56 sm:shrink-0">
+						<OrganizationSelect
+							aria-label="File scope"
+							value={selectorScope}
+							onChange={handleScopeChange}
+							showGlobal
+							showAll={false}
+						/>
+					</div>
+				)}
+				{!install && (
+					<Tabs
+						value={view}
+						onValueChange={(value) => {
+							setView(value as "browse" | "policies");
+							setDetailOpen(false);
 						}}
+						className="min-w-0"
 					>
-						<SheetHeader className="min-h-20 px-4 py-5">
-							<SheetTitle className="break-all">
-								{selectedFile?.split("/").pop() ??
-									location ??
-									"Details"}
-							</SheetTitle>
-						</SheetHeader>
-						<div className="flex min-h-0 flex-1 flex-col">
-							{detail}
+						<TabsList variant="line" aria-label="Files workspace">
+							<TabsTrigger value="browse" className="min-h-11">
+								<FolderOpen className="size-4" />
+								Files
+							</TabsTrigger>
+							<TabsTrigger value="policies" className="min-h-11">
+								<ShieldCheck className="size-4" />
+								Access Policies
+							</TabsTrigger>
+						</TabsList>
+					</Tabs>
+				)}
+				{!install && (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						aria-label="New Share"
+						className="ml-auto min-h-11 w-11 shrink-0 px-0 sm:min-h-9 sm:w-auto sm:px-3"
+						onClick={() => setNewShareOpen(true)}
+					>
+						<Plus className="size-4" />
+						<span className="hidden sm:inline">New Share</span>
+					</Button>
+				)}
+			</header>
+			<div className="relative flex min-h-0 flex-1 overflow-hidden">
+				{showTree && (
+					<aside
+						aria-label="Share navigation"
+						className="flex w-56 shrink-0 flex-col border-r bg-muted/10"
+					>
+						<div className="flex min-h-14 items-center gap-2 border-b px-4 text-sm font-semibold">
+							<HardDrive className="size-4 text-primary" />
+							Shares
 						</div>
-					</SheetContent>
-				</Sheet>
-			}
+						{tree}
+					</aside>
+				)}
+				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+					<div
+						inert={!isWide && detailOpen ? true : undefined}
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						{view === "browse" && (
+							<div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-4">
+								{!showTree && (
+									<Sheet
+										open={treeOpen}
+										onOpenChange={setTreeOpen}
+									>
+										<SheetTrigger asChild>
+											<Button
+												variant="outline"
+												size="icon"
+												aria-label="Open shares"
+											>
+												<Menu className="size-4" />
+											</Button>
+										</SheetTrigger>
+										<SheetContent
+											side="left"
+											className="w-72 p-0"
+										>
+											<SheetHeader>
+												<SheetTitle>Shares</SheetTitle>
+											</SheetHeader>
+											<div className="flex min-h-0 flex-1 flex-col">
+												{tree}
+											</div>
+										</SheetContent>
+									</Sheet>
+								)}
+								<div className="min-w-0 flex-1">
+									<Breadcrumbs
+										scopeLabel={
+											install ? solutionTitle : scopeLabel
+										}
+										includeScopeRoot={!install}
+										location={location}
+										segments={segments}
+										onNavigate={handleBreadcrumb}
+									/>
+								</div>
+								{view === "browse" && location !== null && (
+									<Button
+										variant="ghost"
+										size="sm"
+										className="min-h-11 sm:min-h-9"
+										onClick={() => {
+											setSelectedFile(null);
+											openDetails();
+										}}
+									>
+										<Info className="size-4" />
+										Folder Details
+									</Button>
+								)}
+								{canUpload && (
+									<>
+										<input
+											ref={uploadInputRef}
+											type="file"
+											multiple
+											className="hidden"
+											onChange={(event) => {
+												if (event.target.files?.length)
+													void uploadFiles(
+														event.target.files,
+													);
+												event.target.value = "";
+											}}
+										/>
+										<Button
+											size="sm"
+											className="min-h-11 sm:min-h-9"
+											onClick={() =>
+												uploadInputRef.current?.click()
+											}
+											disabled={uploading}
+										>
+											<Upload className="size-4" />
+											{uploading
+												? "Uploading…"
+												: "Upload"}
+										</Button>
+									</>
+								)}
+							</div>
+						)}
+						{uploadProgress && (
+							<p
+								role="status"
+								className="border-b px-4 py-2 text-sm text-muted-foreground [overflow-wrap:anywhere]"
+							>
+								{uploadProgress}
+							</p>
+						)}
+						{uploadError && (
+							<Alert variant="destructive" className="m-3 w-auto">
+								<AlertTitle>Upload failed</AlertTitle>
+								<AlertDescription>
+									<p>{uploadError}</p>
+									<Button
+										variant="outline"
+										className="mt-2"
+										disabled={uploading}
+										onClick={() => void retryUpload()}
+									>
+										Retry upload
+									</Button>
+								</AlertDescription>
+							</Alert>
+						)}
+						{view === "policies" && !install ? (
+							<PoliciesView
+								scope={scope}
+								refreshKey={refreshKey}
+								onEdit={(policy) =>
+									openPolicy(policy.location, policy.path)
+								}
+								onDelete={handleDeletePolicy}
+							/>
+						) : location === null ? (
+							<SharesOverview
+								scope={scope}
+								readOnly={solutionReadOnly}
+								onSelect={handleSelect}
+							/>
+						) : (
+							<FolderListing
+								key={`listing-${scope}-${location}-${prefix}`}
+								scope={scope}
+								location={location}
+								prefix={prefix}
+								readOnly={readOnly}
+								managedBySolution={solutionReadOnly}
+								solutionId={install}
+								selectedPath={detailOpen ? selectedFile : null}
+								onOpenFolder={(next) => resetTo(location, next)}
+								onSelectFile={selectFile}
+								onRowAction={handleRowAction}
+								onFolderAction={(action, folderPrefix) =>
+									handleTreeAction(
+										action,
+										location,
+										folderPrefix,
+									)
+								}
+								onUploaded={refreshFiles}
+							/>
+						)}
+					</div>
+					{!isWide && (
+						<AnimatePresence initial={false}>
+							{detailOpen && (
+								<FilesInspector
+									key="file-inspector"
+									inline={false}
+									title={
+										selectedFile?.split("/").pop() ??
+										segments.at(-1) ??
+										location ??
+										"Details"
+									}
+									path={`${location ?? ""}/${selectedFile ?? prefix}`}
+									isFile={Boolean(selectedFile)}
+									onClose={closeDetails}
+								>
+									{detail}
+								</FilesInspector>
+							)}
+						</AnimatePresence>
+					)}
+				</div>
+				{isWide && (
+					<AnimatePresence initial={false}>
+						{detailOpen && (
+							<FilesInspector
+								key="file-inspector"
+								inline
+								title={
+									selectedFile?.split("/").pop() ??
+									segments.at(-1) ??
+									location ??
+									"Details"
+								}
+								path={`${location ?? ""}/${selectedFile ?? prefix}`}
+								isFile={Boolean(selectedFile)}
+								onClose={closeDetails}
+							>
+								{detail}
+							</FilesInspector>
+						)}
+					</AnimatePresence>
+				)}
+			</div>
 
 			{deleteTarget && (
 				<DeleteConfirmation

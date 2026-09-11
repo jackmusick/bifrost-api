@@ -1,25 +1,28 @@
-import { useRef, useState } from "react";
-import { FileText, Folder, RotateCcw, Upload } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+	Code2,
+	File,
+	FileImage,
+	FileJson,
+	FileText,
+	Folder,
+	RotateCcw,
+	Search,
+	Upload,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { FileEntryActions } from "./FileEntryActions";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	ContextMenu,
 	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { files } from "@/lib/app-sdk/files";
+import { cn } from "@/lib/utils";
 import { listStructure, type StructureEntry } from "@/services/fileStructure";
 import { EntryMenuItem, FileContextMenuContent } from "./fileContextMenu";
 import { InlineLoader } from "./InlineLoader";
@@ -37,6 +40,7 @@ interface FolderListingProps {
 	readOnly: boolean;
 	managedBySolution?: boolean;
 	solutionId?: string | null;
+	selectedPath?: string | null;
 	onOpenFolder: (prefix: string) => void;
 	onSelectFile: (path: string) => void;
 	onRowAction: (action: ListingRowAction, path: string) => void;
@@ -51,20 +55,20 @@ export function FolderListing({
 	readOnly,
 	managedBySolution = false,
 	solutionId = null,
+	selectedPath = null,
 	onOpenFolder,
 	onSelectFile,
 	onRowAction,
 	onFolderAction,
 	onUploaded,
 }: FolderListingProps) {
-	const compactLayout = useMediaQuery("(max-width: 1439px)");
 	const listing = useQuery({
 		queryKey: ["file-structure", scope, location, prefix],
 		queryFn: () => listStructure(location!, prefix, scope),
 		enabled: location !== null,
 		retry: false,
 	});
-	const entries = listing.data ?? [];
+	const entries = useMemo(() => listing.data ?? [], [listing.data]);
 	const loading = listing.isPending;
 	const [downloadError, setDownloadError] = useState<{
 		path: string;
@@ -72,6 +76,7 @@ export function FolderListing({
 	} | null>(null);
 	const [downloading, setDownloading] = useState<string | null>(null);
 	const [dragOver, setDragOver] = useState(false);
+	const [search, setSearch] = useState("");
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const { uploading, uploadFiles, progress, error, retryUpload } =
 		useFileUpload(readOnly ? null : location, scope, prefix, onUploaded);
@@ -107,8 +112,26 @@ export function FolderListing({
 		}
 	}
 
-	const folders = entries.filter((e) => e.kind === "folder");
-	const fileEntries = entries.filter((e) => e.kind === "file");
+	const sortedEntries = useMemo(
+		() =>
+			[...entries].sort((a, b) => {
+				if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
+				return a.name.localeCompare(b.name, undefined, {
+					sensitivity: "base",
+					numeric: true,
+				});
+			}),
+		[entries],
+	);
+	const visibleEntries = useMemo(() => {
+		const normalizedSearch = search.trim().toLocaleLowerCase();
+		if (!normalizedSearch) return sortedEntries;
+		return sortedEntries.filter((entry) =>
+			`${entry.name} ${entry.path}`
+				.toLocaleLowerCase()
+				.includes(normalizedSearch),
+		);
+	}, [search, sortedEntries]);
 	const canUpload = !readOnly && location !== null;
 	const managedBadge = managedBySolution ? (
 		<SolutionManagedBadge solutionId={solutionId ?? undefined} />
@@ -128,37 +151,132 @@ export function FolderListing({
 		/>
 	);
 
-	const renderMobileEntry = (entry: StructureEntry) => {
+	const activateEntry = (entry: StructureEntry) => {
+		if (entry.kind === "folder") onOpenFolder(entry.path);
+		else onSelectFile(entry.path);
+	};
+
+	const renderContextMenu = (entry: StructureEntry) => {
 		const isFolder = entry.kind === "folder";
-		const Icon = isFolder ? Folder : FileText;
+		if (isFolder)
+			return (
+				<FileContextMenuContent>
+					<EntryMenuItem
+						action="effective"
+						onSelect={() => onFolderAction("effective", entry.path)}
+					/>
+					<EntryMenuItem
+						action="test"
+						onSelect={() => onFolderAction("test", entry.path)}
+					/>
+					{!readOnly && (
+						<>
+							<EntryMenuItem
+								action="upload"
+								onSelect={() =>
+									onFolderAction("upload", entry.path)
+								}
+							/>
+							<EntryMenuItem
+								action="newPolicy"
+								onSelect={() =>
+									onFolderAction("newPolicy", entry.path)
+								}
+							/>
+						</>
+					)}
+				</FileContextMenuContent>
+			);
 
 		return (
-			<li
-				key={entry.path}
-				className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 [overflow-wrap:anywhere]"
-			>
-				<div className="flex items-start gap-3">
-					<Icon className="mt-3 size-5 shrink-0 text-muted-foreground" />
-					<div className="min-w-0 flex-1 space-y-1">
+			<FileContextMenuContent>
+				<EntryMenuItem
+					action="preview"
+					onSelect={() => onRowAction("preview", entry.path)}
+				/>
+				<EntryMenuItem
+					action="test"
+					onSelect={() => onRowAction("test", entry.path)}
+				/>
+				{!readOnly && (
+					<EntryMenuItem
+						action="policy"
+						onSelect={() => onRowAction("policy", entry.path)}
+					/>
+				)}
+				<EntryMenuItem
+					action="download"
+					onSelect={() => void handleDownload(entry.path)}
+				/>
+				{!readOnly && (
+					<>
+						<ContextMenuSeparator />
+						<EntryMenuItem
+							action="delete"
+							destructive
+							onSelect={() => onRowAction("delete", entry.path)}
+						/>
+					</>
+				)}
+			</FileContextMenuContent>
+		);
+	};
+
+	const renderEntry = (entry: StructureEntry) => {
+		const isFolder = entry.kind === "folder";
+		const Icon = entryIcon(entry);
+		const selected = selectedPath === entry.path;
+
+		return (
+			<ContextMenu key={entry.path}>
+				<ContextMenuTrigger asChild>
+					<li
+						aria-label={entry.name}
+						aria-current={selected ? "true" : undefined}
+						className={cn(
+							"group flex min-h-12 items-center border-b border-border/70 transition-colors last:border-b-0 [overflow-wrap:anywhere] motion-reduce:transition-none",
+							selected
+								? "tree-row-selected"
+								: "hover:bg-muted/20",
+						)}
+					>
 						<button
 							type="button"
-							className="min-h-11 max-w-full text-left text-sm font-medium [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-							onClick={() =>
-								isFolder
-									? onOpenFolder(entry.path)
-									: onSelectFile(entry.path)
-							}
+							aria-label={entry.name}
+							className="flex min-h-12 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+							onClick={() => activateEntry(entry)}
 						>
-							{entry.name}
+							<span
+								className={cn(
+									"flex size-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-surface)] border",
+									isFolder
+										? "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+										: "border-border bg-muted/40 text-muted-foreground",
+								)}
+							>
+								<Icon aria-hidden="true" className="size-4" />
+							</span>
+							<span className="min-w-0 flex-1">
+								<span className="block truncate text-sm font-medium text-foreground">
+									{entry.name}
+								</span>
+								<span className="block truncate text-xs text-muted-foreground">
+									{isFolder ? "Folder" : "File"}
+								</span>
+							</span>
+							{managedBadge && (
+								<span className="hidden shrink-0 sm:inline-flex">
+									{managedBadge}
+								</span>
+							)}
 						</button>
-						<p className="text-xs text-muted-foreground">
-							{isFolder ? "Folder" : "File"}
-						</p>
-						<div>{managedBadge}</div>
-					</div>
-					{renderActions(entry)}
-				</div>
-			</li>
+						<span className="shrink-0 pr-1">
+							{renderActions(entry)}
+						</span>
+					</li>
+				</ContextMenuTrigger>
+				{renderContextMenu(entry)}
+			</ContextMenu>
 		);
 	};
 
@@ -207,7 +325,7 @@ export function FolderListing({
 					</div>
 				</div>
 			)}
-			<div className="min-h-0 flex-1 overflow-auto p-2">
+			<div className="flex min-h-0 flex-1 flex-col">
 				{downloadError && (
 					<Alert variant="destructive" className="mb-3">
 						<AlertTitle>Download failed</AlertTitle>
@@ -298,9 +416,7 @@ export function FolderListing({
 							<span className="font-medium">
 								{uploading
 									? "Uploading…"
-									: compactLayout
-										? "Tap to upload files"
-										: "Drag files here or click to upload"}
+									: "Drag files here or click to upload"}
 							</span>
 							<span className="text-xs">
 								Uploads to {prefix || "/"}
@@ -311,186 +427,88 @@ export function FolderListing({
 							No files here.
 						</p>
 					)
-				) : compactLayout ? (
-					<ul aria-label="Folders and files" className="space-y-3">
-						{[...folders, ...fileEntries].map(renderMobileEntry)}
-					</ul>
 				) : (
-					<DataTable>
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Name</DataTableHead>
-								<DataTableHead className="w-32 text-right">
-									Actions
-								</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
-							{folders.map((folder) => (
-								<ContextMenu key={folder.path}>
-									<ContextMenuTrigger asChild>
-										<DataTableRow
-											clickable
-											onClick={() =>
-												onOpenFolder(folder.path)
-											}
-										>
-											<DataTableCell>
-												<div className="flex min-w-0 items-center gap-2">
-													<Folder className="h-4 w-4 text-muted-foreground" />
-													<button
-														type="button"
-														className="min-h-8 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-														onClick={(event) => {
-															event.stopPropagation();
-															onOpenFolder(
-																folder.path,
-															);
-														}}
-													>
-														{folder.name}
-													</button>
-													{managedBadge}
-												</div>
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												{renderActions(folder)}
-											</DataTableCell>
-										</DataTableRow>
-									</ContextMenuTrigger>
-									<FileContextMenuContent>
-										<EntryMenuItem
-											action="effective"
-											onSelect={() =>
-												onFolderAction(
-													"effective",
-													folder.path,
-												)
-											}
-										/>
-										<EntryMenuItem
-											action="test"
-											onSelect={() =>
-												onFolderAction(
-													"test",
-													folder.path,
-												)
-											}
-										/>
-										{!readOnly && (
-											<>
-												<EntryMenuItem
-													action="upload"
-													onSelect={() =>
-														onFolderAction(
-															"upload",
-															folder.path,
-														)
-													}
-												/>
-												<EntryMenuItem
-													action="newPolicy"
-													onSelect={() =>
-														onFolderAction(
-															"newPolicy",
-															folder.path,
-														)
-													}
-												/>
-											</>
-										)}
-									</FileContextMenuContent>
-								</ContextMenu>
-							))}
-							{fileEntries.map((file) => (
-								<ContextMenu key={file.path}>
-									<ContextMenuTrigger asChild>
-										<DataTableRow
-											clickable
-											onClick={() =>
-												onSelectFile(file.path)
-											}
-										>
-											<DataTableCell>
-												<div className="flex min-w-0 items-center gap-2">
-													<FileText className="h-4 w-4 text-muted-foreground" />
-													<button
-														type="button"
-														className="min-h-8 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-														onClick={(event) => {
-															event.stopPropagation();
-															onSelectFile(
-																file.path,
-															);
-														}}
-													>
-														{file.name}
-													</button>
-													{managedBadge}
-												</div>
-											</DataTableCell>
-											<DataTableCell>
-												<div className="flex justify-end">
-													{renderActions(file)}
-												</div>
-											</DataTableCell>
-										</DataTableRow>
-									</ContextMenuTrigger>
-									<FileContextMenuContent>
-										<EntryMenuItem
-											action="preview"
-											onSelect={() =>
-												onRowAction(
-													"preview",
-													file.path,
-												)
-											}
-										/>
-										<EntryMenuItem
-											action="test"
-											onSelect={() =>
-												onRowAction("test", file.path)
-											}
-										/>
-										{!readOnly && (
-											<EntryMenuItem
-												action="policy"
-												onSelect={() =>
-													onRowAction(
-														"policy",
-														file.path,
-													)
-												}
-											/>
-										)}
-										<EntryMenuItem
-											action="download"
-											onSelect={() =>
-												void handleDownload(file.path)
-											}
-										/>
-										{!readOnly && (
-											<>
-												<ContextMenuSeparator />
-												<EntryMenuItem
-													action="delete"
-													destructive
-													onSelect={() =>
-														onRowAction(
-															"delete",
-															file.path,
-														)
-													}
-												/>
-											</>
-										)}
-									</FileContextMenuContent>
-								</ContextMenu>
-							))}
-						</DataTableBody>
-					</DataTable>
+					<div className="flex min-h-0 flex-1 flex-col">
+						<div className="shrink-0 border-b border-border/70 p-2">
+							<div className="relative">
+								<Search
+									aria-hidden="true"
+									className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+								/>
+								<Input
+									value={search}
+									onChange={(event) =>
+										setSearch(event.target.value)
+									}
+									placeholder="Search this folder"
+									aria-label="Search this folder"
+									className="h-9 pl-9"
+								/>
+							</div>
+						</div>
+						{visibleEntries.length > 0 ? (
+							<ul
+								aria-label="Folders and files"
+								className="min-w-0 flex-1 overflow-auto"
+							>
+								{visibleEntries.map(renderEntry)}
+							</ul>
+						) : (
+							<div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-3 overflow-auto px-4 py-8 text-sm text-muted-foreground">
+								<p>
+									No matches for "{search.trim()}" in this
+									folder.
+								</p>
+								<Button
+									type="button"
+									variant="outline"
+									className="min-h-11"
+									onClick={() => setSearch("")}
+								>
+									Clear search
+								</Button>
+							</div>
+						)}
+						<p className="shrink-0 border-t border-border/70 px-3 py-2 text-xs text-muted-foreground">
+							{visibleEntries.length === entries.length
+								? itemCountLabel(entries.length)
+								: `${itemCountLabel(visibleEntries.length)} matching ${itemCountLabel(entries.length).toLocaleLowerCase()}`}
+						</p>
+					</div>
 				)}
 			</div>
 		</section>
 	);
+}
+
+function entryIcon(entry: StructureEntry) {
+	if (entry.kind === "folder") return Folder;
+	const extension = entry.name.split(".").pop()?.toLocaleLowerCase();
+	if (!extension || extension === entry.name) return File;
+	if (["gif", "jpeg", "jpg", "png", "svg", "webp"].includes(extension))
+		return FileImage;
+	if (["json", "jsonl"].includes(extension)) return FileJson;
+	if (
+		[
+			"css",
+			"html",
+			"js",
+			"jsx",
+			"mdx",
+			"py",
+			"sh",
+			"ts",
+			"tsx",
+			"yaml",
+			"yml",
+		].includes(extension)
+	)
+		return Code2;
+	if (["csv", "log", "md", "txt"].includes(extension)) return FileText;
+	return File;
+}
+
+function itemCountLabel(count: number) {
+	if (count === 1) return "1 item";
+	return `${count} items`;
 }

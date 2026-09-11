@@ -17,6 +17,7 @@ describe("Breadcrumbs", () => {
 		);
 		expect(screen.getByText("Global")).toBeInTheDocument();
 		expect(screen.getByText("gallery")).toBeInTheDocument();
+		expect(screen.getByRole("list")).toHaveClass("overflow-x-auto");
 		fireEvent.click(screen.getByText("team"));
 		expect(onNavigate).toHaveBeenCalledWith(1);
 		fireEvent.click(screen.getByText("gallery"));
@@ -51,6 +52,9 @@ describe("Breadcrumbs", () => {
 		expect(screen.getByRole("button", { name: "reports" })).toHaveAttribute(
 			"aria-current",
 			"location",
+		);
+		expect(screen.getByRole("button", { name: "reports" })).toHaveClass(
+			"truncate",
 		);
 		expect(
 			screen.queryByRole("button", { name: "team" }),

@@ -168,10 +168,8 @@ function PreviewSession({ location, scope, path }: FilePreviewProps) {
 			aria-label="File preview"
 			className="flex h-full min-h-0 min-w-0 flex-col"
 		>
-			<div className="shrink-0 space-y-2 border-b p-3">
-				<h2 className="text-sm font-medium [overflow-wrap:anywhere]">
-					{path}
-				</h2>
+			<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-4 pt-3">
+				<span className="text-xs text-muted-foreground">{kind === "text" ? "Text Preview" : kind === "image" ? "Image Preview" : "File Download"}</span>
 				<Button
 					variant="outline"
 					className="min-h-11"
@@ -205,7 +203,7 @@ function PreviewSession({ location, scope, path }: FilePreviewProps) {
 					</div>
 				)}
 			</div>
-			<div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 text-sm">
+			<div className="min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
 				{loading ? (
 					<div
 						role="status"

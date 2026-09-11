@@ -67,7 +67,10 @@ describe("EffectiveAccessPanel", () => {
 			expect(screen.getByText("team-rule")).toBeInTheDocument(),
 		);
 		expect(screen.getByText("root-rule")).toBeInTheDocument();
-		expect(screen.getByText("winning")).toBeInTheDocument();
+		expect(screen.getByText("Winning Policy")).toBeInTheDocument();
+		expect(
+			screen.getByText("Inherited From Share Root"),
+		).toBeInTheDocument();
 	});
 
 	it("refreshes when the target identity changes", async () => {
@@ -160,7 +163,7 @@ describe("EffectiveAccessPanel", () => {
 			onOpenTest,
 			onManagePolicy: vi.fn(),
 		});
-		fireEvent.click(screen.getByRole("button", { name: /test access/i }));
+		fireEvent.click(screen.getByRole("button", { name: "Test Access" }));
 		expect(onOpenTest).toHaveBeenCalled();
 	});
 
@@ -179,7 +182,7 @@ describe("EffectiveAccessPanel", () => {
 		});
 
 		expect(
-			screen.queryByRole("button", { name: /manage policy/i }),
+			screen.queryByRole("button", { name: "Manage Policy" }),
 		).not.toBeInTheDocument();
 		expect(
 			screen.getByTestId("solution-managed-badge"),

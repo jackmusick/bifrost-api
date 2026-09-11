@@ -138,14 +138,14 @@ describe("FilesExplorer", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Open gallery share" }),
 		);
-		await user.click(screen.getByRole("button", { name: "Folder access" }));
+		await user.click(screen.getByRole("button", { name: "Folder Details" }));
 		expect(screen.getByRole("tab", { name: "Access" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
 		await user.keyboard("{Escape}");
 		expect(
-			screen.getByRole("button", { name: "Folder access" }),
+			screen.getByRole("button", { name: "Folder Details" }),
 		).toHaveFocus();
 		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: "Open notes" }));
@@ -178,11 +178,11 @@ describe("FilesExplorer", () => {
 		render(<FilesExplorer />);
 
 		const scopeSelector = screen.getByText("scope-select").parentElement;
-		expect(scopeSelector).toHaveClass("min-w-0", "flex-1", "sm:max-w-56");
+		expect(scopeSelector).toHaveClass("min-w-0", "sm:w-56");
 		expect(
 			screen.getByRole("navigation", { name: /breadcrumb/i })
 				.parentElement,
-		).toHaveClass("min-w-0", "basis-full", "min-[1440px]:flex-1");
+		).toHaveClass("min-w-0", "flex-1");
 	});
 
 	it("passes the explicit 'global' scope (not null) to children at default", () => {
@@ -271,7 +271,7 @@ describe("FilesExplorer", () => {
 			);
 			expect(folderListingReadOnly).toContain(true);
 			fireEvent.click(
-				screen.getByRole("button", { name: "Folder access" }),
+				screen.getByRole("button", { name: "Folder Details" }),
 			);
 			expect(effectiveAccessReadOnly).toContain(true);
 			expect(
@@ -326,7 +326,7 @@ describe("FilesExplorer", () => {
 				name: /back to solution/i,
 			});
 			expect(back).toHaveAttribute("href", "/solutions/sol-abc");
-			expect(back).toHaveTextContent("Back");
+			expect(back).toHaveAccessibleName("Back to Solution");
 			expect(screen.getByText("Finance Ops")).toHaveClass(
 				"font-semibold",
 			);

@@ -54,6 +54,57 @@ describe("FolderListing", () => {
 		expect(onOpenFolder).toHaveBeenCalledWith("team");
 	});
 
+	it("sorts folders first, filters locally, and activates the selected row from the keyboard", async () => {
+		vi.mocked(listStructure).mockResolvedValue([
+			{ name: "zeta.txt", kind: "file", path: "zeta.txt" },
+			{ name: "admin", kind: "folder", path: "admin" },
+			{ name: "alpha.txt", kind: "file", path: "alpha.txt" },
+		]);
+		const onOpenFolder = vi.fn();
+		const onSelectFile = vi.fn();
+		const { user } = render(
+			<FolderListing
+				scope={null}
+				location="gallery"
+				prefix=""
+				readOnly={false}
+				selectedPath="alpha.txt"
+				onOpenFolder={onOpenFolder}
+				onSelectFile={onSelectFile}
+				onRowAction={vi.fn()}
+				onFolderAction={vi.fn()}
+				onUploaded={vi.fn()}
+			/>,
+		);
+
+		const rows = await screen.findAllByRole("button", {
+			name: /^(admin|alpha\.txt|zeta\.txt)$/,
+		});
+		expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+			"admin",
+			"alpha.txt",
+			"zeta.txt",
+		]);
+		expect(
+			screen.getByRole("listitem", { name: "alpha.txt" }),
+		).toHaveClass("tree-row-selected");
+
+		await user.click(screen.getByLabelText("Search this folder"));
+		await user.keyboard("zeta");
+		expect(screen.queryByRole("button", { name: "admin" })).toBeNull();
+		expect(screen.getByText("1 item matching 3 items")).toBeVisible();
+		screen.getByRole("button", { name: "zeta.txt" }).focus();
+		await user.keyboard("{Enter}");
+		expect(onSelectFile).toHaveBeenCalledWith("zeta.txt");
+		expect(onOpenFolder).not.toHaveBeenCalled();
+
+		await user.clear(screen.getByLabelText("Search this folder"));
+		await user.keyboard("missing");
+		expect(screen.getByText(/No matches for "missing"/)).toBeVisible();
+		await user.click(screen.getByRole("button", { name: "Clear search" }));
+		expect(screen.getByRole("button", { name: "admin" })).toBeVisible();
+	});
+
 	it("opens a folder context menu with folder actions", async () => {
 		const onFolderAction = vi.fn();
 		render(
@@ -72,6 +123,34 @@ describe("FolderListing", () => {
 		fireEvent.contextMenu(await screen.findByText("team"));
 		fireEvent.click(await screen.findByText("New Policy"));
 		expect(onFolderAction).toHaveBeenCalledWith("newPolicy", "team");
+	});
+
+	it("opens overflow actions from the keyboard without activating the row", async () => {
+		const onOpenFolder = vi.fn();
+		const onFolderAction = vi.fn();
+		const { user } = render(
+			<FolderListing
+				scope={null}
+				location="gallery"
+				prefix=""
+				readOnly={false}
+				onOpenFolder={onOpenFolder}
+				onSelectFile={vi.fn()}
+				onRowAction={vi.fn()}
+				onFolderAction={onFolderAction}
+				onUploaded={vi.fn()}
+			/>,
+		);
+
+		expect(
+			await screen.findByRole("listitem", { name: "team" }),
+		).toBeVisible();
+		screen.getByRole("button", { name: "Actions for team" }).focus();
+		await user.keyboard("{Enter}");
+		expect(onOpenFolder).not.toHaveBeenCalled();
+		await user.click(screen.getByRole("menuitem", { name: "New Policy" }));
+		expect(onFolderAction).toHaveBeenCalledWith("newPolicy", "team");
+		expect(onOpenFolder).not.toHaveBeenCalled();
 	});
 
 	it("hides the upload button when read-only", async () => {

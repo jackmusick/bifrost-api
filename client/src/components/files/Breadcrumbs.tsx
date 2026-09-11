@@ -43,8 +43,8 @@ export function Breadcrumbs({
 	const collapse = mobile ? crumbs.length > 1 : crumbs.length > 5;
 	const visible = collapse ? [current] : crumbs;
 	return (
-		<nav aria-label="Breadcrumb" className="min-w-0">
-			<ol className="flex min-w-0 flex-wrap items-center gap-1">
+		<nav aria-label="Breadcrumb" className="min-w-0 flex-1 overflow-hidden">
+			<ol className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain whitespace-nowrap">
 				{collapse && (
 					<li className="flex shrink-0 items-center gap-1">
 						<DropdownMenu>
@@ -81,7 +81,7 @@ export function Breadcrumbs({
 				{visible.map((crumb, index) => (
 					<li
 						key={crumb.depth}
-						className={`flex min-w-0 items-center gap-1 ${collapse ? "flex-1" : ""}`}
+						className={`flex min-w-0 items-center gap-1 ${collapse ? "flex-1" : "shrink-0"}`}
 					>
 						{index > 0 && (
 							<ChevronRight
@@ -97,7 +97,7 @@ export function Breadcrumbs({
 									: undefined
 							}
 							onClick={() => onNavigate(crumb.depth)}
-							className={`min-h-11 min-w-0 rounded-[var(--bf-radius-control)] px-2 py-2 text-left text-sm [overflow-wrap:anywhere] transition-colors duration-(--bf-motion-feedback) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none ${crumb.depth === current.depth ? "font-medium text-foreground" : "text-muted-foreground"}`}
+							className={`min-h-9 max-w-[16rem] truncate rounded-[var(--bf-radius-control)] px-2 py-1.5 text-left text-sm transition-colors duration-(--bf-motion-feedback) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none sm:max-w-[22rem] ${collapse ? "min-w-0 flex-1" : ""} ${crumb.depth === current.depth ? "font-medium text-foreground" : "text-muted-foreground"}`}
 						>
 							{crumb.label}
 						</button>

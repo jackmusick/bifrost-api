@@ -21,18 +21,27 @@ export function SharesOverview({
 	return (
 		<section
 			aria-label="Browse shares"
-			className="min-h-0 overflow-auto p-1"
+			className="flex min-h-0 flex-col overflow-hidden"
 		>
-			<div className="mb-5 space-y-1">
-				<h2 className="text-lg font-semibold">Your shares</h2>
-				<p className="text-sm text-muted-foreground">
-					Open a share to browse files and folders. Inspect access
-					when you need it.
-				</p>
+			<div className="flex min-w-0 shrink-0 items-end justify-between gap-3 border-b border-border px-4 py-3">
+				<div className="min-w-0">
+					<h2 className="text-base font-semibold">Shares</h2>
+					<p className="mt-1 text-sm text-muted-foreground">
+						Choose a root location to browse its folders and files.
+					</p>
+				</div>
+				{shares.isSuccess && shares.data.length > 0 && (
+					<p className="shrink-0 text-xs text-muted-foreground">
+						{shares.data.length}{" "}
+						{shares.data.length === 1 ? "share" : "shares"}
+					</p>
+				)}
 			</div>
-			{shares.isPending && <InlineLoader label="Loading shares…" />}
+			{shares.isPending && (
+				<InlineLoader className="px-4 py-3" label="Loading shares…" />
+			)}
 			{shares.isError && (
-				<div role="alert" className="space-y-3">
+				<div role="alert" className="space-y-3 px-4 py-3">
 					<p className="text-sm">Shares could not be loaded.</p>
 					<Button
 						variant="outline"
@@ -44,37 +53,41 @@ export function SharesOverview({
 				</div>
 			)}
 			{shares.isSuccess && shares.data.length === 0 && (
-				<div className="rounded-[var(--bf-radius-surface)] border border-dashed p-8 text-center">
-					<HardDrive className="mx-auto mb-3 size-8 text-muted-foreground" />
-					<h3 className="font-medium">No shares in this scope</h3>
-					<p className="mt-1 text-sm text-muted-foreground">
-						{readOnly
-							? "This solution has no file shares."
-							: "Create a share to start organizing files, or choose another organization."}
-					</p>
+				<div className="flex items-start gap-3 px-4 py-6">
+					<span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-primary/10 text-primary">
+						<HardDrive className="size-4" />
+					</span>
+					<div className="min-w-0">
+						<h3 className="font-medium">No shares in this scope</h3>
+						<p className="mt-1 text-sm text-muted-foreground">
+							{readOnly
+								? "This solution has no file shares."
+								: "Create a share to start organizing files, or choose another organization."}
+						</p>
+					</div>
 				</div>
 			)}
-			<ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+			<ul className="min-h-0 overflow-auto divide-y divide-border">
 				{shares.data?.map((share) => (
 					<li key={share.location}>
 						<button
 							type="button"
 							onClick={() => onSelect(share.location, "")}
-							className="group flex h-full w-full items-start gap-4 rounded-[var(--bf-radius-surface)] border bg-card p-5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+							className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none"
 						>
-							<span className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
-								<HardDrive className="size-6" />
+							<span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-primary/10 text-primary">
+								<HardDrive className="size-4" />
 							</span>
-							<span className="min-w-0 space-y-2">
-								<span className="block break-all font-semibold">
+							<span className="min-w-0 flex-1">
+								<span className="block truncate font-semibold text-foreground">
 									{share.location}
 								</span>
-								<span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+								<span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 									{readOnly || share.readOnly ? (
-										<>
+										<span className="inline-flex items-center gap-1">
 											<Lock className="size-3.5" />
 											Read only
-										</>
+										</span>
 									) : (
 										"File share"
 									)}

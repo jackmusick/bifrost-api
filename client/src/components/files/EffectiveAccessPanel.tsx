@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ShieldCheck } from "lucide-react";
+import { FlaskConical, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
@@ -36,18 +36,26 @@ export function EffectiveAccessPanel({
 	const policies = accessQuery.data ?? [];
 	const error = accessQuery.isError;
 	const loading = accessQuery.isLoading || accessQuery.isFetching;
+	const formatPath = (policyPath: string) =>
+		policyPath
+			? policyPath.startsWith("/")
+				? policyPath
+				: `/${policyPath}`
+			: "/";
+	const formatSource = (policyPath: string) =>
+		policyPath
+			? `Inherited From ${formatPath(policyPath)}`
+			: "Inherited From Share Root";
 
 	return (
 		<section
 			aria-label="Effective access"
 			className="flex h-full min-h-0 min-w-0 flex-col"
 		>
-			<div className="flex shrink-0 flex-col gap-3 border-b p-3">
-				<div className="flex min-w-0 flex-wrap items-center gap-2">
-					<ShieldCheck className="h-4 w-4 text-muted-foreground" />
-					<h2 className="min-w-0 text-sm font-semibold leading-5">
-						Effective Access
-					</h2>
+			<div className="flex shrink-0 flex-col gap-3 border-b px-3 py-3">
+				<div className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-semibold">
+					<ShieldCheck className="size-4 text-primary" />
+					<h2 className="min-w-0 leading-5">Effective Access</h2>
 					{managedBySolution && (
 						<SolutionManagedBadge
 							solutionId={solutionId ?? undefined}
@@ -64,7 +72,8 @@ export function EffectiveAccessPanel({
 							disabled={path === null}
 							onClick={onManagePolicy}
 						>
-							Manage policy
+							<ShieldCheck className="size-4" />
+							Manage Policy
 						</Button>
 					)}
 					<Button
@@ -74,7 +83,8 @@ export function EffectiveAccessPanel({
 						onClick={onOpenTest}
 						disabled={path === null}
 					>
-						Test access
+						<FlaskConical className="size-4" />
+						Test Access
 					</Button>
 				</div>
 			</div>
@@ -116,42 +126,55 @@ export function EffectiveAccessPanel({
 							key={
 								policy.id ?? `${policy.location}:${policy.path}`
 							}
-							className="rounded-[var(--bf-radius-surface)] border p-3"
+							className="border-b pb-3 last:border-b-0 last:pb-0"
 						>
-							<div className="flex flex-wrap items-start justify-between gap-2">
-								<span className="min-w-0 [overflow-wrap:anywhere] font-mono text-xs">
-									{policy.path || "(root)"}
+							<div className="flex flex-wrap items-center gap-2">
+								<Badge
+									variant={
+										index === 0 ? "secondary" : "outline"
+									}
+								>
+									{index === 0
+										? "Winning Policy"
+										: formatSource(policy.path)}
+								</Badge>
+								<span className="min-w-0 [overflow-wrap:anywhere] font-mono text-xs text-muted-foreground">
+									{policy.location}
+									{formatPath(policy.path)}
 								</span>
-								{index === 0 && (
-									<Badge variant="secondary">winning</Badge>
-								)}
 							</div>
-							<ul className="mt-1 space-y-0.5">
-								{policy.policies.policies.map((rule, i) =>
-									"$ref" in rule ? (
-										<li
-											key={rule.$ref}
-											className="[overflow-wrap:anywhere] text-muted-foreground"
-										>
-											<span className="[overflow-wrap:anywhere] font-mono font-medium text-foreground">
-												ref: {rule.$ref}
-											</span>
-										</li>
-									) : (
-										<li
-											key={rule.name ?? i}
-											className="[overflow-wrap:anywhere] text-muted-foreground"
-										>
-											<span className="[overflow-wrap:anywhere] font-medium text-foreground">
-												{rule.name}
-											</span>{" "}
-											<span className="[overflow-wrap:anywhere]">
-												→ {rule.actions.join(", ")}
-											</span>
-										</li>
-									),
-								)}
-							</ul>
+							{policy.policies.policies.length === 0 ? (
+								<p className="mt-2 text-xs text-muted-foreground">
+									No rules
+								</p>
+							) : (
+								<ul className="mt-2 space-y-1">
+									{policy.policies.policies.map((rule, i) =>
+										"$ref" in rule ? (
+											<li
+												key={rule.$ref}
+												className="[overflow-wrap:anywhere] text-muted-foreground"
+											>
+												<span className="[overflow-wrap:anywhere] font-mono font-medium text-foreground">
+													ref: {rule.$ref}
+												</span>
+											</li>
+										) : (
+											<li
+												key={rule.name ?? i}
+												className="[overflow-wrap:anywhere] text-muted-foreground"
+											>
+												<span className="[overflow-wrap:anywhere] font-medium text-foreground">
+													{rule.name}
+												</span>{" "}
+												<span className="[overflow-wrap:anywhere]">
+													- {rule.actions.join(", ")}
+												</span>
+											</li>
+										),
+									)}
+								</ul>
+							)}
 						</li>
 					))}
 				</ul>

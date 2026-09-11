@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
-const mockUseMediaQuery = vi.fn(() => false);
-
-vi.mock("@/hooks/useMediaQuery", () => ({
-	useMediaQuery: () => mockUseMediaQuery(),
-}));
-
 vi.mock("@/services/filePolicies", () => ({
 	listFilePolicies: vi.fn(),
 }));
@@ -27,12 +21,10 @@ function deferred<T>() {
 
 describe("PoliciesView", () => {
 	beforeEach(() => {
-		mockUseMediaQuery.mockReturnValue(false);
 		vi.mocked(listFilePolicies).mockReset();
 	});
 
-	it("renders mobile policy cards below 1024px with wrapped rules and 44px actions", async () => {
-		mockUseMediaQuery.mockReturnValue(true);
+	it("renders a compact searchable policy directory with wrapped rules and 44px actions", async () => {
 		vi.mocked(listFilePolicies).mockResolvedValue({
 			policies: [
 				{
@@ -74,10 +66,13 @@ describe("PoliciesView", () => {
 		);
 
 		expect(await screen.findByText("gallery")).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Access Policies" }),
+		).toBeInTheDocument();
 		expect(screen.getByText("/")).toBeInTheDocument();
 		expect(screen.getByText("reports")).toBeInTheDocument();
 		expect(screen.getByText("/q1/")).toBeInTheDocument();
-		expect(screen.getByText("admin_bypass")).toBeInTheDocument();
+		expect(screen.getByText("admin_bypass - read")).toBeInTheDocument();
 		expect(
 			screen.getByText(
 				/rules\.super_long_rule_name_that_should_wrap_cleanly_in_the_badge/i,
@@ -85,14 +80,19 @@ describe("PoliciesView", () => {
 		).toBeInTheDocument();
 		expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
-		const editButton = screen.getByRole("button", {
-			name: /edit policy for gallery\//i,
+		const manageButton = screen.getByRole("button", {
+			name: /manage policy for gallery\//i,
 		});
-		expect(editButton).toHaveClass("min-h-11");
-		await user.click(editButton);
+		expect(manageButton).toHaveClass("min-h-11");
+		await user.click(manageButton);
 		expect(onEdit).toHaveBeenCalledWith(
 			expect.objectContaining({ location: "gallery", path: "" }),
 		);
+
+		await user.type(screen.getByLabelText("Search policies"), "q1");
+		expect(screen.queryByText("gallery")).not.toBeInTheDocument();
+		expect(screen.getByText("reports")).toBeInTheDocument();
+		await user.clear(screen.getByLabelText("Search policies"));
 
 		await user.click(
 			screen.getByRole("button", {
@@ -105,8 +105,7 @@ describe("PoliciesView", () => {
 		);
 	});
 
-	it("renders the desktop table and keeps the identity column readable", async () => {
-		mockUseMediaQuery.mockReturnValue(false);
+	it("keeps policy identities readable", async () => {
 		vi.mocked(listFilePolicies).mockResolvedValue({
 			policies: [
 				{
@@ -132,10 +131,16 @@ describe("PoliciesView", () => {
 			/>,
 		);
 
-		expect(await screen.findByRole("table")).toBeInTheDocument();
+		expect(
+			await screen.findByRole("button", {
+				name: /manage policy for reports\/q1\//i,
+			}),
+		).toBeInTheDocument();
 		expect(screen.getByText("reports")).toBeInTheDocument();
 		expect(screen.getByText("/q1/")).toBeInTheDocument();
-		expect(screen.getByText("team_access")).toBeInTheDocument();
+		expect(
+			screen.getByText("team_access - read, list"),
+		).toBeInTheDocument();
 	});
 
 	it("shows retryable loading and error states without inventing empty results", async () => {

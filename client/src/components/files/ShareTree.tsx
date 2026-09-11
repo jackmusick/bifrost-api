@@ -18,6 +18,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { listShares, listStructure } from "@/services/fileStructure";
 import {
 	ENTRY_ACTION_META,
@@ -48,6 +49,7 @@ interface NodeProps extends ShareTreeProps {
 	prefix: string;
 	name: string;
 	depth: number;
+	branchLast?: boolean;
 }
 
 function LoadError({
@@ -86,6 +88,7 @@ function BrowseNode(props: NodeProps) {
 		selectedPrefix,
 		onSelect,
 		onContextAction,
+		branchLast = false,
 	} = props;
 	const active = selectedLocation === location;
 	const [expanded, setExpanded] = useState(
@@ -104,18 +107,37 @@ function BrowseNode(props: NodeProps) {
 		? ["effective", "test"]
 		: ["effective", "test", "upload", "newPolicy"];
 	const Icon = prefix === "" ? HardDrive : Folder;
+	const rowIndent = `calc(var(--share-tree-indent) * ${Math.min(depth, 4)})`;
 
 	return (
-		<li className="min-w-0">
+		<li
+			className={cn(
+				"relative min-w-0",
+				depth > 0 &&
+					"before:absolute before:left-[var(--row-indent)] before:top-0 before:h-full before:w-px before:bg-border/80 after:absolute after:left-[var(--row-indent)] after:top-5 after:h-px after:w-4 after:bg-border/80",
+				branchLast && "before:h-5",
+			)}
+			style={{
+				"--row-indent": rowIndent,
+			} as React.CSSProperties}
+		>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div
-						className={`flex min-w-0 items-start rounded-[var(--bf-radius-control)] ${selected ? "bg-muted" : ""}`}
+						className={cn(
+							"relative flex min-w-0 items-center border-b border-border/45 transition-colors duration-(--bf-motion-feedback) motion-reduce:transition-none",
+							selected
+								? "z-20 tree-row-selected"
+								: "hover:bg-muted/25",
+						)}
+						style={{
+							paddingLeft: rowIndent,
+						}}
 					>
 						<Button
 							variant="ghost"
 							size="icon-lg"
-							className="shrink-0"
+							className="size-9 shrink-0"
 							aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`}
 							aria-expanded={expanded}
 							onClick={() => setExpanded((value) => !value)}
@@ -130,18 +152,30 @@ function BrowseNode(props: NodeProps) {
 							type="button"
 							aria-current={selected ? "location" : undefined}
 							onClick={() => onSelect(location, prefix)}
-							className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-[var(--bf-radius-control)] px-1 py-3 text-left text-sm transition-colors duration-(--bf-motion-feedback) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+							className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-left text-sm transition-colors duration-(--bf-motion-feedback) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 						>
 							<Icon
 								aria-hidden="true"
-								className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+								className={cn(
+									"size-4 shrink-0",
+									prefix === ""
+										? "text-primary"
+										: "text-amber-600 dark:text-amber-400",
+								)}
 							/>
-							<span
-								className={`min-w-0 [overflow-wrap:anywhere] ${selected ? "font-medium" : ""}`}
-							>
-								{name}
+							<span className="min-w-0">
+								<span
+									className={cn(
+										"block truncate",
+										selected
+											? "font-semibold text-foreground"
+											: "font-medium text-foreground",
+									)}
+								>
+									{name}
+								</span>
 								{prefix === "" && readOnly && (
-									<span className="mt-1 flex items-center gap-1 text-xs font-normal text-muted-foreground">
+									<span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-muted-foreground">
 										<Lock
 											aria-hidden="true"
 											className="size-3"
@@ -156,7 +190,7 @@ function BrowseNode(props: NodeProps) {
 								<Button
 									variant="ghost"
 									size="icon-lg"
-									className="shrink-0"
+									className="size-9 shrink-0"
 									aria-label={`Actions for ${name}`}
 								>
 									<MoreHorizontal aria-hidden="true" />
@@ -200,13 +234,7 @@ function BrowseNode(props: NodeProps) {
 				</FileContextMenuContent>
 			</ContextMenu>
 			{expanded && (
-				<div
-					className={
-						depth < 4
-							? "ml-3 border-l border-border pl-1"
-							: "border-l border-border pl-1"
-					}
-				>
+				<div className="relative min-w-0">
 					{children.isPending && (
 						<InlineLoader
 							className="px-2 py-3"
@@ -221,22 +249,26 @@ function BrowseNode(props: NodeProps) {
 						/>
 					)}
 					{children.isSuccess && folders.length === 0 && (
-						<p className="px-2 py-3 text-xs text-muted-foreground">
+						<p
+							className="border-b border-border/45 px-2 py-3 text-xs text-muted-foreground"
+							style={{ paddingLeft: rowIndent }}
+						>
 							No subfolders
 						</p>
 					)}
 					{folders.length > 0 && (
-						<ul aria-label={`Folders in ${name}`}>
-							{folders.map((folder) => (
+						<ol aria-label={`Folders in ${name}`} className="min-w-0">
+							{folders.map((folder, index) => (
 								<BrowseNode
 									{...props}
 									key={folder.path}
 									prefix={folder.path}
 									name={folder.name}
 									depth={depth + 1}
+									branchLast={index === folders.length - 1}
 								/>
 							))}
-						</ul>
+						</ol>
 					)}
 				</div>
 			)}
@@ -253,7 +285,7 @@ function ShareNavigation(props: ShareTreeProps) {
 	return (
 		<nav
 			aria-label="File shares"
-			className="min-h-0 min-w-0 flex-1 overflow-auto p-2"
+			className="min-h-0 min-w-0 flex-1 overflow-auto [--share-tree-indent:1rem]"
 		>
 			{shares.isPending && (
 				<InlineLoader className="px-2 py-3" label="Loading shares…" />
@@ -273,7 +305,7 @@ function ShareNavigation(props: ShareTreeProps) {
 				</p>
 			)}
 			{!!shares.data?.length && (
-				<ul>
+				<ol className="min-w-0">
 					{shares.data.map((share) => (
 						<BrowseNode
 							{...props}
@@ -285,7 +317,7 @@ function ShareNavigation(props: ShareTreeProps) {
 							readOnly={props.readOnly || share.readOnly}
 						/>
 					))}
-				</ul>
+				</ol>
 			)}
 		</nav>
 	);

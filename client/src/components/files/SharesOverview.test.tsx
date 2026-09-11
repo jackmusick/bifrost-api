@@ -40,6 +40,12 @@ describe("SharesOverview", () => {
 		expect(onSelect).toHaveBeenCalledWith("Customer files", "");
 		expect(screen.getByText("Read only")).toBeInTheDocument();
 		expect(screen.getByText("Policy configured")).toBeInTheDocument();
+		expect(screen.getByText("1 share")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /Customer files/ }),
+		).toHaveClass("w-full");
+		expect(screen.getByRole("list")).toHaveClass("overflow-auto");
+		expect(screen.getByRole("list")).not.toHaveClass("border");
 		expect(listShares).toHaveBeenCalledWith("global");
 	});
 	it("shows a solution-specific empty state", async () => {

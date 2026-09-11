@@ -21,7 +21,7 @@ export function Files() {
 				description={
 					install
 						? "Browse solution files and inspect their access rules."
-						: "Browse shares, manage file policies, and test effective access."
+						: "Browse shared files and manage their access."
 				}
 			/>
 			<div className="min-h-0 flex-1">

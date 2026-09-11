@@ -1,26 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Search, ShieldCheck, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { Input } from "@/components/ui/input";
 import {
 	listFilePolicies,
 	type FilePolicy,
 	type PolicyRuleRef,
 } from "@/services/filePolicies";
 import { InlineLoader } from "./InlineLoader";
+
+type PolicyRule = FilePolicy["policies"]["policies"][number];
+
+const formatPath = (path: string) =>
+	path ? (path.startsWith("/") ? path : `/${path}`) : "/";
+const formatIdentity = (policy: FilePolicy) =>
+	`${policy.location}${formatPath(policy.path)}`;
+const isPolicyRuleRef = (rule: PolicyRule): rule is PolicyRuleRef =>
+	"$ref" in rule;
+const describeRule = (rule: PolicyRule) =>
+	isPolicyRuleRef(rule)
+		? `ref:${rule.$ref}`
+		: `${rule.name}${rule.actions.length ? ` - ${rule.actions.join(", ")}` : ""}`;
 
 interface PoliciesViewProps {
 	scope: string | null;
@@ -42,13 +47,13 @@ export function PoliciesView({
 	onEdit,
 	onDelete,
 }: PoliciesViewProps) {
-	const isCompactLayout = useMediaQuery("(max-width: 1023px)");
+	const [query, setQuery] = useState("");
 	const policiesQuery = useQuery({
 		queryKey: ["file-policies", scope, refreshKey],
 		queryFn: () => listFilePolicies({ scope: scope ?? undefined }),
 		retry: false,
 	});
-	const policies = policiesQuery.data?.policies ?? [];
+	const policies = useMemo(() => policiesQuery.data?.policies ?? [], [policiesQuery.data]);
 	const hasData = policiesQuery.data !== undefined;
 	const showInitialLoading = policiesQuery.isPending && !hasData;
 	const showEmptyState =
@@ -56,14 +61,21 @@ export function PoliciesView({
 	const showError = policiesQuery.isError && !hasData;
 	const showTransientError = policiesQuery.isError && hasData;
 
-	type PolicyRule = FilePolicy["policies"]["policies"][number];
-
-	const formatPath = (path: string) =>
-		path ? (path.startsWith("/") ? path : `/${path}`) : "/";
-	const formatIdentity = (policy: FilePolicy) =>
-		`${policy.location}${formatPath(policy.path)}`;
-	const isPolicyRuleRef = (rule: PolicyRule): rule is PolicyRuleRef =>
-		"$ref" in rule;
+	const filteredPolicies = useMemo(() => {
+		const normalizedQuery = query.trim().toLowerCase();
+		if (!normalizedQuery) return policies;
+		return policies.filter((policy) => {
+			const haystack = [
+				policy.location,
+				formatPath(policy.path),
+				formatIdentity(policy),
+				...policy.policies.policies.map(describeRule),
+			]
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(normalizedQuery);
+		});
+	}, [policies, query]);
 	const renderRule = (rule: PolicyRule, index: number) => {
 		const key = isPolicyRuleRef(rule) ? rule.$ref : `${rule.name}:${index}`;
 		return (
@@ -72,7 +84,7 @@ export function PoliciesView({
 				variant="outline"
 				className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere] rounded-[var(--bf-radius-control)] px-2 py-1 text-left leading-5"
 			>
-				{isPolicyRuleRef(rule) ? `ref:${rule.$ref}` : rule.name}
+				{describeRule(rule)}
 			</Badge>
 		);
 	};
@@ -83,8 +95,8 @@ export function PoliciesView({
 				className="min-h-11"
 				onSelect={() => onEdit(policy)}
 			>
-				<Pencil aria-hidden="true" className="size-4" />
-				Edit
+				<ShieldCheck aria-hidden="true" className="size-4" />
+				Manage Policy
 			</DropdownMenuItem>
 			<DropdownMenuItem
 				variant="destructive"
@@ -97,63 +109,23 @@ export function PoliciesView({
 		</RecordActionsMenu>
 	);
 
-	const renderIdentity = (policy: FilePolicy) => (
-		<button
-			type="button"
-			className="min-h-11 min-w-0 text-left rounded-[var(--bf-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-			onClick={(event) => {
-				event.stopPropagation();
-				onEdit(policy);
-			}}
-			aria-label={`Edit policy for ${formatIdentity(policy)}`}
-		>
-			<span className="block text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
-				{policy.location}
-			</span>
-			<span className="block font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
-				{formatPath(policy.path)}
-			</span>
-		</button>
-	);
-
-	const renderMobilePolicy = (policy: FilePolicy) => (
+	const renderPolicy = (policy: FilePolicy) => (
 		<li key={policy.id ?? `${policy.location}:${policy.path}`}>
-			<Card className="rounded-[var(--bf-radius-surface)] border-border/70 bg-card py-0">
-				<CardContent className="space-y-4 p-4">
-					<div className="flex items-start justify-between gap-3">
-						{renderIdentity(policy)}
-						<div className="shrink-0">{renderActions(policy)}</div>
-					</div>
-					<div className="space-y-2">
-						<p className="text-xs font-medium text-muted-foreground">
-							Rules
-						</p>
-						<div className="flex flex-wrap gap-1.5">
-							{policy.policies.policies.length === 0 ? (
-								<span className="text-xs text-muted-foreground">
-									No rules
-								</span>
-							) : (
-								policy.policies.policies.map(renderRule)
-							)}
-						</div>
-					</div>
-				</CardContent>
-			</Card>
-		</li>
-	);
-
-	const renderDesktopPolicy = (policy: FilePolicy) => (
-		<DataTableRow
-			key={policy.id ?? `${policy.location}:${policy.path}`}
-			clickable
-			onClick={() => onEdit(policy)}
-		>
-			<DataTableCell className="w-[18rem] max-w-[18rem] align-middle">
-				{renderIdentity(policy)}
-			</DataTableCell>
-			<DataTableCell className="align-middle">
-				<div className="flex flex-wrap gap-1.5">
+			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b px-4 py-3 last:border-b-0 lg:grid-cols-[minmax(12rem,18rem)_minmax(0,1fr)_auto]">
+				<button
+					type="button"
+					className="min-h-11 min-w-0 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					onClick={() => onEdit(policy)}
+					aria-label={`Manage policy for ${formatIdentity(policy)}`}
+				>
+					<span className="block text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
+						{policy.location}
+					</span>
+					<span className="block font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+						{formatPath(policy.path)}
+					</span>
+				</button>
+				<div className="col-span-2 flex min-w-0 flex-wrap gap-1.5 lg:col-span-1 lg:pt-1">
 					{policy.policies.policies.length === 0 ? (
 						<span className="text-xs text-muted-foreground">
 							No rules
@@ -162,15 +134,55 @@ export function PoliciesView({
 						policy.policies.policies.map(renderRule)
 					)}
 				</div>
-			</DataTableCell>
-			<DataTableCell className="w-px whitespace-nowrap align-middle">
-				{renderActions(policy)}
-			</DataTableCell>
-		</DataTableRow>
+				<div className="row-start-1 shrink-0 justify-self-end lg:col-start-3">
+					{renderActions(policy)}
+				</div>
+			</div>
+		</li>
+	);
+
+	const renderDirectory = () => (
+		<div className="flex h-full min-h-0 flex-col">
+			<div className="shrink-0 border-b px-4 py-3">
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold leading-5">
+							Access Policies
+						</h2>
+						<p className="text-xs text-muted-foreground">
+							{filteredPolicies.length} of {policies.length}{" "}
+							{policies.length === 1 ? "policy" : "policies"}
+						</p>
+					</div>
+					<label className="relative min-w-0 flex-1 sm:max-w-xs">
+						<span className="sr-only">Search policies</span>
+						<Search
+							aria-hidden="true"
+							className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+						/>
+						<Input
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder="Search policies"
+							className="pl-9"
+						/>
+					</label>
+				</div>
+			</div>
+			{filteredPolicies.length === 0 ? (
+				<p className="p-4 text-sm text-muted-foreground">
+					No policies match this search.
+				</p>
+			) : (
+				<ul className="min-h-0 flex-1 overflow-auto">
+					{filteredPolicies.map(renderPolicy)}
+				</ul>
+			)}
+		</div>
 	);
 
 	return (
-		<div className="h-full min-h-0 overflow-auto">
+		<section aria-label="Access Policies" className="h-full min-h-0">
 			{showInitialLoading ? (
 				<InlineLoader className="p-4" />
 			) : showError ? (
@@ -221,30 +233,9 @@ export function PoliciesView({
 							</AlertDescription>
 						</Alert>
 					)}
-					{isCompactLayout ? (
-						<ul className="space-y-3 p-4">
-							{policies.map(renderMobilePolicy)}
-						</ul>
-					) : (
-						<DataTable>
-							<DataTableHeader>
-								<DataTableRow>
-									<DataTableHead className="w-px whitespace-nowrap">
-										Policy
-									</DataTableHead>
-									<DataTableHead>Rules</DataTableHead>
-									<DataTableHead className="w-px whitespace-nowrap text-right">
-										Actions
-									</DataTableHead>
-								</DataTableRow>
-							</DataTableHeader>
-							<DataTableBody>
-								{policies.map(renderDesktopPolicy)}
-							</DataTableBody>
-						</DataTable>
-					)}
+					{renderDirectory()}
 				</>
 			)}
-		</div>
+		</section>
 	);
 }

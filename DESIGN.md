@@ -70,3 +70,16 @@ feedback intact when changing the presentation.
 Run Activity, Execution Context, Runtime Variables, and Usage use the shared ExecutionSectionHeading: title case, foreground display text, a primary-colored Lucide icon, and an optional muted description. Uppercase metadata labels are not section headings.
 
 Readable activity and detailed logs share LogEntryRow severity framing. A 3px leading stripe uses semantic info, warning, danger, or muted-debug tokens, independent of custom branding. Preserve text/icon severity cues as well as color. The newest-message highlight indicates recency and must not override severity. Keep filtering, traceback grouping, copying, and follow-scroll behavior in the detailed log panel.
+
+Files is a contained directory workspace: shares and folder branches on the left,
+a searchable file directory in the center, and an animated, attached inspector
+for preview and access. Directory selection uses the same full-width
+`tree-row-selected` surface as Activity and Entity Management. Only row content
+is indented. File actions live in the standard overflow menu; opening that menu
+must not activate the row. Folders use warm icons and shares use the brand accent.
+Keep scope in the workspace header, breadcrumbs above the directory, and policy
+search inside Access Policies. Do not repeat the policy heading in another toolbar.
+At intermediate widths, hide share navigation while inspecting; on phones the
+inspector replaces the directory inside the workspace, never the whole screen.
+Keep directory search and item counts outside the scrolling rows. Preserve explicit
+Global/organization/solution scope, read-only locations, and mutation recovery.

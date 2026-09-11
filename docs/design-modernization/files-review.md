@@ -63,3 +63,47 @@ Browser87197 passes8 nested create/in-use light/dark320/1440 cases through actua
 Next page family: Knowledge. Existing Knowledge.tsx has canonical header/menu/mobile layout and prior HTTP delete recovery. Existing knowledge-flow/mobile/drawer/recovery-check.cjs and config-knowledge-verify.cjs; inspect script contents before reuse because earlier generic filenames were overwritten. Route still In progress. Preserve drawer/edit/scope/filter/pagination behavior and review rendered composition before accepting.
 
 Final full TypeScript55379 passes. Files route UI acceptance consolidated from the complete evidence above: /files now Verified. Coverage41 Verified/23 In progress. All parent handles terminal; no blocker. Next Knowledge.
+
+## Contained Files workspace redesign (2026-09-11)
+
+Replaced the disconnected browser/policy panes with one workspace. Shares and
+folders form a compact, lazy-loaded left directory; files use a searchable native
+list with a primary open button and sibling overflow menu. Full-width selection
+persists on hover and does not color descendants. Branch indentation belongs to
+contents, so selection and hover align with the workspace edges.
+
+The new reusable `FilesInspector` attaches to the right on desktop. At intermediate
+widths share navigation collapses; on phones inspection replaces only the directory
+area. Escape/close restores focus, background directory controls are inert on
+phones, and transitions respect reduced motion. Preview and Access remain explicit
+tabs. Folder Details opens access directly. Scope, breadcrumbs, upload, and policy
+search each have one consistent place. Access-policy editing/testing, download,
+delete recovery, and embedded solution read-only behavior remain supported.
+
+The folder/share Upload action now commits its destination and opens the native
+file chooser; previously it only navigated there. File extension icons do not imply
+metadata the API does not supply (no invented size/date columns).
+
+Review data: the debug Global share `ui-review-files` contains synthetic Markdown,
+JSON, CSV, and nested folders. Reviewed live at 1440, 1100, and 390 pixels, including
+preview, folder access, policy listing, and workspace containment. A first confirmation
+attempt met a cold debug application load before the login form appeared; a separate
+probe confirmed login readiness, then the review completed with no page errors.
+
+Verification:
+- `./test.sh client unit -- src/components/files`: 16 files, 101 tests passed.
+- `./test.sh client unit -- FilesExplorer.test.tsx FilesInspector.test.tsx PoliciesView.test.tsx`: 23 tests passed after interaction refinements.
+- `./test.sh client e2e e2e/files-explorer.admin.spec.ts e2e/files-management-acceptance.admin.spec.ts e2e/solution-files-link.admin.spec.ts`: 5 passed including setup; upload/preview/access, mobile navigation, download/delete, and embedded solution files.
+- A targeted Files Explorer E2E confirmation covers the corrected menu upload and mobile focus restoration (result recorded below).
+- TypeScript and lint checked for this batch; lint has an existing console warning in `e2e/support/seed-review-pack.ts`.
+- Impeccable static detector returned no findings for the changed Files surfaces.
+
+This is scoped Files verification. The full platform/backend suites and pre-PR gate
+were not rerun for this design iteration. No merge or production deployment.
+
+Final confirmation: `./test.sh client e2e e2e/files-explorer.admin.spec.ts`
+passed all 3 tests including setup. The menu upload opens the native chooser and
+uploads to the selected share; the inspector remains inside the workspace at
+1440/1100/390, and closing it on mobile returns focus to the file. Final client
+`npm run tsc` passed; `npm run lint` passed with only the existing seed-review-pack
+console warning noted above.
