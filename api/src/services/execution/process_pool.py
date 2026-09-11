@@ -522,6 +522,7 @@ class ProcessPoolManager:
         self._started = True
         self._shutdown = False
         self._started_at = datetime.now(timezone.utc)
+        self._last_active_execution_refresh = time.monotonic()
 
         # Install requirements once (shared filesystem — all child processes inherit)
         install_result = await asyncio.to_thread(install_requirements)
@@ -760,6 +761,18 @@ class ProcessPoolManager:
             self._unregister_result_reader(handle)
             self.processes.pop(handle.id, None)
             await self._notify_slot_free()
+            try:
+                r = await self._get_redis()
+                await r.delete(
+                    active_execution_key(execution_id),
+                    f"bifrost:exec:{execution_id}:context",
+                )
+            except Exception as cleanup_exc:  # noqa: BLE001 - preserve dispatch error
+                logger.warning(
+                    "Could not clean up failed dispatch %s: %s",
+                    execution_id,
+                    cleanup_exc,
+                )
             raise
 
         logger.info(

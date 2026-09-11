@@ -178,7 +178,12 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await session.execute(
                 select(Execution, User.email)
                 .outerjoin(User, Execution.executed_by == User.id)
-                .where(Execution.id == UUID(execution_id))
+                .where(
+                    Execution.id == UUID(execution_id),
+                    Execution.status.in_(
+                        [ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING]
+                    ),
+                )
             )
         ).one_or_none()
         if row is None:

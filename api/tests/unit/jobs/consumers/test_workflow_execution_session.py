@@ -49,6 +49,8 @@ class TestCompletionMetadataRecovery:
             "sync": False,
             "event": None,
         }
+        statement = str(session.execute.await_args.args[0])
+        assert "executions.status IN" in statement
 
     @pytest.mark.asyncio
     async def test_active_lease_avoids_database_lookup(self):

@@ -271,6 +271,7 @@ class TestProcessPoolManagerStart:
         assert spawned == [], "start() must not pre-spawn workers in on-demand mode"
         assert len(pool.processes) == 0
         assert pool._started is True
+        assert pool._last_active_execution_refresh is not None
 
         # Cleanup
         pool._shutdown = True
@@ -452,6 +453,45 @@ class TestProcessPoolManagerRouting:
         assert len(forked) == 1
         assert forked[0].current_execution is not None
         assert forked[0].current_execution.execution_id == "exec-456"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_failure_removes_active_lease_and_context(self):
+        pool = ProcessPoolManager(max_workers=1)
+        redis = AsyncMock()
+        pool._redis = redis
+        handle = ProcessHandle(
+            id="process-1",
+            process=MagicMock(),
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+        )
+        handle.work_queue.put_nowait.side_effect = BrokenPipeError("closed")
+
+        def fork_process():
+            pool.processes[handle.id] = handle
+            return handle
+
+        with (
+            patch.object(pool, "_fork_process", side_effect=fork_process),
+            patch.object(pool, "_register_result_reader"),
+            patch.object(pool, "_unregister_result_reader"),
+        ):
+            with pytest.raises(BrokenPipeError, match="closed"):
+                await pool._dispatch_to_child(
+                    "exec-failed-dispatch",
+                    {"timeout_seconds": 300},
+                    300,
+                    _active_execution("exec-failed-dispatch"),
+                )
+
+        redis.delete.assert_awaited_once_with(
+            "bifrost:exec:exec-failed-dispatch:active",
+            "bifrost:exec:exec-failed-dispatch:context",
+        )
+        assert handle.id not in pool.processes
 
 
 
