@@ -32,6 +32,8 @@ import {
 	MessageSquare,
 	MessageSquareText,
 	Wrench,
+	Workflow,
+	X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -63,6 +65,7 @@ const EMPTY_CHILD_RUN_IDS: string[] = [];
 const EMPTY_CHILD_RUNS: AgentRunChildResponse[] = [];
 
 export interface TimelineProps {
+	inspector?: "sheet" | "inline";
 	steps: AgentRunStepResponse[] | null | undefined;
 	childRunIds?: string[] | null;
 	childRuns?: AgentRunChildResponse[] | null;
@@ -82,6 +85,7 @@ export interface TimelineProps {
 }
 
 export function Timeline({
+	inspector = "sheet",
 	steps,
 	childRunIds = EMPTY_CHILD_RUN_IDS,
 	childRuns = EMPTY_CHILD_RUNS,
@@ -98,7 +102,8 @@ export function Timeline({
 		() => buildRunActivity(steps, childRunIds, childRuns),
 		[steps, childRunIds, childRuns],
 	);
-	const compactInspector = useMediaQuery("(max-width: 767px)");
+	const compactInspector = useMediaQuery("(max-width: 1023px)");
+	const inlineInspector = inspector === "inline" && !compactInspector;
 	const inspectionTrigger = useRef<HTMLElement | null>(null);
 	// Navigation restoration is one-shot; bulk expansion remounts rows.
 	const [restoredActivity, setRestoredActivity] = useState<string | null>(
@@ -174,105 +179,156 @@ export function Timeline({
 		.map((item) => item.id);
 
 	return (
-		<div className="grid min-w-0 gap-5">
-			{expandableActivityIds.length ? (
-				<div className="flex flex-wrap items-center gap-2">
-					<Button
-						type="button"
-						variant="ghost"
-						className="min-h-11 px-2 text-primary"
-						onClick={() => {
-							setBulkExpansionRequest((current) => ({
-								expanded: true,
-								token: (current?.token ?? 0) + 1,
-							}));
-						}}
-					>
-						Expand all
-					</Button>
-					<Button
-						type="button"
-						variant="ghost"
-						className="min-h-11 px-2 text-primary"
-						onClick={() => {
-							setBulkExpansionRequest((current) => ({
-								expanded: false,
-								token: (current?.token ?? 0) + 1,
-							}));
-						}}
-					>
-						Collapse all
-					</Button>
-				</div>
-			) : null}
-			<div className="min-w-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70">
-				<div className="hidden grid-cols-[minmax(0,1fr)_6rem_4rem] gap-3 border-b bg-muted/35 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
-					<div>Name</div>
-
-					<div>Status</div>
-					<div>Duration</div>
-				</div>
-				<ol
-					aria-label="Run activity"
-					className="divide-y divide-border/70"
-				>
-					{activity.map((item) => (
-						<ActivityTreeRow
-							key={`${item.id}:${bulkExpansionRequest?.token ?? 0}`}
-							item={item}
-							depth={depth}
-							rowDepth={0}
-							runStatus={runStatus}
-							highlighted={item.id === highlightedActivityId}
-							selected={item.id === selectedActivityId}
-							selectedActivityId={selectedActivityId}
-							onSelect={handleSelectActivity}
-							bulkExpansionRequest={bulkExpansionRequest}
-							expandedDelegationIds={expandedDelegationIds}
-							onDelegationExpandedChange={
-								onDelegationExpandedChange
-							}
-							restoreActivityId={
-								restoredActivity === restoreActivityId
-									? null
-									: restoreActivityId
-							}
-							onOpenChildRun={onOpenChildRun}
-							childRunOrigin={childRunOrigin}
-						/>
-					))}
-				</ol>
-			</div>
-			<Sheet
-				modal={compactInspector}
-				open={!!selectedActivity}
-				onOpenChange={(open) => {
-					if (!open) setSelectedActivityId(null);
-				}}
+		<div
+			className={cn(
+				"min-w-0",
+				inlineInspector && "flex min-h-0 flex-1 gap-4",
+			)}
+			onKeyDown={(event) => {
+				if (
+					inlineInspector &&
+					selectedActivity &&
+					event.key === "Escape"
+				) {
+					event.preventDefault();
+					setSelectedActivityId(null);
+					inspectionTrigger.current?.focus({ preventScroll: true });
+				}
+			}}
+		>
+			<div
+				className={cn(
+					"grid min-w-0 gap-3",
+					inlineInspector && "flex min-h-0 flex-1 flex-col",
+				)}
 			>
-				{selectedActivity && (
-					<SheetContent
-						aria-describedby={undefined}
-						className="w-full overflow-hidden sm:max-w-xl"
-						onInteractOutside={(event) => {
-							if (!compactInspector) event.preventDefault();
-						}}
-						onCloseAutoFocus={(event) => {
-							event.preventDefault();
-							if (inspectionTrigger.current?.isConnected)
-								inspectionTrigger.current.focus({
-									preventScroll: true,
-								});
-						}}
+				{expandableActivityIds.length ? (
+					<div className="flex flex-wrap items-center gap-2">
+						<Button
+							type="button"
+							variant="ghost"
+							className="min-h-11 px-2 text-primary"
+							onClick={() => {
+								setBulkExpansionRequest((current) => ({
+									expanded: true,
+									token: (current?.token ?? 0) + 1,
+								}));
+							}}
+						>
+							Expand all
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							className="min-h-11 px-2 text-primary"
+							onClick={() => {
+								setBulkExpansionRequest((current) => ({
+									expanded: false,
+									token: (current?.token ?? 0) + 1,
+								}));
+							}}
+						>
+							Collapse all
+						</Button>
+					</div>
+				) : null}
+				<div
+					className={cn(
+						"min-w-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70",
+						inlineInspector && "min-h-0 flex-1 overflow-auto",
+					)}
+					role="region"
+					aria-label="Activity calls"
+				>
+					<div className="sticky top-0 z-10 hidden grid-cols-[minmax(0,1fr)_6rem_4rem] gap-3 border-b bg-card px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+						<div>Name</div>
+
+						<div>Status</div>
+						<div>Duration</div>
+					</div>
+					<ol
+						aria-label="Run activity"
+						className="divide-y divide-border/70"
+					>
+						{activity.map((item) => (
+							<ActivityTreeRow
+								key={`${item.id}:${bulkExpansionRequest?.token ?? 0}`}
+								item={item}
+								depth={depth}
+								rowDepth={0}
+								runStatus={runStatus}
+								highlighted={item.id === highlightedActivityId}
+								selected={item.id === selectedActivityId}
+								selectedActivityId={selectedActivityId}
+								onSelect={handleSelectActivity}
+								bulkExpansionRequest={bulkExpansionRequest}
+								expandedDelegationIds={expandedDelegationIds}
+								onDelegationExpandedChange={
+									onDelegationExpandedChange
+								}
+								restoreActivityId={
+									restoredActivity === restoreActivityId
+										? null
+										: restoreActivityId
+								}
+								onOpenChildRun={onOpenChildRun}
+								childRunOrigin={childRunOrigin}
+							/>
+						))}
+					</ol>
+				</div>
+			</div>
+			{inlineInspector ? (
+				selectedActivity ? (
+					<aside
+						className="flex w-[min(42%,28rem)] min-w-80 shrink-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border bg-card"
+						aria-label="Call inspector"
 					>
 						<ActivityDetailPanel
 							item={selectedActivity}
 							childRunOrigin={childRunOrigin}
 							onOpenChildRun={onOpenChildRun}
+							onClose={() => {
+								setSelectedActivityId(null);
+								inspectionTrigger.current?.focus({
+									preventScroll: true,
+								});
+							}}
 						/>
-					</SheetContent>
-				)}
-			</Sheet>
+					</aside>
+				) : null
+			) : (
+				<Sheet
+					modal={compactInspector}
+					open={!!selectedActivity}
+					onOpenChange={(open) => {
+						if (!open) setSelectedActivityId(null);
+					}}
+				>
+					{selectedActivity && (
+						<SheetContent
+							aria-describedby={undefined}
+							className="w-full overflow-hidden sm:max-w-xl"
+							onInteractOutside={(event) => {
+								if (!compactInspector) event.preventDefault();
+							}}
+							onCloseAutoFocus={(event) => {
+								event.preventDefault();
+								if (inspectionTrigger.current?.isConnected)
+									inspectionTrigger.current.focus({
+										preventScroll: true,
+									});
+							}}
+						>
+							<ActivityDetailPanel
+								item={selectedActivity}
+								childRunOrigin={childRunOrigin}
+								onOpenChildRun={onOpenChildRun}
+							/>
+						</SheetContent>
+					)}
+				</Sheet>
+			)}
 		</div>
 	);
 }
@@ -374,11 +430,18 @@ function ActivityTreeRow({
 				: false,
 	});
 	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
+	const { data: workflowExecution } = useExecution(
+		item.executionId ?? undefined,
+	);
 	const agentName = child?.agent_name ?? item.agentName;
 	const title =
 		item.kind === "delegation"
 			? (agentName ?? "Delegated agent")
-			: item.title;
+			: item.executionId
+				? (workflowExecution?.workflow_name ??
+					item.toolName ??
+					item.title)
+				: item.title;
 	const childStatus = child?.status ?? item.childStatus;
 	const failed =
 		item.isError ||
@@ -407,7 +470,9 @@ function ActivityTreeRow({
 				? MessageSquareText
 				: failed
 					? AlertCircle
-					: Check;
+					: item.executionId
+						? Workflow
+						: Check;
 	const rowType =
 		item.kind === "delegation"
 			? "Agent"
@@ -579,10 +644,12 @@ function ActivityTreeRow({
 }
 
 function ActivityDetailPanel({
+	onClose,
 	item,
 	childRunOrigin,
 	onOpenChildRun,
 }: {
+	onClose?: () => void;
 	item: RunActivityItem;
 	childRunOrigin?: AgentRunNavigationOrigin;
 	onOpenChildRun?: (activityId: string) => void;
@@ -608,6 +675,7 @@ function ActivityDetailPanel({
 		execution?.workflow_name ??
 		child?.agent_name ??
 		item.agentName ??
+		(item.executionId ? item.toolName : null) ??
 		item.title;
 	const childAgentId = child?.agent_id ?? item.childAgentId;
 	const childActivity = useMemo(
@@ -646,9 +714,26 @@ function ActivityDetailPanel({
 			className="flex min-h-0 flex-1 flex-col"
 			aria-label="Selected call details"
 		>
-			<SheetHeader className="border-b border-border">
-				<SheetTitle>{title}</SheetTitle>
-			</SheetHeader>
+			{onClose ? (
+				<header className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4">
+					<h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
+						{title}
+					</h3>
+					<Button
+						size="icon"
+						variant="ghost"
+						aria-label="Close call details"
+						onClick={onClose}
+						className="shrink-0"
+					>
+						<X className="size-4" />
+					</Button>
+				</header>
+			) : (
+				<SheetHeader className="border-b border-border">
+					<SheetTitle>{title}</SheetTitle>
+				</SheetHeader>
+			)}
 			<div className="min-h-0 flex-1 overflow-y-auto p-5">
 				<div className="flex shrink-0 flex-wrap items-center gap-2">
 					{item.executionId ? (

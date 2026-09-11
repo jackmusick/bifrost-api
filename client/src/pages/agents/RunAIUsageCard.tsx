@@ -9,9 +9,11 @@ type Run = components["schemas"]["AgentRunDetailResponse"];
 export function RunAIUsageCard({
 	usage,
 	totals,
+	reported,
 }: {
 	usage: NonNullable<Run["ai_usage"]>;
 	totals: Run["ai_totals"] | null;
+	reported?: { model: string | null; tokens: number };
 }) {
 	const grouped = useMemo(() => {
 		const rows = new Map<
@@ -45,10 +47,28 @@ export function RunAIUsageCard({
 			<CardHeader className="pb-2">
 				<CardTitle className="flex items-center gap-2 text-sm">
 					<Sparkles className="h-4 w-4 text-primary" />
-					AI usage
+					AI Usage
 				</CardTitle>
 			</CardHeader>
 			<CardContent className="min-w-0 space-y-4">
+				{grouped.length === 0 && reported ? (
+					<dl className="space-y-3 text-xs">
+						{reported.model ? (
+							<div>
+								<dt className="text-muted-foreground">Model</dt>
+								<dd className="mt-1 font-mono [overflow-wrap:anywhere]">
+									{reported.model}
+								</dd>
+							</div>
+						) : null}
+						<div>
+							<dt className="text-muted-foreground">Tokens</dt>
+							<dd className="mt-1 tabular-nums">
+								{formatNumber(reported.tokens)}
+							</dd>
+						</div>
+					</dl>
+				) : null}
 				<ul className="divide-y">
 					{grouped.map((row) => (
 						<li

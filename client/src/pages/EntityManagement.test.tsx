@@ -1,8 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect, it, vi } from "vitest";
 
 import { EntityManagement } from "./EntityManagement";
+
+const authFetch = vi.hoisted(() => vi.fn());
+const apiPost = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/api-client", () => ({
+	authFetch: (...args: unknown[]) => authFetch(...args),
+	apiClient: { POST: (...args: unknown[]) => apiPost(...args) },
+}));
 
 vi.mock("sonner", () => ({
 	toast: {
@@ -165,7 +174,23 @@ vi.mock("@/hooks/useAssignEntityRole", () => ({
 
 it("expands related resources inline from a search result", async () => {
 	const user = userEvent.setup();
-	render(<EntityManagement />);
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	apiPost.mockResolvedValue({
+		data: {
+			has_relationships: {
+				"app:app-1": true,
+				"workflow:workflow-1": true,
+				"form:form-1": true,
+			},
+		},
+	});
+	render(
+		<QueryClientProvider client={queryClient}>
+			<EntityManagement />
+		</QueryClientProvider>,
+	);
 
 	await user.type(
 		screen.getByRole("textbox", { name: "Search entities" }),
@@ -176,11 +201,10 @@ it("expands related resources inline from a search result", async () => {
 		screen.queryByText("Create service request"),
 	).not.toBeInTheDocument();
 
-	await user.click(
-		screen.getAllByRole("button", {
-			name: "Expand Covi Portal",
-		})[0],
-	);
+	const expandButtons = await screen.findAllByRole("button", {
+		name: "Expand Covi Portal",
+	});
+	await user.click(expandButtons[0]);
 
 	expect(
 		screen.getByRole("textbox", { name: "Search entities" }),

@@ -26,6 +26,7 @@ import { useOrganizations } from "@/hooks/useOrganizations";
 import { useRoles } from "@/hooks/useRoles";
 import { WorkflowDeactivationDialog } from "@/components/editor/WorkflowDeactivationDialog";
 import { authFetch } from "@/lib/api-client";
+import { useDependencyAvailability } from "@/services/dependencies";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
@@ -188,7 +189,7 @@ export function EntityManagement() {
 		errorWorkflows || errorForms || errorAgents || errorApps;
 
 	// Normalize and combine all entities
-	const allEntities = useMemo(
+	const normalizedEntities = useMemo(
 		() =>
 			normalizeEntities(
 				workflows ?? [],
@@ -197,6 +198,58 @@ export function EntityManagement() {
 				appsResponse?.applications ?? [],
 			),
 		[workflows, forms, agents, appsResponse],
+	);
+	const availabilityRequest = useMemo(
+		() => ({
+			workflow_ids: normalizedEntities
+				.filter((entity) => entity.entityType === "workflow")
+				.map((entity) => entity.id),
+			form_ids: normalizedEntities
+				.filter((entity) => entity.entityType === "form")
+				.map((entity) => entity.id),
+			agent_ids: normalizedEntities
+				.filter((entity) => entity.entityType === "agent")
+				.map((entity) => entity.id),
+			app_ids: normalizedEntities
+				.filter((entity) => entity.entityType === "app")
+				.map((entity) => entity.id),
+		}),
+		[normalizedEntities],
+	);
+	const availabilityQuery = useDependencyAvailability(
+		availabilityRequest,
+		normalizedEntities.length > 0,
+	);
+	const relationshipAvailabilityKnown = availabilityQuery.isSuccess;
+	const collectionsWithRelationships = [
+		...collections,
+		{
+			name: "Relationships",
+			isLoading: availabilityQuery.isLoading,
+			isError: availabilityQuery.isError,
+			isFetching: availabilityQuery.isFetching,
+			hasData: availabilityQuery.data !== undefined,
+			onRetry: () => void availabilityQuery.refetch(),
+		},
+	];
+
+	const allEntities = useMemo(
+		() => {
+			const relationshipAvailability =
+				availabilityQuery.data?.has_relationships ?? {};
+			return normalizedEntities.map((entity) => ({
+				...entity,
+				hasRelationships:
+					relationshipAvailabilityKnown
+						? relationshipAvailability[entity.key] === true
+						: true,
+			}));
+		},
+		[
+			normalizedEntities,
+			availabilityQuery.data,
+			relationshipAvailabilityKnown,
+		],
 	);
 
 	// Apply filters
@@ -327,6 +380,7 @@ export function EntityManagement() {
 	const handleRefresh = () => {
 		void refetchOrganizations();
 		void refetchRoles();
+		void availabilityQuery.refetch();
 		refetchWorkflows();
 		refetchForms();
 		refetchAgents();
@@ -769,7 +823,7 @@ export function EntityManagement() {
 				}
 			/>
 
-			<EntityCollectionStatus collections={collections} />
+			<EntityCollectionStatus collections={collectionsWithRelationships} />
 
 			<div className="flex min-h-0 min-w-0 flex-col xl:flex-1">
 				<EntityListToolbar

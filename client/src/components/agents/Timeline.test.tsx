@@ -5,7 +5,15 @@ import type { components } from "@/lib/v1";
 import { renderWithProviders, screen } from "@/test-utils";
 
 vi.mock("@/hooks/useExecutions", () => ({
-	useExecution: () => ({ data: undefined }),
+	useExecution: (id: string | undefined) => ({
+		data:
+			id === "execution-428950"
+				? {
+						workflow_name: "Ticket details",
+						result: { ticket_id: 428950 },
+					}
+				: undefined,
+	}),
 }));
 
 const mockUseAgentRun = vi.hoisted(() => vi.fn());
@@ -146,6 +154,47 @@ function grandchildReference(
 }
 
 describe("Timeline activity view", () => {
+	it("attaches selected details to the activity workspace on desktop", async () => {
+		const { user } = renderWithProviders(
+			<Timeline
+				inspector="inline"
+				steps={[
+					step(
+						"tool_result",
+						{
+							tool_name: "customer_summary",
+							execution_id: "execution-428950",
+							result: {},
+						},
+						1,
+					),
+				]}
+			/>,
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Ticket details/ }),
+		);
+		expect(
+			screen.getByRole("complementary", { name: "Call inspector" }),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Ticket details" }),
+		).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Close call details" }),
+		);
+		expect(
+			screen.queryByRole("complementary", { name: "Call inspector" }),
+		).not.toBeInTheDocument();
+		const trigger = screen.getByRole("button", { name: /Ticket details/ });
+		await user.click(trigger);
+		await user.keyboard("{Escape}");
+		expect(
+			screen.queryByRole("complementary", { name: "Call inspector" }),
+		).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
+	});
 	beforeEach(() => {
 		mockUseAgentRun.mockReturnValue({
 			data: undefined,
@@ -235,7 +284,7 @@ describe("Timeline activity view", () => {
 			container.querySelector('[data-activity-id="step-1"]'),
 		).toHaveAttribute("data-highlighted", "true");
 		await user.click(
-			screen.getByRole("button", { name: /looked up ticket details/i }),
+			screen.getByRole("button", { name: /Ticket details/ }),
 		);
 		expect(
 			screen.getByRole("link", { name: /view execution/i }),

@@ -21,6 +21,7 @@ export interface EntityWithScope {
 	roleIds: string[];
 	createdAt: string;
 	usedByCount: number | null; // null means count not available for this entity type
+	hasRelationships: boolean;
 	original: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic;
 }
 
@@ -47,6 +48,7 @@ export function normalizeEntities(
 			roleIds: w.role_ids ?? [],
 			createdAt: w.created_at,
 			usedByCount: w.used_by_count ?? 0,
+			hasRelationships: hasRelationships(w),
 			original: w,
 		});
 	}
@@ -63,6 +65,7 @@ export function normalizeEntities(
 			roleIds: f.role_ids ?? [],
 			createdAt: f.created_at ?? new Date().toISOString(),
 			usedByCount: f.dependency_count ?? null,
+			hasRelationships: hasRelationships(f),
 			original: f,
 		});
 	}
@@ -82,6 +85,7 @@ export function normalizeEntities(
 			roleIds: a.role_ids ?? [],
 			createdAt: a.created_at,
 			usedByCount: a.dependency_count ?? null,
+			hasRelationships: hasRelationships(a),
 			original: a,
 		});
 	}
@@ -97,6 +101,7 @@ export function normalizeEntities(
 			roleIds: app.role_ids ?? [],
 			createdAt: app.created_at ?? new Date().toISOString(),
 			usedByCount: null,
+			hasRelationships: hasRelationships(app),
 			original: app,
 		});
 	}
@@ -106,6 +111,14 @@ export function normalizeEntities(
 
 export function entityKey(entityType: EntityType, id: string) {
 	return `${entityType}:${id}`;
+}
+
+function hasRelationships(
+	entity: WorkflowMetadata | FormPublic | AgentSummary | ApplicationPublic,
+) {
+	return (
+		(entity as { has_relationships?: boolean }).has_relationships === true
+	);
 }
 
 // Entity type icons and colors

@@ -105,6 +105,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 	const parentId = "91000000-0000-4000-8000-000000000001";
 	const childId = "91000000-0000-4000-8000-000000000002";
 	const grandchildId = "91000000-0000-4000-8000-000000000003";
+	const ticketExecutionId = "92000000-0000-4000-8000-000000000001";
 	const createdAt = new Date().toISOString();
 	const step = (
 		runId: string,
@@ -169,7 +170,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 					}),
 					step(parentId, 4, "tool_result", {
 						tool_name: "ai_ticketing_get_ticket_details",
-						execution_id: "92000000-0000-4000-8000-000000000001",
+						execution_id: ticketExecutionId,
 						result: {
 							ticket_id: 428950,
 							status: "open",
@@ -277,6 +278,33 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 		await route.fallback();
 	});
 
+	await page.route(/\/api\/executions\/[^/?]+(?:\?.*)?$/, async (route) => {
+		const request = route.request();
+		const executionId = new URL(request.url()).pathname.split("/").at(-1);
+		if (request.method() !== "GET" || executionId !== ticketExecutionId) {
+			await route.fallback();
+			return;
+		}
+
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				execution_id: ticketExecutionId,
+				workflow_name: "Ticket details",
+				status: "completed",
+				created_at: createdAt,
+				started_at: createdAt,
+				completed_at: createdAt,
+				result: {
+					ticket_id: 428950,
+					status: "open",
+					matched: true,
+				},
+			}),
+		});
+	});
+
 	await page.route(/\/api\/agent-runs\/[^/?]+(?:\?.*)?$/, async (route) => {
 		if (route.request().method() !== "GET") {
 			await route.fallback();
@@ -342,8 +370,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				page.getByRole("navigation", { name: "Agent run pages" }),
 			).toContainText("Page 1");
 			await page.goto(`/agents/${agent.id}/runs/${parentId}`);
-			const activity = page.locator('[data-slot="run-activity"]');
-			await expect(activity).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Copy run ID" }),
+			).toBeVisible();
 			const answerHeading = page.getByRole("heading", {
 				name: "Outcome",
 				exact: true,
@@ -358,7 +387,30 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				page.getByText("### Outcome", { exact: true }),
 			).toHaveCount(0);
 			await expect(
-				activity.getByText("Looked up ticket details", { exact: true }),
+				page.getByText("AI Usage", { exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByText("gpt-5.2", { exact: true }),
+			).toBeVisible();
+
+			const ticketReference = page.getByRole("link", {
+				name: "Show Looked up ticket details in Activity",
+			});
+			await expect(ticketReference).toBeVisible();
+			await ticketReference.hover();
+			await ticketReference.click();
+			await expect(page).toHaveURL(
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
+			);
+			const activity = page.locator('[data-slot="run-activity"]');
+			await expect(activity).toBeVisible();
+			await expect(
+				activity.getByRole("region", { name: "Activity calls" }),
+			).toBeVisible();
+			await expect(
+				activity.getByText("Ticket details", { exact: true }),
 			).toBeVisible();
 			await expect(
 				activity.getByText(
@@ -368,22 +420,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 
 			const ticketAction = activity
 				.locator('[data-activity-kind="action"]')
-				.filter({ hasText: "Looked up ticket details" });
-			const ticketReference = page.getByRole("link", {
-				name: "Show Looked up ticket details in Activity",
-			});
-			await expect(ticketReference).toBeVisible();
-			await ticketReference.hover();
-			await expect(ticketAction).toHaveAttribute(
-				"data-highlighted",
-				"true",
-			);
-			await page.getByText("What was asked", { exact: true }).hover();
-			await expect(ticketAction).toHaveAttribute(
-				"data-highlighted",
-				"false",
-			);
-			await ticketReference.click();
+				.filter({ hasText: "Ticket details" });
 			await expect(ticketAction).toBeInViewport();
 			await expect(ticketAction).toBeFocused();
 			await page.mouse.move(1, 1);
@@ -396,11 +433,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				name: "Selected call details",
 			});
 			await ticketAction
-				.getByRole("button", { name: /looked up ticket details/i })
+				.getByRole("button", { name: /ticket details/i })
 				.click();
-			await expect(selectedDetails).toContainText(
-				"Looked up ticket details",
-			);
+			await expect(selectedDetails).toContainText("Ticket details");
 			await expect(
 				selectedDetails.getByRole("link", { name: "View execution" }),
 			).toHaveAttribute(
@@ -417,8 +452,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toBeVisible();
 
 			await expect(
-				page.getByText("Troubleshooting Specialist", { exact: true }),
-			).toHaveCount(2);
+				activity.getByText("Troubleshooting Specialist", {
+					exact: true,
+				}),
+			).toHaveCount(1);
 			const delegatedActivity = activity
 				.locator("[data-activity-kind='delegation']")
 				.filter({ hasText: "Troubleshooting Specialist" })
@@ -435,14 +472,6 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toHaveCount(0);
-			await expect(
-				page.getByText("Called ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).not.toBeVisible();
-			await expect(
-				page.getByText("Run ID", { exact: true }),
-			).not.toBeVisible();
 
 			await delegatedActivity
 				.getByRole("button", {
@@ -505,11 +534,13 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			);
 			await expect(contextualBack).toHaveAttribute(
 				"href",
-				`/agents/${agent.id}/runs/${parentId}`,
+				`/agents/${agent.id}/runs/${parentId}?tab=activity`,
 			);
 			await contextualBack.click();
 			await expect(page).toHaveURL(
-				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
 			);
 			await expect(
 				page.getByRole("region", { name: "Selected call details" }),
@@ -518,42 +549,66 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				page.getByRole("region", { name: "Selected call details" }),
 			).toContainText("Matched the requester to ELIJAH-LT.");
 			await expect(nestedDelegation).toBeInViewport();
+			// The Activity workspace owns scrolling; inspecting a call must not
+			// move the run header or the neighboring inspector.
+			await page.setViewportSize({ width: 1440, height: 650 });
+			const calls = activity.getByRole("region", {
+				name: "Activity calls",
+			});
+			const runHeading = page.getByRole("heading", {
+				name: "Service Desk Triage",
+				exact: true,
+			});
+			const headerBefore = await runHeading.boundingBox();
+			const inspectorBefore = await selectedDetails.boundingBox();
+			await calls.evaluate((element) => {
+				element.scrollTop = element.scrollHeight;
+			});
+			await expect
+				.poll(() => calls.evaluate((element) => element.scrollTop))
+				.toBeGreaterThan(0);
+			expect(
+				await page
+					.locator("main")
+					.evaluate((element) => element.scrollTop),
+			).toBe(0);
+			expect((await runHeading.boundingBox())?.y).toBe(headerBefore?.y);
+			expect((await selectedDetails.boundingBox())?.y).toBe(
+				inspectorBefore?.y,
+			);
+			await page.setViewportSize({ width: 1440, height: 1000 });
 			await page
-				.getByRole("dialog")
-				.getByRole("button", { name: "Close", exact: true })
+				.getByRole("button", { name: "Close call details" })
 				.click();
 
 			await page
 				.getByRole("button", { name: "Advanced", exact: true })
 				.click();
 			await expect(
-				page.getByText("Called ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).not.toBeVisible();
-			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toBeVisible();
-			await expect(page.getByText(/\{"ticket_id"/)).toHaveCount(0);
-			await page.getByText("Raw executor trace", { exact: true }).click();
+			await expect(
+				page.getByText("Raw executor trace", { exact: true }),
+			).toBeVisible();
 			await expect(
 				page.getByText("Called ai_ticketing_get_ticket_details", {
 					exact: true,
 				}),
 			).toBeVisible();
+			const runTabs = page.getByRole("tablist", { name: "Run sections" });
+			await runTabs.getByRole("tab", { name: "Overview" }).click();
 			await expect(
-				page.getByText("Run ID", { exact: true }),
-			).not.toBeVisible();
-			await page.getByText("Metadata", { exact: true }).click();
-			await expect(
-				page.getByText("Run ID", { exact: true }),
+				page.getByRole("button", { name: "Copy run ID" }),
 			).toBeVisible();
 			await expect(
-				page
-					.getByText("Metadata", { exact: true })
-					.locator("..")
-					.getByText("gpt-5.2", { exact: true }),
+				page.getByText("AI Usage", { exact: true }),
 			).toBeVisible();
+			await runTabs.getByRole("tab", { name: /Activity/ }).click();
+			await expect(page).toHaveURL(
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
+			);
 
 			await page.setViewportSize({ width: 390, height: 844 });
 			await page.reload();
@@ -635,7 +690,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				activity.getByRole("heading", { name: "Activity" }),
 			).toBeVisible();
 			await expect(
-				activity.getByText("Looked up ticket details", {
+				activity.getByText("Ticket details", {
 					exact: true,
 				}),
 			).toBeVisible();

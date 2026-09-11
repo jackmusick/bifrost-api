@@ -108,7 +108,7 @@ export function ResourceTreeTable({
 	return (
 		<>
 			<div className="hidden min-w-0 overflow-hidden rounded-[var(--bf-radius-surface)] border border-border bg-card lg:block">
-				<table className="w-full table-fixed text-sm">
+				<table className="w-full text-sm">
 					<thead className="border-b border-border bg-muted/30 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						<tr>
 							<th className="w-10 px-3 py-2">
@@ -125,10 +125,11 @@ export function ResourceTreeTable({
 									}
 								/>
 							</th>
-							<th className="w-[54%] px-3 py-2">Resource</th>
-							<th className="w-[18%] px-3 py-2">Scope</th>
-							<th className="w-[18%] px-3 py-2">Access</th>
-							<th className="w-12 px-3 py-2 text-right">
+							<th className="w-px whitespace-nowrap px-3 py-2">Scope</th>
+							<th className="w-full px-3 py-2">Name</th>
+							<th className="w-px whitespace-nowrap px-3 py-2">Type</th>
+							<th className="w-px whitespace-nowrap px-3 py-2">Access</th>
+							<th className="w-px whitespace-nowrap px-3 py-2 text-right">
 								<span className="sr-only">Actions</span>
 							</th>
 						</tr>
@@ -214,6 +215,12 @@ function ResourceTableRow({
 					}
 				/>
 			</td>
+			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
+				<ScopeText
+					entity={entity}
+					organizationName={organizationName}
+				/>
+			</td>
 			<td className="min-w-0 px-3 py-2 align-middle">
 				<div
 					className="flex min-w-0 items-center gap-2"
@@ -232,24 +239,21 @@ function ResourceTableRow({
 					<ResourceLabel
 						entity={entity}
 						caption={
-								isError
-									? "Could not load related resources"
-									: caption
+							isError
+								? "Could not load related resources"
+								: caption
 						}
 						onRetry={row.onRetry}
 					/>
 				</div>
 			</td>
-			<td className="px-3 py-2 align-middle text-sm">
-				<ScopeText
-					entity={entity}
-					organizationName={organizationName}
-				/>
+			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
+				<TypeBadge entity={entity} />
 			</td>
-			<td className="px-3 py-2 align-middle text-sm">
+			<td className="whitespace-nowrap px-3 py-2 align-middle text-sm">
 				<AccessText name={accessName} />
 			</td>
-			<td className="px-3 py-2 align-middle">
+			<td className="whitespace-nowrap px-3 py-2 align-middle">
 				<RowActions entity={entity} managed={managed} onDelete={onDelete} />
 			</td>
 		</tr>
@@ -309,9 +313,9 @@ function ResourceMobileCard({
 						<ResourceLabel
 							entity={entity}
 							caption={
-									isError
-										? "Could not load related resources"
-										: caption
+								isError
+									? "Could not load related resources"
+									: caption
 							}
 							onRetry={row.onRetry}
 						/>
@@ -319,6 +323,7 @@ function ResourceMobileCard({
 					<RowActions entity={entity} managed={managed} onDelete={onDelete} />
 				</div>
 				<div className="grid gap-2 text-sm sm:grid-cols-2">
+					<TypeBadge entity={entity} />
 					<ScopeText
 						entity={entity}
 						organizationName={organizationName}
@@ -347,6 +352,10 @@ function ExpandButton({
 	loading?: boolean;
 	onClick: () => void;
 }) {
+	if (!expandable) {
+		return <span aria-hidden="true" className="size-7 shrink-0" />;
+	}
+
 	return (
 		<Button
 			type="button"
@@ -363,7 +372,6 @@ function ExpandButton({
 					"size-4 transition-transform",
 					expanded && "rotate-90",
 					loading && "animate-pulse",
-					!expandable && !expanded && "opacity-45",
 				)}
 			/>
 		</Button>
@@ -379,16 +387,12 @@ function ResourceLabel({
 	caption?: string;
 	onRetry?: () => void;
 }) {
-	const config = ENTITY_CONFIG[entity.entityType];
 	return (
 		<div className="min-w-0">
 			<div className="flex min-w-0 flex-wrap items-center gap-2">
 				<p className="min-w-0 font-medium leading-5 text-foreground [overflow-wrap:anywhere]">
 					{entity.name}
 				</p>
-				<Badge variant="outline" className={cn("h-5 px-1.5", config.color)}>
-					{config.label}
-				</Badge>
 				{isEntityManaged(entity) ? (
 					<Badge variant="outline" className="h-5 px-1.5">
 						Solution managed
@@ -410,6 +414,15 @@ function ResourceLabel({
 				) : null}
 			</p>
 		</div>
+	);
+}
+
+function TypeBadge({ entity }: { entity: EntityWithScope }) {
+	const config = ENTITY_CONFIG[entity.entityType];
+	return (
+		<Badge variant="outline" className={cn("h-5 px-1.5", config.color)}>
+			{config.label}
+		</Badge>
 	);
 }
 
@@ -541,13 +554,20 @@ function useResourceRows({
 								? "No related resources"
 								: undefined
 					: undefined,
-				expandable: true,
-				expanded,
+				expandable: hasExpandableRelationships(entity),
+				expanded: expanded && hasExpandableRelationships(entity),
 				isLoading: expanded && isLoading,
 				isError: expanded && isError,
 				onRetry: expanded && isError ? onRetry : undefined,
 			});
-			if (!expanded || isLoading || isError || !graphData) continue;
+			if (
+				!expanded ||
+				!hasExpandableRelationships(entity) ||
+				isLoading ||
+				isError ||
+				!graphData
+			)
+				continue;
 			for (const child of childRows) {
 				rows.push(child);
 			}
@@ -562,6 +582,10 @@ function useResourceRows({
 		isError,
 		onRetry,
 	]);
+}
+
+function hasExpandableRelationships(entity: EntityWithScope) {
+	return entity.hasRelationships;
 }
 
 function relatedRows(

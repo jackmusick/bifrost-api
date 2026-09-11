@@ -9775,6 +9775,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dependencies/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get Dependency Availability
+         * @description Return whether each requested entity has dependency graph relationships.
+         */
+        post: operations["get_dependency_availability_api_dependencies_availability_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/embed/apps/{slug}": {
         parameters: {
             query?: never;
@@ -14907,6 +14927,30 @@ export interface components {
             replacements?: {
                 [key: string]: string;
             } | null;
+        };
+        /**
+         * DependencyAvailabilityRequest
+         * @description Entity IDs to check for dependency graph relationships.
+         */
+        DependencyAvailabilityRequest: {
+            /** Workflow Ids */
+            workflow_ids?: string[];
+            /** Form Ids */
+            form_ids?: string[];
+            /** App Ids */
+            app_ids?: string[];
+            /** Agent Ids */
+            agent_ids?: string[];
+        };
+        /**
+         * DependencyAvailabilityResponse
+         * @description Relationship availability keyed by composite entity ID.
+         */
+        DependencyAvailabilityResponse: {
+            /** Has Relationships */
+            has_relationships?: {
+                [key: string]: boolean;
+            };
         };
         /**
          * DependencyGraphResponse
@@ -45770,6 +45814,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DependencyGraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dependency_availability_api_dependencies_availability_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DependencyAvailabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyAvailabilityResponse"];
                 };
             };
             /** @description Validation Error */

@@ -43,3 +43,25 @@ Verification:
 - The browser run includes a production client build. The final ref-to-state lint correction was verified with focused component tests and type checking.
 
 This remains an unmerged debug-stack iteration; no full pre-PR gate is claimed.
+
+## Dedicated Activity workspace — 2026-09-11
+
+The full agent run now defaults to Overview (asked/did/answered, review controls and AI Usage). Activity is a separate URL-addressable tab (`?tab=activity`), with the run's iteration count in its label. It uses the whole content width: a bounded hierarchy on the left and an attached, independently scrolling call inspector on desktop. Mobile retains a modal inspector and normal page flow. Advanced replaces the local hierarchy with payloads and raw executor events.
+
+Summary action links switch to Activity and focus the referenced row. Nested run navigation preserves the Activity URL and expanded/selected call. Workflow rows and inspectors use the linked execution's actual workflow display name; if that execution is unavailable, they retain the recorded tool identifier instead of disguising it as a workflow name.
+
+The duplicate Run Details sidebar card is removed. Run ID is copied from the header, started/duration/caller/trigger live in the header, iterations live beside Activity, and model/tokens live in AI Usage. Older runs without a detailed usage breakdown retain their reported model and token total there. The Overview summary width is preserved.
+
+
+Entity Management now orders columns as selection, Scope, Name, Type, Access, and Actions. Scope and metadata shrink to fit while Name takes the remaining width. A batched, superuser-only dependency-availability request determines which resources can expand; failed requests remain visible with retry. The availability service uses persisted form/workflow, field-provider, agent-tool, and indexed app-source relationships. Portable form references, reverse field-provider relationships, and app workflow-name references resolve consistently in graph expansion. Standalone apps without server-side source do not interrupt graph traversal. This does not add runtime workflow-to-workflow or workflow-to-agent tracing.
+
+Verification for this iteration:
+
+- Focused Vitest: 79 distinct tests across agent Timeline/full run/workspace/AI Usage/review Sheet and Entity tree/assignment/toolbar/types/page/service. The summary-reference hover regression was fixed and its page tests passed again; switching tabs now clears the hover preview while retaining keyboard focus on the referenced call.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts e2e/entity-management-acceptance.admin.spec.ts`: Entity bulk assignment and six agent journeys passed; the narrative-reference journey exposed the hover bug. After the correction, `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts` passed all seven agent journeys plus setup with zero retries. It covers the attached inspector, a short desktop viewport with independent call-list scrolling, nested-run return restoration, and mobile modal inspection.
+- `./test.sh tests/e2e/api/test_dependency_availability.py -v`: both endpoint regressions passed, including a relationship whose source form is outside the requested IDs.
+- `./test.sh tests/unit/test_dependency_graph.py tests/unit/services/test_dependency_graph.py tests/unit/services/test_app_dependencies.py -v`: 58 tests passed.
+- `npm run tsc` and `npm run lint` passed; lint retains the existing review-seed console warning. `./test.sh quality api` passed, and final graph changes pass Ruff.
+- Desktop (1440px) and mobile (390px) screenshots of Overview, Activity inspection, and Entity columns were reviewed against the live debug stack. No page errors or document horizontal overflow were reported.
+
+No full-suite or pre-PR gate is claimed for this unmerged review iteration. The debug stack remains running.

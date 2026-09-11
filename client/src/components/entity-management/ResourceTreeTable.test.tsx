@@ -28,6 +28,32 @@ const entities = [
 const organizations = [{ id: "org-1", name: "Northwind" }] as Organization[];
 const roles = [{ id: "role-1", name: "Service Desk" }] as Role[];
 
+it("renders scope before the flexible name column and type as its own column", () => {
+	dependencyGraph.mockReturnValue({
+		data: null,
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+	renderTable({ entities: entities.slice(0, 1), allEntities: entities });
+
+	const headers = screen.getAllByRole("columnheader");
+	expect(headers.map((header) => header.textContent?.trim())).toEqual([
+		"",
+		"Scope",
+		"Name",
+		"Type",
+		"Access",
+		"Actions",
+	]);
+	const rowCells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
+	expect(rowCells[1]).toHaveTextContent("Northwind");
+	expect(rowCells[2]).toHaveTextContent("Covi Portal");
+	expect(rowCells[3]).toHaveTextContent("App");
+	expect(rowCells[4]).toHaveTextContent("Service Desk");
+});
+
 it("loads relationships from the expanded row and preserves the root list", async () => {
 	const user = userEvent.setup();
 	const onVisibleKeysChange = vi.fn();
@@ -182,6 +208,70 @@ it("shows an inline empty relationships state when expansion has no children", a
 	);
 });
 
+it("renders expansion controls from relationship availability instead of directional counts", () => {
+	dependencyGraph.mockReturnValue({
+		data: null,
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+	renderTable({
+		entities: [
+			entity(
+				"form-outgoing",
+				"Workflow launcher form",
+				"form",
+				null,
+				"authenticated",
+				0,
+				true,
+			),
+			entity(
+				"workflow-inbound-only",
+				"Inbound workflow",
+				"workflow",
+				null,
+				"authenticated",
+				0,
+				true,
+			),
+			entity("app-empty", "Zero linked app", "app", null, "authenticated", null, false),
+		],
+		allEntities: [
+			entity(
+				"form-outgoing",
+				"Workflow launcher form",
+				"form",
+				null,
+				"authenticated",
+				0,
+				true,
+			),
+			entity(
+				"workflow-inbound-only",
+				"Inbound workflow",
+				"workflow",
+				null,
+				"authenticated",
+				0,
+				true,
+			),
+			entity("app-empty", "Zero linked app", "app", null, "authenticated", null, false),
+	],
+	});
+
+	expect(
+		screen.getAllByRole("button", { name: "Expand Workflow launcher form" }).length,
+	).toBeGreaterThan(0);
+	expect(
+		screen.getAllByRole("button", { name: "Expand Inbound workflow" }).length,
+	).toBeGreaterThan(0);
+	expect(
+		screen.queryByRole("button", { name: "Expand Zero linked app" }),
+	).not.toBeInTheDocument();
+});
+
 function renderTable(overrides: Partial<TableProps> = {}) {
 	return render(table(overrides));
 }
@@ -232,6 +322,8 @@ function entity(
 	entityType: EntityWithScope["entityType"],
 	organizationId: string | null,
 	accessLevel: string | null,
+	usedByCount = entityType === "app" ? null : 1,
+	hasRelationships = usedByCount === null ? true : usedByCount > 0,
 ): EntityWithScope {
 	return {
 		key: `${entityType}:${id}`,
@@ -242,7 +334,8 @@ function entity(
 		accessLevel,
 		roleIds: entityType === "app" ? ["role-1"] : [],
 		createdAt: "2026-01-01T00:00:00Z",
-		usedByCount: entityType === "app" ? null : 1,
+		usedByCount,
+		hasRelationships,
 		original: {},
 	} as EntityWithScope;
 }

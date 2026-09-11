@@ -50,6 +50,11 @@ vi.mock("@/hooks/useAgents", () => ({
 	useAgent: (id: string | undefined) => mockUseAgent(id),
 }));
 
+const mockUseExecution = vi.fn();
+vi.mock("@/hooks/useExecutions", () => ({
+	useExecution: (id: string | undefined) => mockUseExecution(id),
+}));
+
 vi.mock("@/hooks/useAgentRunUpdates", () => ({
 	useAgentRunUpdates: () => {},
 }));
@@ -181,6 +186,7 @@ beforeEach(() => {
 	rerunPending = false;
 	mockUseAgentRun.mockReturnValue({ data: makeRun(), isLoading: false });
 	mockUseAgent.mockReturnValue({ data: baseAgent, isLoading: false });
+	mockUseExecution.mockReturnValue({ data: undefined });
 	mockUseFlagConversation.mockReturnValue({ data: undefined });
 	mockSendFlagMessage.mockReset();
 	mockSetVerdict.mockReset();
@@ -366,6 +372,7 @@ describe("AgentRunDetailPage — header + summary", () => {
 			isLoading: false,
 		});
 		const { user } = await renderPage();
+		await user.click(screen.getByRole("tab", { name: /activity/i }));
 
 		expect(screen.getByText("Looked up ticket")).toBeInTheDocument();
 		expect(screen.getByText("Ticket: 428950")).toBeInTheDocument();
@@ -375,23 +382,17 @@ describe("AgentRunDetailPage — header + summary", () => {
 		expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		expect(screen.getByText(/result from get_ticket/i)).not.toBeVisible();
-		expect(screen.getByText("Looked up ticket")).toBeInTheDocument();
 		expect(screen.getByText("Raw input")).toBeInTheDocument();
+		expect(screen.getByText(/result from get_ticket/i)).toBeVisible();
 		await user.click(
-			screen.getByRole("button", { name: /looked up ticket/i }),
+			screen.getByRole("button", { name: "Toggle details for step 1" }),
 		);
-		await user.click(screen.getByRole("tab", { name: "Result" }));
-		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
-		expect(screen.getByText("428950")).toBeInTheDocument();
-
-		await user.click(
-			screen.getByText("Raw executor trace", { exact: true }),
-		);
-		expect(screen.getByText(/result from get_ticket/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Toggle details for step 1" }),
+		).toHaveAttribute("aria-expanded", "true");
 	});
 
-	it("previews and scrolls to the activity referenced by summary prose", async () => {
+	it("switches to Activity and focuses the activity referenced by summary prose", async () => {
 		const scrollIntoView = vi.fn();
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 			configurable: true,
@@ -419,21 +420,17 @@ describe("AgentRunDetailPage — header + summary", () => {
 		const reference = screen.getByRole("button", {
 			name: "activity reference",
 		});
+		await user.hover(reference);
+		await user.click(reference);
+		expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
+			/Activity/,
+		);
 		const activity = container.querySelector('[data-activity-id="step-1"]');
 		expect(activity).toHaveAttribute("data-highlighted", "false");
-
-		await user.hover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "true");
-		await user.unhover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "false");
-
-		await user.click(reference);
 		expect(scrollIntoView).toHaveBeenCalledWith({
-			behavior: "smooth",
+			behavior: "auto",
 			block: "center",
 		});
-		await user.unhover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "false");
 		expect(activity).toHaveFocus();
 	});
 });
@@ -484,18 +481,16 @@ describe("AgentRunDetailPage — verdict actions", () => {
 });
 
 describe("AgentRunDetailPage — sidebar metadata", () => {
-	it("keeps metadata disclosure independent of activity Advanced mode", async () => {
+	it("keeps Activity free of the old metadata sidebar and exposes run ID copy in the header", async () => {
 		const { user } = await renderPage();
-		const metadata = screen.getByText("Metadata").closest("details")!;
-		expect(metadata).not.toHaveAttribute("open");
+		expect(
+			screen.getByRole("button", { name: "Copy run ID" }),
+		).toBeInTheDocument();
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("tab", { name: /activity/i }));
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		expect(metadata).not.toHaveAttribute("open");
-		await user.click(screen.getByText("Metadata"));
-		expect(metadata).toHaveAttribute("open");
-		expect(screen.getByText("Iterations")).toBeInTheDocument();
-		expect(screen.getByText("Tokens")).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "Activity" }));
-		expect(metadata).toHaveAttribute("open");
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
 	});
 });
 
@@ -622,13 +617,42 @@ describe("AgentRunDetailPage — AI usage card", () => {
 		});
 		const { user } = await renderPage();
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
+		expect(screen.getByText("claude-opus-4-7")).toBeInTheDocument();
+		await user.click(screen.getByRole("tab", { name: /activity/i }));
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
+		await user.click(screen.getByRole("tab", { name: "Overview" }));
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 	});
 
 	it("hides the AI usage card when there is no usage data", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				ai_usage: [],
+				ai_totals: null,
+				llm_model: null,
+				tokens_used: 0,
+			}),
+			isLoading: false,
+		});
 		await renderPage();
 		expect(screen.queryByTestId("ai-usage-card")).not.toBeInTheDocument();
+	});
+
+	it("renders reported model and tokens for legacy runs without usage breakdown", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				ai_usage: [],
+				ai_totals: null,
+				llm_model: "gpt-5.2",
+				tokens_used: 5000,
+			}),
+			isLoading: false,
+		});
+		await renderPage();
+		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
+		expect(screen.getByText("AI Usage")).toBeInTheDocument();
+		expect(screen.getByText("gpt-5.2")).toBeInTheDocument();
+		expect(screen.getByText("5,000")).toBeInTheDocument();
 	});
 });
 
