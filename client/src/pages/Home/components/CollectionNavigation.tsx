@@ -4,7 +4,7 @@ import {
 	dropTargetForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import { ChevronDown, Folder, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Folder, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	ContextMenu,
@@ -254,13 +254,15 @@ function CollectionTab({
 					disabled={index === 0}
 					onSelect={() => onMove(collection.id, -1)}
 				>
-					Move earlier
+					<ArrowLeft className="size-4" />
+					Move left
 				</ContextMenuItem>
 				<ContextMenuItem
 					disabled={index >= count - 1}
 					onSelect={() => onMove(collection.id, 1)}
 				>
-					Move later
+					<ArrowRight className="size-4" />
+					Move right
 				</ContextMenuItem>
 				{collection.can_edit && (
 					<>

@@ -290,7 +290,7 @@ describe("ExecutionDetails — result-first inspector", () => {
 		expect(screen.getByText("Started")).toBeInTheDocument();
 		expect(
 			screen.getByRole("heading", {
-				name: "Activity from this workflow",
+				name: "Run Activity",
 			}),
 		).toBeInTheDocument();
 		expect(screen.queryByTestId("logs-panel")).not.toBeInTheDocument();
@@ -567,7 +567,7 @@ describe("Execution review continuity", () => {
 		);
 		expect(screen.getByText("Verified ownership")).toBeInTheDocument();
 		expect(
-			screen.getByRole("heading", { name: "Run activity" }),
+			screen.getByRole("heading", { name: "Run Activity" }),
 		).toBeInTheDocument();
 	});
 

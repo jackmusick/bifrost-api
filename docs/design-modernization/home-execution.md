@@ -229,6 +229,6 @@ Final confirmation: application TypeScript check (`tsc --noEmit -p tsconfig.app.
 
 PrettyInputDisplay applies the same framed surface, branded field labels, quiet type metadata, and responsive label/value layout to both inputs and results. VariablesTreeView groups expanded children and separates root fields while retaining per-value copy and keyboard expansion. Execution streaming is unchanged by this refinement.
 
-Collection tabs expose Edit and Delete only for editable collections through a context menu (right-click, Shift+F10, or touch long-press). Delete opens the existing confirmation flow. Desktop native dragging and Move earlier/later reorder the personal view; All remains fixed first. Selecting an overflow collection appends it to the visible tabs so its actions remain reachable.
+Collection tabs expose Edit and Delete only for editable collections through a context menu (right-click, Shift+F10, or touch long-press). Delete opens the existing confirmation flow. Desktop native dragging and Move left/right reorder the personal view; All remains fixed first. Selecting an overflow collection appends it to the visible tabs so its actions remain reachable.
 
 Order is stored per account in this browser, shared between Home tabs and sidebar shortcuts. Reordering a filtered scope preserves other collections' positions. It does not change shared collection ownership, content, grants, or other users' layouts, and does not yet sync between browsers/devices.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, AlertTriangle } from "lucide-react";
+import { Activity, ArrowDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ExecutionLogEntry } from "@/lib/executionLogs";
 
@@ -23,19 +23,36 @@ export function ExecutionActivityFeed({
 	}, [logs]);
 	if (!logs.length) return null;
 	return (
-		<section className="min-w-0" aria-label="Live activity">
-			<div className="mb-3 flex items-center justify-between gap-3">
-				<h3 className="text-sm font-semibold">
-					{active ? "Activity from this workflow" : "Run activity"}
-				</h3>
-				<span className="mr-auto hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground sm:inline">
-					{logs.length} {logs.length === 1 ? "message" : "messages"}
-				</span>
+		<section
+			className={
+				active ? "min-w-0" : "min-w-0 border-t border-border pt-5"
+			}
+			aria-label="Run Activity"
+		>
+			<div className="mb-4 flex items-center justify-between gap-3">
+				<div className="flex min-w-0 items-center gap-3">
+					<Activity
+						className="size-5 shrink-0 text-primary"
+						aria-hidden="true"
+					/>
+					<div className="min-w-0">
+						<h3 className="font-display text-lg font-semibold leading-tight">
+							Run Activity
+						</h3>
+						<p className="mt-1 text-xs tabular-nums text-muted-foreground">
+							{logs.length}{" "}
+							{logs.length === 1 ? "message" : "messages"}
+							{active
+								? " · Run in progress"
+								: " · Recorded during this run"}
+						</p>
+					</div>
+				</div>
 				<Button
 					type="button"
 					variant="ghost"
 					size="sm"
-					className="h-8 px-2 text-xs"
+					className="shrink-0 px-2 text-xs"
 					onClick={onViewLogs}
 				>
 					Open logs
@@ -47,7 +64,7 @@ export function ExecutionActivityFeed({
 				aria-label="Workflow messages"
 				aria-live="off"
 				tabIndex={0}
-				className="max-h-80 overflow-y-auto overscroll-contain pr-1 focus-visible:outline-ring sm:pr-3"
+				className="max-h-80 overflow-y-auto overscroll-contain rounded-[var(--bf-radius-surface)] border border-border bg-muted/30 px-2 focus-visible:outline-ring sm:px-3"
 				onScroll={(event) => {
 					const element = event.currentTarget;
 					following.current =
@@ -66,7 +83,7 @@ export function ExecutionActivityFeed({
 						return (
 							<li
 								key={log.sequence ?? log.id ?? index}
-								className="execution-live-row grid gap-1 px-2 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
+								className="execution-live-row grid gap-1 px-2 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
 								data-arriving={
 									active && index >= initialCount
 										? "true"

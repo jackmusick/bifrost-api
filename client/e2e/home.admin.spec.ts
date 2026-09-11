@@ -210,7 +210,7 @@ test("collection tabs support context actions and persist drag order", async ({
 			.toBe(true);
 		await second.click({ button: "right" });
 		await page
-			.getByRole("menuitem", { name: "Move later", exact: true })
+			.getByRole("menuitem", { name: "Move right", exact: true })
 			.click();
 		await expect
 			.poll(async () => {

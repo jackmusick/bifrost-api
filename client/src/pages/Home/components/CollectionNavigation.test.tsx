@@ -181,14 +181,14 @@ it("reorders editable and shared collections from the context menu", async () =>
 		keys: "[MouseRight]",
 		target: screen.getByRole("button", { name: "Second" }),
 	});
-	await user.click(screen.getByRole("menuitem", { name: "Move earlier" }));
+	await user.click(screen.getByRole("menuitem", { name: "Move left" }));
 	expect(onReorder).toHaveBeenCalledWith(["second", "first", "third"]);
 
 	await user.pointer({
 		keys: "[MouseRight]",
 		target: screen.getByRole("button", { name: "Second" }),
 	});
-	await user.click(screen.getByRole("menuitem", { name: "Move later" }));
+	await user.click(screen.getByRole("menuitem", { name: "Move right" }));
 	expect(onReorder).toHaveBeenLastCalledWith(["first", "third", "second"]);
 });
 
