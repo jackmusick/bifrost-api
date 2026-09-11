@@ -367,7 +367,7 @@ Pick `useTable` for "Page X of Y" numbered-page UI; pick `useInfiniteTable` for 
 | `tables.upsert(table, item \| array, scope?)` | Insert or update by id. |
 | `tables.update(table, id, data, scope?)` | Patch a row's data fields. Returns `null` if missing. |
 | `tables.delete(table, id \| array, scope?)` | Delete by id; single-form is idempotent (returns `false` if missing). |
-| `tables.query(table, q?, scope?)` | One-shot read with `where`/`limit`/`offset`/`order_by`/`order_dir`/`skip_count`. |
+| `tables.query(table, q?, scope?)` | One-shot read with `document_ids`/`where`/`limit`/`offset`/`order_by`/`order_dir`/`skip_count`. |
 | `tables.count(table, scope?)` | Row count. Throws `TableNotFoundError` if missing. |
 | `tables.subscribe(tableId, filter, onEvent)` | Direct live subscription; advanced — `useTable` covers the common case. |
 

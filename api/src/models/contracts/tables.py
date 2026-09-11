@@ -6,7 +6,7 @@ Provides Pydantic models for API request/response handling.
 
 import warnings
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -374,6 +374,19 @@ class DocumentQuery(BaseModel):
         - NULL: {"deleted_at": {"is_null": true}}
         - Has field: {"field": {"has_key": true}}
         """,
+    )
+    document_ids: list[
+        Annotated[str, Field(min_length=1, max_length=255)]
+    ] | None = Field(
+        default=None,
+        max_length=1000,
+        description=(
+            "Filter by actual document IDs using the table's physical primary key. "
+            "At most 1000 IDs may be supplied. Duplicates have set semantics, "
+            "and an empty list matches no documents. This filter is ANDed with "
+            "where, document-ID pagination, and row policies. Results use the "
+            "normal query ordering and pagination, not input order."
+        ),
     )
     order_by: str | None = Field(
         default=None,

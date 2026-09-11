@@ -213,6 +213,21 @@ class TestPoliciesMatrix:
             "tenant|001"
         ]
 
+        batch_response = e2e_client.post(
+            f"/api/tables/{table_id}/documents/query",
+            headers=alice_user.headers,
+            json={
+                "document_ids": ["tenant|001", "tenant|002", "missing"],
+                "skip_count": True,
+            },
+        )
+
+        assert batch_response.status_code == 200, batch_response.text
+        assert batch_response.json()["total"] == -1
+        assert [doc["id"] for doc in batch_response.json()["documents"]] == [
+            "tenant|001"
+        ]
+
     def test_state_locked_update(self, e2e_client, platform_admin, alice_user):
         """Owner can update while status=open; cannot once status=done (pre-update semantics)."""
         table_id = _create_table(

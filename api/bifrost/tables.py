@@ -678,6 +678,7 @@ class tables:
         after_document_id: str | None = None,
         document_id_prefix: str | None = None,
         skip_count: bool = False,
+        document_ids: list[str] | None = None,
     ) -> DocumentList:
         """
         Query documents with filtering and pagination.
@@ -703,6 +704,10 @@ class tables:
             document_id_prefix: Restrict results to actual document IDs with
                 this prefix. Activates ascending document-ID ordering.
             skip_count: Skip the matching count query and return ``total=-1``.
+            document_ids: Up to 1000 actual document IDs to match. Duplicates
+                have set semantics; an empty list returns no documents. ANDed
+                with other filters. Results follow normal query ordering and
+                pagination rather than input order.
 
         Returns:
             DocumentList: Query results with documents, total count, and
@@ -724,6 +729,7 @@ class tables:
                 "after_document_id": after_document_id,
                 "document_id_prefix": document_id_prefix,
                 "skip_count": skip_count,
+                "document_ids": document_ids,
             },
         )
         if response.status_code == 404:

@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -489,6 +489,14 @@ class DocumentRepository:
         down into the SQL query.
         """
         base_query = select(Document).where(Document.table_id == self.table.id)
+
+        if query_params.document_ids is not None:
+            unique_document_ids = list(dict.fromkeys(query_params.document_ids))
+            base_query = base_query.where(
+                Document.id.in_(unique_document_ids)
+                if unique_document_ids
+                else false()
+            )
 
         document_id_pagination = (
             query_params.after_document_id is not None

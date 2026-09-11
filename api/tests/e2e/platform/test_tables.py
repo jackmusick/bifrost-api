@@ -1205,6 +1205,16 @@ class TestDocumentIdUniquePerTable:
         assert get_b.status_code == 200, get_b.text
         assert get_b.json()["data"] == {"table": "b"}
 
+        query_a = e2e_client.post(
+            f"/api/tables/{table_a}/documents/query",
+            headers=platform_admin.headers,
+            json={"document_ids": [doc_id], "skip_count": True},
+        )
+        assert query_a.status_code == 200, query_a.text
+        assert [doc["data"] for doc in query_a.json()["documents"]] == [
+            {"table": "a"}
+        ]
+
     def test_same_doc_id_in_two_tables_via_insert(
         self, e2e_client, platform_admin
     ):
