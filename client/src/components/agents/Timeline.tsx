@@ -803,6 +803,31 @@ function ActivityDetailPanel({
 		["usage", "Usage", hasUsage],
 	] as const;
 
+	const navigationAction = (item.executionId || (childAgentId && item.childRunId)) ? (
+		<div className="flex flex-wrap items-center gap-2">
+			{item.executionId ? (
+				<Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+					<Link to={`/history/${item.executionId}`} onClick={() => onOpenChildRun?.(item.id)}>
+						View execution
+						<ArrowUpRight aria-hidden="true" className="size-4" />
+					</Link>
+				</Button>
+			) : null}
+			{childAgentId && item.childRunId ? (
+				<Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+					<Link
+						to={`/agents/${childAgentId}/runs/${item.childRunId}`}
+						state={childRunOrigin ? createAgentRunNavigationState(childRunOrigin) : undefined}
+						onClick={() => onOpenChildRun?.(item.id)}
+					>
+						View run
+						<ArrowUpRight aria-hidden="true" className="size-4" />
+					</Link>
+				</Button>
+			) : null}
+		</div>
+	) : null;
+
 	return (
 		<section
 			className="flex min-h-0 flex-1 flex-col"
@@ -810,9 +835,10 @@ function ActivityDetailPanel({
 		>
 			{onClose ? (
 				<header className="flex min-h-16 shrink-0 items-start justify-between gap-3 border-b border-border/60 px-5 py-3">
-					<h3 className="min-w-0 pt-1 text-sm font-semibold [overflow-wrap:anywhere]">
-						{title}
-					</h3>
+					<div className="min-w-0 flex-1 space-y-2">
+						<h3 className="pt-1 text-sm font-semibold [overflow-wrap:anywhere]">{title}</h3>
+						{navigationAction}
+					</div>
 					<Button
 						size="icon"
 						variant="ghost"
@@ -826,38 +852,10 @@ function ActivityDetailPanel({
 			) : (
 				<SheetHeader className="border-b border-border">
 					<SheetTitle>{title}</SheetTitle>
+					{navigationAction}
 				</SheetHeader>
 			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2">
-				<div className="flex shrink-0 flex-wrap items-center gap-2">
-					{item.executionId ? (
-						<Link
-							to={`/history/${item.executionId}`}
-							onClick={() => onOpenChildRun?.(item.id)}
-							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-0 text-xs font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						>
-							View execution
-							<ArrowUpRight className="size-4" />
-						</Link>
-					) : null}
-					{childAgentId && item.childRunId ? (
-						<Link
-							to={`/agents/${childAgentId}/runs/${item.childRunId}`}
-							state={
-								childRunOrigin
-									? createAgentRunNavigationState(
-											childRunOrigin,
-										)
-									: undefined
-							}
-							onClick={() => onOpenChildRun?.(item.id)}
-							className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-0 text-xs font-medium text-primary hover:bg-[var(--bf-info-soft)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						>
-							Open run
-							<ArrowUpRight className="size-4" />
-						</Link>
-					) : null}
-				</div>
 				{isError ? (
 					<div
 						role="alert"

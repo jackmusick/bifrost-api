@@ -404,7 +404,7 @@ describe("Timeline activity view", () => {
 				name: /troubleshooting specialist collect endpoint evidence/i,
 			}),
 		);
-		expect(screen.getByRole("link", { name: /open run/i })).toHaveAttribute(
+		expect(screen.getByRole("link", { name: /view run/i })).toHaveAttribute(
 			"href",
 			"/agents/agent-child/runs/child-1",
 		);
@@ -450,7 +450,7 @@ describe("Timeline activity view", () => {
 				name: /troubleshooting specialist collect endpoint evidence/i,
 			}),
 		);
-		await user.click(screen.getByRole("link", { name: /open run/i }));
+		await user.click(screen.getByRole("link", { name: /view run/i }));
 		expect(screen.getByTestId("navigation-state")).toHaveTextContent(
 			JSON.stringify({
 				agentRunOrigin: {

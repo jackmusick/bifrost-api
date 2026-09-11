@@ -203,3 +203,21 @@ Verification:
 - `npm run tsc` and `npx eslint src/components/ui/tabs.tsx src/components/agents/Timeline.tsx src/components/entity-management/ResourceTreeTable.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
 - Desktop/mobile live inspection checked Response tabs, selected Activity rows, and full-width Entity selections. The mobile entity review locator was corrected to inspect the underlying directory while the modal correctly hides it from accessibility navigation.
 - Scoped design detector returned no findings; full suites and pre-PR gate were not rerun.
+
+
+## Inspector navigation actions
+
+View execution and View run now use the shared outlined button style with a
+navigation arrow. They belong to the selected call header on desktop and mobile,
+above the divider, rather than floating inside the result content. The previous
+custom link mixed a 44px hover rectangle with zero horizontal padding and an
+underlined text-link treatment. Navigation destinations and parent-run return
+context remain intact; Open run is consistently labeled View run. Buttons retain
+a 44px minimum touch target on mobile and use compact sizing on desktop.
+
+Verification:
+- `./test.sh client unit -- Timeline.test.tsx RunReviewSheet.test.tsx ChatRunActivity.test.tsx`: 3 files / 35 tests passed after updating the renamed action's label assertions.
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts --grep 'groups run activity'`: journey plus setup passed with zero retries, verifying workflow links, delegated-run links, parent-return navigation, and desktop/mobile inspection. The first run caught the compact button shrinking the mobile touch target; the 44px mobile minimum was restored and the same test passed.
+- `npm run tsc` and `npx eslint src/components/agents/Timeline.tsx src/components/agents/Timeline.test.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
+- Live workflow and delegated-agent inspector actions were checked and screenshotted at 1440px and 390px. No page errors or horizontal overflow occurred.
+- Full suites and pre-PR were not rerun for this debug iteration.

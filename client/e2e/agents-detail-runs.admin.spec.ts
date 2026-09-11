@@ -574,7 +574,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"Resolved the device and checked disk space and alerts.",
 			);
 			await expect(
-				selectedDetails.getByRole("link", { name: "Open run" }),
+				selectedDetails.getByRole("link", { name: "View run" }),
 			).toHaveAttribute(
 				"href",
 				`/agents/${agent.id}/runs/91000000-0000-4000-8000-000000000002`,
@@ -643,7 +643,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			);
 
 			await selectedDetails
-				.getByRole("link", { name: "Open run" })
+				.getByRole("link", { name: "View run" })
 				.click();
 			await expect(page).toHaveURL(
 				new RegExp(`/agents/${agent.id}/runs/${grandchildId}$`),
@@ -745,7 +745,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			});
 			await expect(mobileDetails).toContainText("Asset Resolver");
 			const mobileOpenRun = mobileDetails.getByRole("link", {
-				name: "Open run",
+				name: "View run",
 			});
 
 			await expect(mobileOpenRun).toBeVisible();
