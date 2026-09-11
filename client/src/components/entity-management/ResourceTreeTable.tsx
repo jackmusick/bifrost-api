@@ -133,26 +133,21 @@ export function ResourceTreeTable({
 					<li
 						key={`${row.entity.key}:${row.depth}:${row.caption ?? "root"}`}
 						className={cn(
-							"relative border-b border-border/70 last:border-b-0",
+							"relative border-b border-border/70 transition-colors last:border-b-0 motion-reduce:transition-none",
 							row.depth > 0 &&
-								"before:absolute before:left-0 before:top-0 before:h-full before:w-px before:bg-border after:absolute after:left-0 after:top-7 after:h-px after:w-4 after:bg-border",
+								"before:absolute before:left-[var(--row-indent)] before:top-0 before:h-full before:w-px before:bg-border after:absolute after:left-[var(--row-indent)] after:top-7 after:h-px after:w-4 after:bg-border",
 							row.depth > 0 && row.branchLast && "before:h-7",
-							row.depth > 0 && "hover:bg-muted/20",
-							row.depth > 0 &&
-								selectedIds.has(row.entity.key) &&
-								!isEntityManaged(row.entity) &&
-								"bg-accent hover:bg-accent",
+							selectedIds.has(row.entity.key) && !isEntityManaged(row.entity)
+								? "bg-[var(--bf-info-soft)]/55 hover:bg-[var(--bf-info-soft)]/55 before:opacity-0 after:opacity-0"
+								: "hover:bg-muted/20",
 						)}
-						style={
-							row.depth > 0
-								? {
-										marginLeft: `calc(var(--tree-indent) * ${Math.min(row.depth, 3)})`,
-									}
-								: undefined
-						}
+						style={{
+							"--row-indent": `calc(var(--tree-indent) * ${Math.min(row.depth, 3)})`,
+							paddingLeft: "var(--row-indent)",
+						} as React.CSSProperties}
 					>
-						{row.ancestorGuides?.map((depth) => (
-							<span key={depth} aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-border" style={{ left: `calc(var(--tree-indent) * ${Math.min(depth, 3) - Math.min(row.depth, 3)})` }} />
+						{!selectedIds.has(row.entity.key) && row.ancestorGuides?.map((depth) => (
+							<span key={depth} aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-border" style={{ left: `calc(var(--tree-indent) * ${Math.min(depth, 3)})` }} />
 						))}
 						<ResourceDirectoryRow
 							row={row}
@@ -198,12 +193,7 @@ function ResourceDirectoryRow({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 items-start gap-2 px-3 py-3 text-sm transition-colors sm:gap-3",
-				row.depth === 0 && "hover:bg-muted/20",
-				row.depth === 0 &&
-					selected &&
-					!managed &&
-					"bg-accent hover:bg-accent",
+				"relative flex min-w-0 items-start gap-2 px-3 py-3 text-sm transition-colors sm:gap-3",
 			)}
 		>
 			<div className="flex size-7 shrink-0 items-center justify-center">

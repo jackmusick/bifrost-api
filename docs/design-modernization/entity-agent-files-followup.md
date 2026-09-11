@@ -182,3 +182,24 @@ Verification for this iteration:
 
 Complete repository suites and `./test.sh pre-pr` were not run for this unmerged
 debug iteration. The debug stack remains running.
+
+
+## Selection edges and tab-strip overflow
+
+Selected Activity rows suppress connector paint so the branch does not bisect
+their background. Entity Management now applies selection to the full directory
+row, with indentation on its contents rather than its background; tree strokes
+are suppressed through selected rows there too. Hover preserves selection.
+
+The shared line-tab list now sizes to its buttons and border rather than keeping
+a 43px inner box around 44px buttons. Horizontal tab lists suppress vertical
+overflow, and their active underline stays inside the tab bounds. The Response
+strip was measured at clientHeight = scrollHeight = 44px after the correction.
+Horizontal scrolling and vertical-tab keyboard behavior remain supported.
+
+Verification:
+- `./test.sh client unit -- tabs.test.tsx Timeline.test.tsx ResourceTreeTable.test.tsx EntityManagement.test.tsx`: 7 files / 48 tests passed (the filename filters include additional tab/Timeline consumers).
+- `./test.sh client e2e e2e/agents-detail-runs.admin.spec.ts --grep 'groups run activity'`: journey plus setup passed with zero retries. Regression assertions check suppressed selected connectors and zero vertical overflow in inspector tabs.
+- `npm run tsc` and `npx eslint src/components/ui/tabs.tsx src/components/agents/Timeline.tsx src/components/entity-management/ResourceTreeTable.tsx e2e/agents-detail-runs.admin.spec.ts` passed.
+- Desktop/mobile live inspection checked Response tabs, selected Activity rows, and full-width Entity selections. The mobile entity review locator was corrected to inspect the underlying directory while the modal correctly hides it from accessibility navigation.
+- Scoped design detector returned no findings; full suites and pre-PR gate were not rerun.

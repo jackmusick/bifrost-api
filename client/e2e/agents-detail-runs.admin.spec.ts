@@ -635,6 +635,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			}));
 			expect(treeGeometry.row).toBe(treeGeometry.guide);
 			expect(treeGeometry.branchWidth).toBeGreaterThan(0);
+			await expect.poll(() => nestedDelegation.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("0");
+			const detailTabs = selectedDetails.getByRole("tablist");
+			await expect.poll(() => detailTabs.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
 			await expect(selectedDetails).toContainText(
 				"Matched the requester to ELIJAH-LT.",
 			);

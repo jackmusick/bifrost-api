@@ -562,6 +562,7 @@ function ActivityTreeRow({
 				"relative scroll-mt-24 outline-none [overflow-wrap:anywhere]",
 				rowDepth > 0 &&
 					"before:pointer-events-none before:absolute before:inset-y-0 before:start-0 before:z-10 before:w-px before:bg-border/70 last:before:bottom-auto last:before:h-[30px] after:pointer-events-none after:absolute after:start-0 after:top-[30px] after:z-10 after:h-px after:w-3 after:bg-border/70",
+				selected && "before:opacity-0 after:opacity-0",
 			)}
 			data-activity-id={item.id}
 			data-activity-kind={item.kind}
