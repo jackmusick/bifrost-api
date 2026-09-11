@@ -7,8 +7,16 @@ describe("ExecutionActivityFeed", () => {
 	it("retains messages and pauses following while reading earlier activity", async () => {
 		const onViewLogs = vi.fn();
 		const logs = [
-			{ sequence: 1, message: "Checking accounts" },
-			{ sequence: 2, message: "Updating access" },
+			{
+				sequence: 1,
+				message: "Checking accounts",
+				timestamp: "2026-04-23T10:42:01Z",
+			},
+			{
+				sequence: 2,
+				message: "Updating access",
+				timestamp: "2026-04-23T10:42:04Z",
+			},
 		];
 		const { rerender, user } = renderWithProviders(
 			<ExecutionActivityFeed logs={logs} onViewLogs={onViewLogs} />,
@@ -24,7 +32,11 @@ describe("ExecutionActivityFeed", () => {
 			<ExecutionActivityFeed
 				logs={[
 					...logs,
-					{ sequence: 3, message: "Sending confirmation" },
+					{
+						sequence: 3,
+						message: "Sending confirmation",
+						timestamp: "2026-04-23T10:42:08Z",
+					},
 				]}
 				onViewLogs={onViewLogs}
 			/>,
@@ -40,7 +52,11 @@ describe("ExecutionActivityFeed", () => {
 			screen.getByRole("button", { name: "Follow latest activity" }),
 		);
 		expect(feed.scrollTop).toBe(1000);
-		await user.click(screen.getByRole("button", { name: "View logs" }));
+		expect(screen.getByText(/42:08/)).toBeInTheDocument();
+		expect(
+			screen.getByText("Sending confirmation").closest("li"),
+		).toHaveAttribute("data-latest", "true");
+		await user.click(screen.getByRole("button", { name: "Open logs" }));
 		expect(onViewLogs).toHaveBeenCalledOnce();
 	});
 });

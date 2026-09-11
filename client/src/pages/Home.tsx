@@ -2,7 +2,7 @@ import { isVisibleCollection } from "@/services/home";
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Search } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Search } from "lucide-react";
 import { $api } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,7 +11,6 @@ import {
 	PageWorkspace,
 	PageScrollArea,
 } from "@/components/layout/PageWorkspace";
-import { WorkspaceTabs } from "@/components/layout/WorkspaceTabs";
 import { CatalogFilters } from "./Home/components/CatalogFilters";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,10 +23,8 @@ import type {
 	HomeCollectionWrite,
 	HomeResource,
 } from "@/services/home";
-import { ResourceCard } from "./Home/components/ResourceCard";
 import { HomeBrowse } from "./Home/components/HomeBrowse";
-import { CollectionStrip } from "./Home/components/CollectionStrip";
-import { HomeCatalogOverview } from "./Home/components/HomeCatalogOverview";
+import { CollectionNavigation } from "./Home/components/CollectionNavigation";
 import { CollectionEditor } from "./Home/components/CollectionEditor";
 
 const NO_RESOURCES: HomeResource[] = [];
@@ -43,7 +40,6 @@ export function Home() {
 	const [editor, setEditor] = useState<HomeCollection | "new" | null>(null);
 	const [editorError, setEditorError] = useState("");
 	const [opening, setOpening] = useState(false);
-	const [showAllPins, setShowAllPins] = useState(false);
 	const refresh = () =>
 		queryClient.invalidateQueries({ queryKey: ["get", "/api/home"] });
 	const preference = $api.useMutation(
@@ -62,7 +58,9 @@ export function Home() {
 	);
 	const busy = create.isPending || update.isPending || remove.isPending;
 	const resources = home.data?.resources ?? NO_RESOURCES;
-	const collections = (home.data?.collections ?? []).filter(isVisibleCollection);
+	const collections = (home.data?.collections ?? []).filter(
+		isVisibleCollection,
+	);
 	const selected = collections.find(
 		(collection) => collection.id === params.get("collection"),
 	);
@@ -70,11 +68,6 @@ export function Home() {
 	const kind = params.get("type") ?? "all";
 	const org = params.get("org") ?? "all";
 	const grid = params.get("view") !== "list";
-	const overview =
-		!search &&
-		kind === "all" &&
-		!selected &&
-		params.get("catalog") !== "all";
 	const collectionParam = params.get("collection");
 	const pageParam = params.get("page");
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -110,9 +103,6 @@ export function Home() {
 		(org === "global"
 			? !resource.organization_id
 			: resource.organization_id === org || !resource.organization_id);
-	const pinned = resources.filter(
-		(resource) => resource.pinned && inScope(resource),
-	);
 	const ordered = selected
 		? (selected.resource_keys ?? []).flatMap(
 				(key) =>
@@ -127,7 +117,7 @@ export function Home() {
 				.toLowerCase()
 				.includes(search.toLowerCase()),
 	);
-	const sort = params.get("sort") ?? (selected ? "collection" : "name");
+	const sort = params.get("sort") ?? "recommended";
 	if (sort === "recent")
 		filtered.sort(
 			(a, b) =>
@@ -137,6 +127,26 @@ export function Home() {
 		);
 	else if (sort === "name")
 		filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+	if (sort === "recommended") {
+		const query = search.trim().toLowerCase();
+		const relevance = (r: HomeResource) =>
+			!query
+				? 0
+				: r.name.toLowerCase() === query
+					? 3
+					: r.name.toLowerCase().startsWith(query)
+						? 2
+						: r.name.toLowerCase().includes(query)
+							? 1
+							: 0;
+		filtered.sort(
+			(a, b) =>
+				relevance(b) - relevance(a) ||
+				Number(b.pinned) - Number(a.pinned) ||
+				(selected ? 0 : a.name.localeCompare(b.name)),
+		);
+	}
 
 	const requestedPage = Math.max(0, Number(params.get("page")) || 0);
 	const page = Math.min(
@@ -236,21 +246,41 @@ export function Home() {
 			</div>
 		);
 	return (
-		<PageWorkspace className="mx-auto w-full max-w-[1400px] gap-5">
+		<PageWorkspace className="mx-auto w-full max-w-[1200px] gap-5">
 			<div className="shrink-0 space-y-4">
 				<ListPageHeader
-					title="Home"
-					titleAccessory={<WorkspaceTabs />}
+					title="Your workspace"
+					className="flex-row"
+					titleClassName="text-xl sm:text-3xl"
+					actionsClassName="flex-nowrap"
+					description="Apps, forms and agents, together."
 					actions={
-						<Button variant="outline" asChild>
-							<Link to="/chat">
-								<MessageSquare className="size-4" />
-								New chat
-							</Link>
-						</Button>
+						<>
+							{isPlatformAdmin && (
+								<Button variant="ghost" asChild>
+									<Link
+										to="/dashboard"
+										aria-label="Dashboard"
+									>
+										<LayoutDashboard className="size-4 sm:hidden" />
+										<span className="hidden sm:inline">
+											Dashboard
+										</span>
+									</Link>
+								</Button>
+							)}
+							<Button asChild>
+								<Link to="/chat" aria-label="New chat">
+									<MessageSquare className="size-4" />
+									<span className="hidden sm:inline">
+										New chat
+									</span>
+								</Link>
+							</Button>
+						</>
 					}
 				/>
-				<div className="flex flex-col gap-3 sm:flex-row">
+				<div className="flex flex-col gap-3">
 					<div className="relative min-w-0 flex-1">
 						<Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
 						<Input
@@ -263,36 +293,18 @@ export function Home() {
 							}
 						/>
 					</div>
-					{isPlatformAdmin && (
-						<OrganizationSelect
-							aria-label="Organization filter"
-							value={
-								org === "all"
-									? undefined
-									: org === "global"
-										? null
-										: org
-							}
-							onChange={(value) =>
-								updateParam(
-									"org",
-									value === undefined
-										? "all"
-										: value === null
-											? "global"
-											: value,
-								)
-							}
-							showAll
-							showGlobal
-							triggerClassName="w-full sm:w-60"
-						/>
-					)}
 				</div>
-				<CatalogFilters
-					value={kind}
-					resources={ordered.filter(inScope)}
-					onChange={(value) => updateParam("type", value)}
+				<CollectionNavigation
+					collections={collections.filter(
+						(collection) =>
+							org === "all" ||
+							!collection.shared ||
+							!collection.organization_id ||
+							collection.organization_id === org,
+					)}
+					selected={selected?.id ?? null}
+					onSelect={(id) => updateParam("collection", id)}
+					onCreate={() => openEditor("new")}
 				/>
 			</div>
 			<PageScrollArea
@@ -300,109 +312,65 @@ export function Home() {
 				aria-label="Home workspace"
 				className="space-y-7 pb-2 pr-1"
 			>
-				{overview && (
-					<>
-						<section
-							className="space-y-3"
-							aria-label="Pinned resources"
-						>
-							<div className="flex items-baseline gap-3">
-								<h2 className="text-base font-semibold">
-									Pinned
-								</h2>
-								<span className="text-xs text-muted-foreground">
-									Personal favorites
-								</span>
-								{pinned.length > 3 && (
-									<Button
-										variant="ghost"
-										size="sm"
-										className="ml-auto"
-										onClick={() =>
-											setShowAllPins(!showAllPins)
-										}
-									>
-										{showAllPins
-											? "Show fewer"
-											: `View all ${pinned.length}`}
-									</Button>
-								)}
-							</div>
-							{pinned.length ? (
-								<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-									{(showAllPins
-										? pinned
-										: pinned.slice(0, 3)
-									).map((resource) => (
-										<ResourceCard
-											compact
-											key={resource.key}
-											resource={resource}
-											onOpen={openResource}
-											onPin={pinResource}
-											busy={
-												opening || preference.isPending
-											}
-										/>
-									))}
-								</div>
-							) : (
-								<p className="py-1 text-sm text-muted-foreground">
-									Star a resource below to keep it close at
-									hand.
-								</p>
+				<HomeBrowse
+					filters={
+						<>
+							{" "}
+							<CatalogFilters
+								value={kind}
+								resources={ordered.filter(inScope)}
+								onChange={(value) => updateParam("type", value)}
+							/>{" "}
+							{isPlatformAdmin && (
+								<OrganizationSelect
+									aria-label="Organization filter"
+									value={
+										org === "all"
+											? undefined
+											: org === "global"
+												? null
+												: org
+									}
+									onChange={(value) =>
+										updateParam(
+											"org",
+											value === undefined
+												? "all"
+												: value === null
+													? "global"
+													: value,
+										)
+									}
+									showAll
+									showGlobal
+									triggerClassName="w-44 sm:w-52"
+								/>
 							)}
-						</section>
-						<CollectionStrip
-							collections={collections.filter(
-								(collection) =>
-									org === "all" ||
-									!collection.shared ||
-									!collection.organization_id ||
-									collection.organization_id === org,
-							)}
-							selected={null}
-							onSelect={(id) => updateParam("collection", id)}
-							onEdit={openEditor}
-							onCreate={() => openEditor("new")}
-						/>
-					</>
-				)}
-				{overview ? (
-					<HomeCatalogOverview
-						resources={resources.filter(inScope)}
-						onOpen={openResource}
-						onPin={pinResource}
-						busy={opening || preference.isPending}
-						onCategory={(value) => updateParam("type", value)}
-						onViewAll={() => updateParam("catalog", "all")}
-					/>
-				) : (
-					<HomeBrowse
-						selected={selected}
-						onEdit={openEditor}
-						total={filtered.length}
-						grid={grid}
-						sort={sort}
-						visible={visible}
-						resourceCount={resources.length}
-						busy={opening || preference.isPending}
-						page={page}
-						updateParam={updateParam}
-						onOpen={openResource}
-						onPin={pinResource}
-						onPageChange={(offset) =>
-							setParams(
-								(previous) => {
-									const next = new URLSearchParams(previous);
-									next.set("page", String(offset / 12));
-									return next;
-								},
-								{ replace: true },
-							)
-						}
-					/>
-				)}
+						</>
+					}
+					selected={selected}
+					onEdit={openEditor}
+					total={filtered.length}
+					grid={grid}
+					sort={sort}
+					visible={visible}
+					resourceCount={resources.length}
+					busy={opening || preference.isPending}
+					page={page}
+					updateParam={updateParam}
+					onOpen={openResource}
+					onPin={pinResource}
+					onPageChange={(offset) =>
+						setParams(
+							(previous) => {
+								const next = new URLSearchParams(previous);
+								next.set("page", String(offset / 12));
+								return next;
+							},
+							{ replace: true },
+						)
+					}
+				/>
 			</PageScrollArea>
 			{activeEditor && (
 				<CollectionEditor

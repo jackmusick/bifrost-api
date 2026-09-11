@@ -194,9 +194,14 @@ function findResource(
 
 async function showAllCatalog(page: Page): Promise<void> {
 	await page.goto("/?catalog=all");
-	await expect(page.getByRole("heading", { name: "Home" })).toBeVisible({
+	await expect(
+		page.getByRole("heading", { name: "Your workspace" }),
+	).toBeVisible({
 		timeout: 10_000,
 	});
+	await expect(
+		page.getByRole("region", { name: "Browse resources" }),
+	).toBeVisible();
 }
 
 async function expectVisibleResource(
@@ -223,6 +228,11 @@ async function chooseOrganization(page: Page, organizationName: string) {
 		.locator('[data-slot="command-item"]')
 		.filter({ hasText: organizationName })
 		.click();
+}
+
+async function chooseResourceType(page: Page, name: string) {
+	await page.getByRole("combobox", { name: "Resource type" }).click();
+	await page.getByRole("option", { name }).click();
 }
 
 test("HOME-CATALOG-01 launches app/form resources and filters exact Home catalog data", async ({
@@ -275,12 +285,12 @@ test("HOME-CATALOG-01 launches app/form resources and filters exact Home catalog
 		await expectVisibleResource(page, FORM_NAME);
 		await expectVisibleResource(page, OTHER_FORM_NAME);
 
-		await page.getByRole("button", { name: "Apps" }).click();
+		await chooseResourceType(page, "Apps");
 		await expectVisibleResource(page, APP_NAME);
 		await expectNoVisibleResource(page, FORM_NAME);
 		await expectNoVisibleResource(page, OTHER_FORM_NAME);
 
-		await page.getByRole("button", { name: "Forms" }).click();
+		await chooseResourceType(page, "Forms");
 		await expectNoVisibleResource(page, APP_NAME);
 		await expectVisibleResource(page, FORM_NAME);
 		await expectVisibleResource(page, OTHER_FORM_NAME);
@@ -289,7 +299,7 @@ test("HOME-CATALOG-01 launches app/form resources and filters exact Home catalog
 		await expectVisibleResource(page, FORM_NAME);
 		await expectNoVisibleResource(page, OTHER_FORM_NAME);
 
-		await page.getByRole("button", { name: "All" }).click();
+		await chooseResourceType(page, "All types");
 		await expectVisibleResource(page, APP_NAME);
 		await expectVisibleResource(page, FORM_NAME);
 		await expectNoVisibleResource(page, OTHER_FORM_NAME);

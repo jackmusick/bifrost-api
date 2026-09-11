@@ -352,8 +352,13 @@ export function Sidebar({
 									);
 								})}
 							</div>
-							{section.title === "Workspace" && (<SidebarCollections isCollapsed={isCollapsed} />)}
-</Fragment>
+							{section.title === "Workspace" &&
+								location.pathname !== "/" && (
+									<SidebarCollections
+										isCollapsed={isCollapsed}
+									/>
+								)}
+						</Fragment>
 					))}
 				</nav>
 			</aside>
@@ -435,8 +440,16 @@ export function Sidebar({
 										);
 									})}
 								</div>
-								{section.title === "Workspace" && (<SidebarCollections isCollapsed={false} onNavigate={() => setIsMobileMenuOpen(false)} />)}
-</Fragment>
+								{section.title === "Workspace" &&
+									location.pathname !== "/" && (
+										<SidebarCollections
+											isCollapsed={false}
+											onNavigate={() =>
+												setIsMobileMenuOpen(false)
+											}
+										/>
+									)}
+							</Fragment>
 						))}
 					</nav>
 				</SheetContent>

@@ -28,8 +28,17 @@ test.describe("Home launch acceptance (admin)", () => {
 		try {
 			await page.goto("/");
 			await expect(
-				page.getByRole("heading", { name: "Home" }),
+				page.getByRole("heading", { name: "Your workspace" }),
 			).toBeVisible({ timeout: 10000 });
+			await expect(
+				page.getByRole("region", { name: "Browse resources" }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("region", { name: "Pinned resources" }),
+			).toHaveCount(0);
+			await expect(
+				page.getByRole("region", { name: "Explore resources" }),
+			).toHaveCount(0);
 
 			await page
 				.getByRole("textbox", { name: "Search Home resources" })
@@ -53,14 +62,14 @@ test.describe("Home launch acceptance (admin)", () => {
 
 			await page.goto("/");
 			await page.reload();
-			const pinned = page.getByRole("region", {
-				name: "Pinned resources",
+			const browse = page.getByRole("region", {
+				name: "Browse resources",
 			});
 			await expect(
-				pinned.getByRole("button", { name: AGENT_NAME, exact: true }),
+				browse.getByRole("button", { name: AGENT_NAME, exact: true }),
 			).toBeVisible({ timeout: 10000 });
 			await expect(
-				pinned.getByRole("button", { name: `Unpin ${AGENT_NAME}` }),
+				browse.getByRole("button", { name: `Unpin ${AGENT_NAME}` }),
 			).toHaveAttribute("aria-pressed", "true");
 
 			const unpinnedSaved = page.waitForResponse(
@@ -68,16 +77,22 @@ test.describe("Home launch acceptance (admin)", () => {
 					response.url().includes("/api/home/preferences/") &&
 					response.request().method() === "PUT",
 			);
-			await pinned
+			await browse
 				.getByRole("button", { name: `Unpin ${AGENT_NAME}` })
 				.click();
 			expect((await unpinnedSaved).ok()).toBe(true);
 
 			await page.goto("/");
 			await page.reload();
+			await page
+				.getByRole("textbox", { name: "Search Home resources" })
+				.fill(AGENT_NAME);
 			await expect(
-				pinned.getByRole("button", { name: AGENT_NAME, exact: true }),
-			).toHaveCount(0, { timeout: 10000 });
+				browse.getByRole("button", { name: AGENT_NAME, exact: true }),
+			).toBeVisible({ timeout: 10000 });
+			await expect(
+				browse.getByRole("button", { name: `Pin ${AGENT_NAME}` }),
+			).toHaveAttribute("aria-pressed", "false");
 
 			await page
 				.getByRole("textbox", { name: "Search Home resources" })
@@ -104,7 +119,11 @@ test.describe("Home launch acceptance (admin)", () => {
 			);
 		} finally {
 			if (conversationId) {
-				await expectDeleted(await api.delete(`/api/chat/conversations/${conversationId}`));
+				await expectDeleted(
+					await api.delete(
+						`/api/chat/conversations/${conversationId}`,
+					),
+				);
 			}
 			await expectDeleted(await api.delete(`/api/agents/${agent.id}`));
 		}

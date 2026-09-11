@@ -42,8 +42,7 @@ vi.mock("@/stores/executionStreamStore", () => ({
 		const state = mockStreamState
 			? {
 					streams: {
-						"11111111-1111-1111-1111-111111111111":
-							mockStreamState,
+						"11111111-1111-1111-1111-111111111111": mockStreamState,
 					},
 				}
 			: { streams: {} };
@@ -74,7 +73,9 @@ vi.mock("@/components/PageLoader", () => ({
 }));
 
 vi.mock("@/components/execution", () => ({
-	ExecutionResultPanel: () => <div data-testid="result-panel">Result body</div>,
+	ExecutionResultPanel: () => (
+		<div data-testid="result-panel">Result body</div>
+	),
 	ExecutionLogsPanel: ({ logs }: { logs?: unknown[] }) => (
 		<div data-testid="logs-panel">Logs {logs?.length ?? 0}</div>
 	),
@@ -217,18 +218,17 @@ describe("ExecutionDetails — result-first inspector", () => {
 	it("defaults to Result before Input and Logs", async () => {
 		await renderPage();
 
-		expect(
-			screen.getByLabelText("Execution content"),
-		).toBeInTheDocument();
+		expect(screen.getByLabelText("Execution content")).toBeInTheDocument();
 		const tabs = screen.getAllByRole("tab");
 		expect(tabs.map((tab) => tab.textContent)).toEqual([
 			"Result",
 			"Input",
 			"Logs",
 		]);
-		expect(
-			screen.getByRole("tab", { name: "Result" }),
-		).toHaveAttribute("aria-selected", "true");
+		expect(screen.getByRole("tab", { name: "Result" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
 		expect(
 			screen.queryByRole("tab", { name: "Output" }),
 		).not.toBeInTheDocument();
@@ -289,10 +289,12 @@ describe("ExecutionDetails — result-first inspector", () => {
 
 		expect(screen.getByText("Started")).toBeInTheDocument();
 		expect(
-			screen.getByRole("heading", { name: "Activity" }),
+			screen.getByRole("heading", {
+				name: "Activity from this workflow",
+			}),
 		).toBeInTheDocument();
 		expect(screen.queryByTestId("logs-panel")).not.toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "View logs" }));
+		await user.click(screen.getByRole("button", { name: "Open logs" }));
 		expect(screen.getByRole("tab", { name: "Logs" })).toHaveAttribute(
 			"aria-selected",
 			"true",
@@ -321,7 +323,8 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 			{
 				initialEntries: [
 					{
-						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						pathname:
+							"/history/11111111-1111-1111-1111-111111111111",
 						state: triggerState,
 					} as unknown as string,
 				],
@@ -341,16 +344,18 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 
 	it("fetches immediately on browser-back re-entry when cached execution data exists", async () => {
 		const queryClient = makeQueryClient();
-		queryClient.setQueryData(
-			executionQueryKey,
-			{ ...execution, status: "Running", completed_at: null },
-		);
+		queryClient.setQueryData(executionQueryKey, {
+			...execution,
+			status: "Running",
+			completed_at: null,
+		});
 		renderWithProviders(
 			<ExecutionDetails executionId={execution.execution_id} />,
 			{
 				initialEntries: [
 					{
-						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						pathname:
+							"/history/11111111-1111-1111-1111-111111111111",
 						state: triggerState,
 					} as unknown as string,
 				],
@@ -380,7 +385,8 @@ describe("ExecutionDetails — navigation fetch gating", () => {
 			{
 				initialEntries: [
 					{
-						pathname: "/history/11111111-1111-1111-1111-111111111111",
+						pathname:
+							"/history/11111111-1111-1111-1111-111111111111",
 						state: triggerState,
 					} as unknown as string,
 				],

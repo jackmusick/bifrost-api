@@ -570,7 +570,7 @@ test.describe.serial("Public form iframe", () => {
 			)
 			.toBe(true);
 		await expect(
-			frame.getByRole("heading", { name: "Result" }),
+			frame.getByRole("tabpanel", { name: "Result" }),
 		).toBeVisible({
 			timeout: 30_000,
 		});

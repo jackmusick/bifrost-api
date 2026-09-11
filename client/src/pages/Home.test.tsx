@@ -211,7 +211,10 @@ describe("Home", () => {
 		expect(screen.getByText("Daily customer work")).toBeInTheDocument();
 		expect(screen.getByText("2 resources")).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Forms" }));
+		await user.click(
+			screen.getByRole("combobox", { name: "Resource type" }),
+		);
+		await user.click(screen.getByRole("option", { name: /^Forms/ }));
 		expect(screen.getByTestId("location-probe")).toHaveTextContent(
 			"type=form",
 		);
@@ -439,16 +442,18 @@ it("puts filtered catalog results ahead of shortcuts and keeps Dashboard admin-o
 	expect(
 		screen.queryByRole("link", { name: "Dashboard" }),
 	).not.toBeInTheDocument();
-	await user.click(screen.getByRole("button", { name: "Agents" }));
+	await user.click(screen.getByRole("combobox", { name: "Resource type" }));
+	await user.click(screen.getByRole("option", { name: /^Agents/ }));
 	expect(
 		screen.queryByRole("region", { name: "Pinned resources" }),
 	).not.toBeInTheDocument();
 	expect(
 		screen.getByRole("button", { name: "Triage Agent" }),
 	).toBeInTheDocument();
-	await user.click(screen.getByRole("button", { name: "All" }));
+	await user.click(screen.getByRole("combobox", { name: "Resource type" }));
+	await user.click(screen.getByRole("option", { name: /^All types/ }));
 	expect(
-		screen.getByRole("region", { name: "Pinned resources" }),
+		screen.getByRole("region", { name: "Browse resources" }),
 	).toBeInTheDocument();
 });
 it("opens and dismisses collection creation from sidebar navigation", async () => {
@@ -478,22 +483,36 @@ it("switches catalog presentation and sorts recent launches", async () => {
 	expect(screen.getByTestId("location-probe")).toHaveTextContent("view=list");
 });
 
-it("shows a compact overview and opens the full catalog explicitly", async () => {
-	const { user } = renderHome();
+it("shows one catalog with pinned items first and collection navigation", () => {
+	state.home.data = { resources: [...resources].reverse(), collections };
+	renderHome();
+	const cards = screen.getAllByRole("article");
+	expect(cards).toHaveLength(3);
 	expect(
-		screen.getByRole("region", { name: "Explore resources" }),
-	).toBeInTheDocument();
+		within(cards[0]).getByRole("button", { name: "Dispatch Board" }),
+	).toBeVisible();
 	expect(
-		screen.queryByRole("region", { name: "Browse resources" }),
-	).not.toBeInTheDocument();
+		screen.getAllByRole("button", { name: "Dispatch Board" }),
+	).toHaveLength(1);
 	expect(
-		screen.queryByText("Continue where you left off"),
-	).not.toBeInTheDocument();
-	await user.click(screen.getByRole("button", { name: "Browse all 3" }));
-	expect(
-		screen.getByRole("region", { name: "Browse resources" }),
-	).toBeInTheDocument();
+		screen.getByRole("navigation", { name: "Collections" }),
+	).toBeVisible();
 	expect(
 		screen.queryByRole("region", { name: "Pinned resources" }),
 	).not.toBeInTheDocument();
+});
+
+it("prioritizes matching titles over pinned description matches in search", () => {
+	state.home.data = {
+		resources: resources.map((r) =>
+			r.pinned ? { ...r, description: "Intake integration" } : r,
+		),
+		collections,
+	};
+	renderHome(["/?q=intake"]);
+	expect(
+		within(screen.getAllByRole("article")[0]).getByRole("button", {
+			name: "Intake Form",
+		}),
+	).toBeVisible();
 });

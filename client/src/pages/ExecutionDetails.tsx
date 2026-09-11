@@ -1,4 +1,5 @@
 import { ExecutionActivityFeed } from "@/components/execution/ExecutionActivityFeed";
+import "@/components/execution/execution-details.css";
 import { ExecutionInspector } from "@/components/execution/ExecutionInspector";
 import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
 import { ExecutionPageHeader } from "@/components/execution/ExecutionPageHeader";
@@ -70,9 +71,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
 	"Cancelled",
 ]);
 
-function isTerminalExecutionStatus(
-	status: unknown,
-): status is ExecutionStatus {
+function isTerminalExecutionStatus(status: unknown): status is ExecutionStatus {
 	return (
 		typeof status === "string" &&
 		TERMINAL_EXECUTION_STATUSES.has(status as ExecutionStatus)
@@ -138,8 +137,9 @@ export function ExecutionDetails({
 	const [signalrEnabled, setSignalrEnabled] = useState(false);
 
 	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
-	const [fetchFallbackEnabled, setFetchFallbackEnabled] =
-		useState(!shouldDeferInitialFetch);
+	const [fetchFallbackEnabled, setFetchFallbackEnabled] = useState(
+		!shouldDeferInitialFetch,
+	);
 
 	// Get streaming logs from store
 	// Use stable selector to avoid infinite loops
@@ -254,6 +254,10 @@ export function ExecutionDetails({
 		executionStatus === "CompletedWithErrors" ||
 		executionStatus === "Timeout" ||
 		executionStatus === "Cancelled";
+	const isActive =
+		executionStatus === "Running" ||
+		executionStatus === "Pending" ||
+		executionStatus === "Cancelling";
 
 	// Data now comes from single API call - create adapter variables for compatibility
 	const resultData = execution
@@ -293,23 +297,20 @@ export function ExecutionDetails({
 	useEffect(() => {
 		if (streamStatus && executionId) {
 			// Use openapi-react-query's query key format
-			queryClient.setQueryData(
-				executionQueryKey,
-				(old: unknown) => {
-					if (!old || typeof old !== "object") return old;
-					const oldStatus = (old as Record<string, unknown>).status;
-					if (
-						isTerminalExecutionStatus(oldStatus) &&
-						!isTerminalExecutionStatus(streamStatus)
-					) {
-						return old;
-					}
-					return {
-						...(old as Record<string, unknown>),
-						status: streamStatus,
-					};
-				},
-			);
+			queryClient.setQueryData(executionQueryKey, (old: unknown) => {
+				if (!old || typeof old !== "object") return old;
+				const oldStatus = (old as Record<string, unknown>).status;
+				if (
+					isTerminalExecutionStatus(oldStatus) &&
+					!isTerminalExecutionStatus(streamStatus)
+				) {
+					return old;
+				}
+				return {
+					...(old as Record<string, unknown>),
+					status: streamStatus,
+				};
+			});
 		}
 	}, [streamStatus, executionId, queryClient, executionQueryKey]);
 
@@ -529,15 +530,22 @@ export function ExecutionDetails({
 	) : null;
 
 	const runningResult = (
-		<div className="space-y-4 py-1">
-			<p className="text-sm text-muted-foreground">
-				{executionStatus === "Pending"
-					? "This run is waiting to start. The result will appear here when it completes."
-					: executionStatus === "Cancelling"
-						? "Cancellation has been requested. Any available activity remains below."
-						: "This run is active. The result will appear here when it completes."}
-			</p>
-			<ExecutionActivityFeed logs={mergedLogs} onViewLogs={() => setSelectedContentTab("logs")} />
+		<div className="space-y-4">
+			{(mergedLogs.length === 0 ||
+				executionStatus === "Pending" ||
+				executionStatus === "Cancelling") && (
+				<p className="text-sm text-muted-foreground">
+					{executionStatus === "Pending"
+						? "This run is waiting to start. The result will appear here when it completes."
+						: executionStatus === "Cancelling"
+							? "Cancellation has been requested. Any available activity remains below."
+							: "This run is active. The result will appear here when it completes."}
+				</p>
+			)}
+			<ExecutionActivityFeed
+				logs={mergedLogs}
+				onViewLogs={() => setSelectedContentTab("logs")}
+			/>
 		</div>
 	);
 
@@ -701,6 +709,7 @@ export function ExecutionDetails({
 						orgName={execution.org_name}
 						isConnected={isConnected}
 						isStreamingEnabled={signalrEnabled}
+						showProgressLine={false}
 					/>
 
 					{/* Error message — the triage answer; loud, copyable */}
@@ -742,17 +751,24 @@ export function ExecutionDetails({
 						</div>
 					)}
 
-					<ExecutionInspector
-						key={executionId}
-						value={selectedContentTab}
-						onValueChange={setSelectedContentTab}
-						result={resultContent}
-						input={inputContent}
-						logs={logsContent}
-						summary={renderExtraDetails(
-							"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180",
-						)}
-					/>
+					<div
+						className={
+							isActive ? "execution-detail-card p-3" : "min-w-0"
+						}
+						data-active={isActive ? "true" : undefined}
+					>
+						<ExecutionInspector
+							key={executionId}
+							value={selectedContentTab}
+							onValueChange={setSelectedContentTab}
+							result={resultContent}
+							input={inputContent}
+							logs={logsContent}
+							summary={renderExtraDetails(
+								"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180",
+							)}
+						/>
+					</div>
 				</div>
 
 				<ExecutionCancelDialog
@@ -777,7 +793,7 @@ export function ExecutionDetails({
 	}
 
 	return (
-		<div className="h-full overflow-y-auto bg-background lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+		<div className="execution-shell h-full overflow-y-auto bg-background lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
 			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
 			{!isEmbed && (
 				<ExecutionPageHeader
@@ -848,6 +864,7 @@ export function ExecutionDetails({
 						orgName={execution.org_name}
 						isConnected={isConnected}
 						isStreamingEnabled={signalrEnabled}
+						showProgressLine={false}
 					/>
 					{execution.error_message && (
 						<motion.div
@@ -910,7 +927,12 @@ export function ExecutionDetails({
 							}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ duration: reduceMotion ? 0 : 0.22 }}
-							className="w-full min-w-0"
+							className={
+								isActive
+									? "execution-detail-card w-full min-w-0 p-3 sm:p-4"
+									: "w-full min-w-0"
+							}
+							data-active={isActive ? "true" : undefined}
 						>
 							<ExecutionInspector
 								key={executionId}

@@ -46,7 +46,11 @@ export function ExecutionInspector({
 				className="min-w-0"
 			>
 				<div className="mb-4 min-w-0">
-					<TabsList aria-label="Execution content tabs">
+					<TabsList
+						variant="line"
+						aria-label="Execution content tabs"
+						className="w-fit max-w-full justify-start gap-3"
+					>
 						<TabsTrigger value="result">Result</TabsTrigger>
 						<TabsTrigger value="input">Input</TabsTrigger>
 						<TabsTrigger value="logs">Logs</TabsTrigger>

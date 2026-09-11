@@ -1,4 +1,4 @@
-import { Building2, Star } from "lucide-react";
+import { Building2, Pin } from "lucide-react";
 import { ResourceIcon } from "@/components/ResourceIcon";
 import { Button } from "@/components/ui/button";
 import type { HomeResource } from "@/services/home";
@@ -25,7 +25,7 @@ export function ResourceCard({
 }) {
 	return (
 		<article className="relative flex min-w-0 flex-col rounded-[var(--bf-radius-surface)] border bg-card transition-colors hover:border-primary/40 focus-within:border-primary">
-			<div className="flex items-start gap-3 p-3 sm:p-4 sm:pb-2">
+			<div className="flex flex-wrap items-start gap-3 p-4 sm:p-5 sm:pb-3">
 				<ResourceIcon
 					kind={resource.kind}
 					id={resource.id}
@@ -33,10 +33,21 @@ export function ResourceCard({
 					logo={resource.logo_url ?? null}
 					cacheKey={resource.logo_version ?? undefined}
 					size="card"
+					className={
+						resource.kind === "app"
+							? "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300 [&_svg]:text-current"
+							: resource.kind === "form"
+								? "border-amber-500/20 bg-amber-500/10 text-amber-800 dark:text-amber-300 [&_svg]:text-current"
+								: "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300 [&_svg]:text-current"
+					}
 				/>
-				<div className="min-w-0 flex-1">
+				<div
+					className={
+						compact ? "min-w-0 flex-1" : "min-w-0 w-full order-2"
+					}
+				>
 					<button
-						className="text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring [overflow-wrap:anywhere]"
+						className="text-left text-base leading-snug font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring [overflow-wrap:anywhere]"
 						onClick={() => onOpen(resource)}
 						disabled={busy}
 					>
@@ -44,7 +55,7 @@ export function ResourceCard({
 					</button>
 					<p className="mt-1 text-xs text-muted-foreground">
 						{resourceTypes[resource.kind]}
-						<span className={compact ? "" : "sm:hidden"}>
+						<span className={compact ? "" : "hidden"}>
 							{" "}
 							· {resource.organization_name}
 						</span>
@@ -53,13 +64,13 @@ export function ResourceCard({
 				<Button
 					variant="ghost"
 					size="icon"
-					className="relative z-10 -mr-2 -mt-2 size-11 shrink-0"
+					className="relative z-10 ml-auto -mr-2 -mt-2 size-11 shrink-0"
 					aria-label={`${resource.pinned ? "Unpin" : "Pin"} ${resource.name}`}
 					aria-pressed={resource.pinned}
 					disabled={busy}
 					onClick={() => onPin(resource)}
 				>
-					<Star
+					<Pin
 						className={
 							resource.pinned
 								? "size-4 fill-primary text-primary"
@@ -70,10 +81,10 @@ export function ResourceCard({
 			</div>
 			{!compact && (
 				<>
-					<p className="hidden min-h-10 sm:line-clamp-2 px-4 text-sm leading-5 text-muted-foreground">
+					<p className="line-clamp-2 px-4 sm:px-5 text-sm leading-relaxed text-muted-foreground">
 						{resource.description || resourceActions[resource.kind]}
 					</p>
-					<p className="mt-auto hidden items-center sm:flex gap-2 px-4 py-3 text-xs text-muted-foreground">
+					<p className="mt-auto flex items-center gap-2 px-4 sm:px-5 py-4 text-xs text-muted-foreground">
 						<Building2 className="size-3.5 shrink-0" />
 						<span className="truncate">
 							{resource.organization_name}

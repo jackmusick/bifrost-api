@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, AlertTriangle, Circle } from "lucide-react";
+import { ArrowDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ExecutionLogEntry } from "@/lib/executionLogs";
 
@@ -21,15 +21,18 @@ export function ExecutionActivityFeed({
 	if (!logs.length) return null;
 	return (
 		<section className="min-w-0" aria-label="Live activity">
-			<div className="mb-2 flex items-center justify-between gap-3">
-				<h3 className="text-sm font-semibold">Activity</h3>
+			<div className="mb-3 flex items-center justify-between gap-3">
+				<h3 className="text-sm font-semibold">
+					Activity from this workflow
+				</h3>
 				<Button
 					type="button"
 					variant="ghost"
 					size="sm"
+					className="h-8 px-2 text-xs"
 					onClick={onViewLogs}
 				>
-					View logs
+					Open logs
 				</Button>
 			</div>
 			<div
@@ -38,7 +41,7 @@ export function ExecutionActivityFeed({
 				aria-label="Workflow messages"
 				aria-live="off"
 				tabIndex={0}
-				className="max-h-80 overflow-y-auto overscroll-contain pr-3 focus-visible:outline-ring"
+				className="max-h-80 overflow-y-auto overscroll-contain pr-1 focus-visible:outline-ring sm:pr-3"
 				onScroll={(event) => {
 					const element = event.currentTarget;
 					following.current =
@@ -57,30 +60,31 @@ export function ExecutionActivityFeed({
 						return (
 							<li
 								key={log.sequence ?? log.id ?? index}
-								className="relative flex gap-3 py-2.5 text-sm"
+								className="execution-live-row grid gap-1 px-2 py-2.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3"
+								data-latest={
+									index === logs.length - 1
+										? "true"
+										: undefined
+								}
+								data-warning={warning ? "true" : undefined}
 							>
-								<span className="relative flex w-4 shrink-0 justify-center">
-									{index < logs.length - 1 && (
-										<span
-											aria-hidden="true"
-											className="absolute bottom-[-0.625rem] top-5 w-px bg-border"
-										/>
-									)}
-									{warning ? (
+								<p className="min-w-0 flex-1 whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">
+									{warning && (
 										<AlertTriangle
 											aria-label={log.level}
-											className="mt-0.5 size-4 text-warning"
-										/>
-									) : (
-										<Circle
-											aria-hidden="true"
-											className="mt-1 size-2 fill-primary/30 text-primary/60"
+											className="mr-1.5 inline size-3.5 align-[-0.125em] text-warning"
 										/>
 									)}
-								</span>
-								<p className="min-w-0 flex-1 whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">
 									{log.message}
 								</p>
+								{log.timestamp && (
+									<time
+										dateTime={log.timestamp}
+										className="text-xs tabular-nums text-muted-foreground sm:pt-1"
+									>
+										{formatActivityTime(log.timestamp)}
+									</time>
+								)}
 							</li>
 						);
 					})}
@@ -106,4 +110,14 @@ export function ExecutionActivityFeed({
 			)}
 		</section>
 	);
+}
+
+function formatActivityTime(timestamp: string): string {
+	const date = new Date(timestamp);
+	if (Number.isNaN(date.getTime())) return timestamp;
+	return date.toLocaleTimeString([], {
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
 }

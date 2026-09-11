@@ -84,9 +84,7 @@ describe("PrettyInputDisplay — label and value formatting", () => {
 	});
 
 	it("renders numbers with locale formatting and a 'number' badge", () => {
-		renderWithProviders(
-			<PrettyInputDisplay inputData={{ count: 1234 }} />,
-		);
+		renderWithProviders(<PrettyInputDisplay inputData={{ count: 1234 }} />);
 		expect(screen.getByText("number")).toBeInTheDocument();
 		expect(screen.getByText(/1,234/)).toBeInTheDocument();
 	});
@@ -178,9 +176,7 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 	];
 
 	it("renders an array of same-shaped flat objects as a table", () => {
-		renderWithProviders(
-			<PrettyInputDisplay inputData={{ licenses }} />,
-		);
+		renderWithProviders(<PrettyInputDisplay inputData={{ licenses }} />);
 		const table = screen.getByRole("table");
 		expect(table).toBeInTheDocument();
 		expect(
@@ -189,8 +185,12 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 		expect(
 			screen.getByRole("columnheader", { name: "Value" }),
 		).toBeInTheDocument();
-		expect(within(screen.getByRole("table")).getByText("Microsoft 365 E3")).toBeInTheDocument();
-		expect(within(screen.getByRole("table")).getByText("defender_p2")).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("table")).getByText("Microsoft 365 E3"),
+		).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("table")).getByText("defender_p2"),
+		).toBeInTheDocument();
 	});
 
 	it("renders missing cells in mostly-uniform arrays as an em dash", () => {
@@ -207,7 +207,9 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 				}}
 			/>,
 		);
-		expect(within(screen.getByRole("table")).getByText("—")).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("table")).getByText("—"),
+		).toBeInTheDocument();
 	});
 
 	it("falls back to JSON when array items are not table-shaped", () => {
@@ -234,7 +236,9 @@ describe("PrettyInputDisplay — mini table for uniform object arrays", () => {
 		expect(
 			screen.getByText("Showing first 50 of 5,395 rows"),
 		).toBeInTheDocument();
-		expect(within(screen.getByRole("table")).getByText("row-49")).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("table")).getByText("row-49"),
+		).toBeInTheDocument();
 		expect(screen.queryByText("row-50")).not.toBeInTheDocument();
 	});
 });
@@ -247,7 +251,9 @@ describe("PrettyInputDisplay — large scalar values", () => {
 			<PrettyInputDisplay inputData={{ table_html: largeHtml }} />,
 		);
 
-		expect(screen.getByText(/3,225,182 characters total/)).toBeInTheDocument();
+		expect(
+			screen.getByText(/3,225,182 characters total/),
+		).toBeInTheDocument();
 		expect(screen.queryByText(largeHtml)).not.toBeInTheDocument();
 	});
 });
@@ -268,7 +274,9 @@ describe("PrettyInputDisplay — top-level arrays", () => {
 			/>,
 		);
 		expect(screen.getByText("3 items")).toBeInTheDocument();
-		expect(screen.queryByText(/viewing 3 parameters/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/viewing 3 parameters/i),
+		).not.toBeInTheDocument();
 		// No numeric 0..n key labels.
 		expect(screen.queryByText("0")).not.toBeInTheDocument();
 	});
@@ -276,7 +284,9 @@ describe("PrettyInputDisplay — top-level arrays", () => {
 	it("renders a table-shaped top-level array directly as a table", () => {
 		renderWithProviders(<PrettyInputDisplay inputData={licenses} />);
 		expect(screen.getByRole("table")).toBeInTheDocument();
-		expect(within(screen.getByRole("table")).getByText("Huntress Managed EDR")).toBeInTheDocument();
+		expect(
+			within(screen.getByRole("table")).getByText("Huntress Managed EDR"),
+		).toBeInTheDocument();
 	});
 
 	it("renders a top-level scalar array as a comma list", () => {
@@ -341,7 +351,9 @@ describe("PrettyInputDisplay — view toggle", () => {
 		expect(screen.getByText(/viewing 1 parameter/i)).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /tree view/i }));
-		expect(screen.getByLabelText("variables-tree-stub")).toBeInTheDocument();
+		expect(
+			screen.getByLabelText("variables-tree-stub"),
+		).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /pretty view/i }));
 		expect(screen.getByText(/viewing 1 parameter/i)).toBeInTheDocument();
@@ -367,7 +379,9 @@ describe("PrettyInputDisplay — view toggle", () => {
 				context="result"
 			/>,
 		);
-		expect(screen.getByText(/viewing 2 result fields/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/viewing 2 result fields/i),
+		).toBeInTheDocument();
 		expect(
 			screen.queryByText(/viewing 2 parameters/i),
 		).not.toBeInTheDocument();
@@ -376,7 +390,10 @@ describe("PrettyInputDisplay — view toggle", () => {
 
 describe("PrettyInputDisplay — narrow panel records", () => {
 	it("provides labelled records with the same missing-value and preview contract", () => {
-		const rows = Array.from({ length: 51 }, (_, index) => ({ name: `record-${index}`, value: index ? "kept" : null }));
+		const rows = Array.from({ length: 51 }, (_, index) => ({
+			name: `record-${index}`,
+			value: index ? "kept" : null,
+		}));
 		renderWithProviders(<PrettyInputDisplay inputData={rows} />);
 		const list = screen.getByRole("list", { name: "Input records" });
 		expect(within(list).getAllByRole("listitem")).toHaveLength(50);
@@ -384,4 +401,21 @@ describe("PrettyInputDisplay — narrow panel records", () => {
 		expect(within(list).queryByText("record-50")).not.toBeInTheDocument();
 		expect(within(list).getByText("—")).toBeInTheDocument();
 	});
+});
+
+it("can omit count narration while keeping result inspection controls", () => {
+	renderWithProviders(
+		<PrettyInputDisplay
+			inputData={{ name: "Jordan" }}
+			context="result"
+			showToggle
+			showDescription={false}
+		/>,
+	);
+	expect(
+		screen.queryByText(/Viewing .* result field/),
+	).not.toBeInTheDocument();
+	expect(screen.getByText("Jordan")).toBeVisible();
+	expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+	expect(screen.getByRole("button", { name: "Tree View" })).toBeVisible();
 });

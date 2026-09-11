@@ -10,6 +10,7 @@ interface ExecutionActivityTraceProps {
 	orgName?: string | null;
 	isConnected?: boolean;
 	isStreamingEnabled?: boolean;
+	showProgressLine?: boolean;
 	className?: string;
 }
 
@@ -22,6 +23,7 @@ export function ExecutionActivityTrace({
 	orgName,
 	isConnected,
 	isStreamingEnabled,
+	showProgressLine = true,
 	className,
 }: ExecutionActivityTraceProps) {
 	const active =
@@ -89,7 +91,7 @@ export function ExecutionActivityTrace({
 					{connection}
 				</span>
 			)}
-			{active && (
+			{active && showProgressLine && (
 				<div
 					aria-hidden="true"
 					className="route-transition-progress-track absolute inset-x-0 bottom-0 h-0.5 overflow-hidden"

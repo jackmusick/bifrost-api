@@ -11,6 +11,7 @@ const MAX_SCALAR_DISPLAY_CHARS = 1000;
 interface PrettyInputDisplayProps {
 	inputData: Record<string, unknown> | unknown[];
 	showToggle?: boolean;
+	showDescription?: boolean;
 	defaultView?: "pretty" | "tree";
 	context?: "input" | "result";
 }
@@ -315,6 +316,7 @@ function ValueContent({ value, depth }: { value: unknown; depth: number }) {
 export function PrettyInputDisplay({
 	inputData,
 	showToggle = false,
+	showDescription = true,
 	defaultView = "pretty",
 	context = "input",
 }: PrettyInputDisplayProps) {
@@ -329,7 +331,9 @@ export function PrettyInputDisplay({
 					view={view}
 					showToggle={showToggle}
 					description={
-						showToggle ? "Viewing tree structure" : undefined
+						showToggle && showDescription
+							? "Viewing tree structure"
+							: undefined
 					}
 					onViewChange={setView}
 				/>
@@ -369,7 +373,7 @@ export function PrettyInputDisplay({
 			inputData={inputData}
 			view={view}
 			showToggle={showToggle}
-			description={showToggle ? countLine : undefined}
+			description={showToggle && showDescription ? countLine : undefined}
 			onViewChange={setView}
 		/>
 	);

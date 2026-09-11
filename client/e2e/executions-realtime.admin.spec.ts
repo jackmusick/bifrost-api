@@ -83,7 +83,9 @@ test.describe("Execution Realtime Streaming", () => {
 		).toHaveAttribute("aria-selected", "true");
 		const activity = page.getByRole("log", { name: "Workflow messages" });
 		await expect(activity).toBeVisible({ timeout: 45000 });
-		await expect.poll(() => activity.locator("li").count(), { timeout: 15000 }).toBeGreaterThan(1);
+		await expect
+			.poll(() => activity.locator("li").count(), { timeout: 15000 })
+			.toBeGreaterThan(1);
 		await page.getByRole("tab", { name: "Logs", exact: true }).click();
 
 		// Assertion 1: at least one log message appears while running.
@@ -121,14 +123,9 @@ test.describe("Execution Realtime Streaming", () => {
 		).toHaveAttribute("aria-selected", "true");
 		await page.getByRole("tab", { name: "Result", exact: true }).click();
 
-		// Assertion 4: the final result panel renders once complete. The
-		// ExecutionResultPanel section is headed by an exact "Result" heading
-		// (the restyle replaced the old "Workflow execution result" card
-		// description with a small-caps <h4>Result</h4> section header).
-		// PrettyInputDisplay converts the JSON keys to Title Case, so "lines"
-		// becomes "Lines" — finding it confirms the result payload rendered.
+		// The selected result panel renders the actual workflow payload.
 		await expect(
-			page.getByRole("heading", { name: "Result", exact: true }),
+			page.getByRole("tabpanel", { name: "Result", exact: true }),
 		).toBeVisible({ timeout: 10000 });
 		await expect(page.getByText("Lines", { exact: true })).toBeVisible();
 

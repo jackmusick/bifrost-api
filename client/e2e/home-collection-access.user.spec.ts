@@ -157,15 +157,31 @@ function collectionByName(home: HomeResponse, name: string): HomeCollection {
 
 async function openHome(page: Page): Promise<void> {
 	await page.goto("/");
-	await expect(page.getByRole("heading", { name: "Home" })).toBeVisible({
+	await expect(
+		page.getByRole("heading", { name: "Your workspace" }),
+	).toBeVisible({
 		timeout: 10_000,
 	});
+	await expect(
+		page.getByRole("navigation", { name: "Collections" }),
+	).toBeVisible();
 }
 
 async function selectCollection(page: Page, name: string): Promise<void> {
-	await page
-		.getByRole("button", { name: new RegExp(`^${escapeRegExp(name)}`) })
-		.click();
+	const nav = page.getByRole("navigation", { name: "Collections" });
+	const collectionButton = nav.getByRole("button", {
+		name: new RegExp(`^${escapeRegExp(name)}`),
+	});
+	if (await collectionButton.isVisible()) {
+		await collectionButton.click();
+	} else {
+		await nav.getByRole("button", { name: "More collections" }).click();
+		await page
+			.getByRole("menuitem", {
+				name: new RegExp(`^${escapeRegExp(name)}`),
+			})
+			.click();
+	}
 	await expect(page.getByRole("heading", { name })).toBeVisible();
 }
 
@@ -261,14 +277,12 @@ test("HOME-COLLECTION-ACCESS-01 proves private ownership, shared filtering, and 
 				name: new RegExp(`^${escapeRegExp(ORG2_PRIVATE_NAME)}`),
 			}),
 		).toHaveCount(0);
+		await selectCollection(org1.page, ORG1_PRIVATE_NAME);
 		await expect(
 			org1.page.getByRole("button", {
 				name: `Edit ${ORG1_PRIVATE_NAME}`,
 			}),
 		).toBeVisible();
-		await expect(
-			org1.page.getByRole("button", { name: `Edit ${SHARED_NAME}` }),
-		).toHaveCount(0);
 
 		await org1.page
 			.getByRole("button", { name: `Edit ${ORG1_PRIVATE_NAME}` })
@@ -295,6 +309,9 @@ test("HOME-COLLECTION-ACCESS-01 proves private ownership, shared filtering, and 
 		await openHome(org1.page);
 		await selectCollection(org1.page, SHARED_NAME);
 		await expect(
+			org1.page.getByRole("button", { name: `Edit ${SHARED_NAME}` }),
+		).toHaveCount(0);
+		await expect(
 			org1.page.getByRole("button", {
 				name: ORG1_FORM_NAME,
 				exact: true,
@@ -312,6 +329,7 @@ test("HOME-COLLECTION-ACCESS-01 proves private ownership, shared filtering, and 
 		expect(adminShared.can_edit).toBe(true);
 		expect(adminShared.resource_keys).toEqual([org1Form.key, org2Form.key]);
 		await openHome(admin.page);
+		await selectCollection(admin.page, SHARED_NAME);
 		await expect(
 			admin.page.getByRole("button", { name: `Edit ${SHARED_NAME}` }),
 		).toBeVisible();

@@ -30,7 +30,7 @@ test.describe("Org user denied route recovery", () => {
 
 		await expect(page).toHaveURL(/\/$/);
 		await expect(
-			page.getByRole("heading", { name: "Home", exact: true }),
+			page.getByRole("heading", { name: "Your workspace", exact: true }),
 		).toBeVisible({ timeout: 10000 });
 		await expect(
 			page.getByRole("navigation", { name: "Workspace views" }),

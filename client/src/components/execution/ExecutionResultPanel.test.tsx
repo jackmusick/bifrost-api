@@ -36,11 +36,10 @@ vi.mock("./SafeHTMLRenderer", () => ({
 async function renderPanel(
 	props: Partial<
 		Parameters<
-			typeof import("./ExecutionResultPanel")["ExecutionResultPanel"]
+			(typeof import("./ExecutionResultPanel"))["ExecutionResultPanel"]
 		>[0]
 	>,
 ) {
-
 	return renderWithProviders(<ExecutionResultPanel {...props} />);
 }
 
@@ -65,7 +64,9 @@ describe("ExecutionResultPanel — empty/loading", () => {
 		expect(
 			container.querySelectorAll(".animate-pulse").length,
 		).toBeGreaterThan(0);
-		expect(screen.queryByText(/no result returned/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/no result returned/i),
+		).not.toBeInTheDocument();
 	});
 });
 
@@ -126,14 +127,15 @@ describe("ExecutionResultPanel — renderer dispatch", () => {
 	});
 });
 
-describe("ExecutionResultPanel — section header", () => {
-	it("renders the small-caps section label", async () => {
+describe("ExecutionResultPanel — chrome", () => {
+	it("does not render a duplicate Result heading above renderer controls", async () => {
 		await renderPanel({
 			result: { ok: true },
 			resultType: "json",
 		});
-		const heading = screen.getByRole("heading", { name: /result/i });
-		expect(heading.tagName).toBe("H4");
+		expect(
+			screen.queryByRole("heading", { name: /result/i }),
+		).not.toBeInTheDocument();
 		expect(screen.getByLabelText("pretty-input-stub")).toBeInTheDocument();
 	});
 });

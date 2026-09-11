@@ -298,7 +298,7 @@ test.describe("Execution History", () => {
 				page.getByRole("tab", { name: "Result", exact: true }),
 			).toHaveAttribute("aria-selected", "true");
 			await expect(
-				page.getByRole("heading", { name: "Result", exact: true }),
+				page.getByRole("tabpanel", { name: "Result", exact: true }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("tabpanel", { name: "Result", exact: true }),
@@ -492,6 +492,17 @@ test.describe("Execution History", () => {
 
 		await page.setViewportSize({ width: 390, height: 844 });
 		await openExecutionDetail(page, executionId);
+		await page
+			.getByRole("button", { name: "Cancel", exact: true })
+			.waitFor();
+		await page.screenshot({
+			path: test.info().outputPath("running-mobile.png"),
+		});
+		await page.setViewportSize({ width: 1440, height: 1000 });
+		await page.screenshot({
+			path: test.info().outputPath("running-desktop.png"),
+		});
+		await page.setViewportSize({ width: 390, height: 844 });
 		await page.getByRole("button", { name: "Cancel", exact: true }).click();
 		await expect(
 			page.getByRole("alertdialog", { name: "Cancel Execution?" }),

@@ -139,8 +139,8 @@ describe("Sidebar structure", () => {
 			screen.getByRole("link", { name: "History" }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("link", { name: "Operations" }),
-		).toHaveAttribute("href", "/?collection=col-1");
+			screen.queryByRole("link", { name: "Operations" }),
+		).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole("link", { name: "Apps" }),
 		).not.toBeInTheDocument();
@@ -155,14 +155,14 @@ describe("Sidebar structure", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("renders collection shortcuts from the shared Home query and marks the selected collection", () => {
+	it("renders collection shortcuts outside the Home catalog", () => {
 		renderWithProviders(
 			<Sidebar
 				isMobileMenuOpen={false}
 				setIsMobileMenuOpen={vi.fn()}
 				isCollapsed={false}
 			/>,
-			{ initialEntries: ["/?collection=col-2"] },
+			{ initialEntries: ["/history"] },
 		);
 
 		expect(state.useQuery).toHaveBeenCalledWith("get", "/api/home");
@@ -174,7 +174,7 @@ describe("Sidebar structure", () => {
 		).toHaveAttribute("href", "/?collection=col-1");
 		expect(
 			screen.getByRole("link", { name: "Escalations" }),
-		).toHaveAttribute("aria-current", "page");
+		).toHaveAttribute("href", "/?collection=col-2");
 		expect(
 			screen.getByRole("link", { name: "New collection" }),
 		).toHaveAttribute("href", "/?newCollection=1");

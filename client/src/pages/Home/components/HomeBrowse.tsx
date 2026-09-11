@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { LayoutGrid, List, X, Pencil } from "lucide-react";
 import {
 	Select,
@@ -13,6 +14,7 @@ import type { HomeCollection, HomeResource } from "@/services/home";
 import { ResourceCard } from "./ResourceCard";
 import { ResourceList } from "./ResourceList";
 export function HomeBrowse({
+	filters,
 	selected,
 	onEdit,
 	total,
@@ -27,6 +29,7 @@ export function HomeBrowse({
 	onPin,
 	onPageChange,
 }: {
+	filters?: ReactNode;
 	selected?: HomeCollection;
 	onEdit: (collection: HomeCollection) => void;
 	total: number;
@@ -44,11 +47,18 @@ export function HomeBrowse({
 	return (
 		<section className="space-y-3" aria-label="Browse resources">
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2">
-					<h2 className="text-base font-semibold [overflow-wrap:anywhere]">
-						{selected?.name ?? "All apps, forms, and agents"}
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					{filters}
+					<h2
+						className={
+							selected
+								? "text-base font-semibold [overflow-wrap:anywhere]"
+								: "sr-only"
+						}
+					>
+						{selected?.name ?? "Resources"}
 					</h2>
-					<span className="shrink-0 text-xs text-muted-foreground">
+					<span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
 						{total} resources
 					</span>
 					{selected?.can_edit && (
@@ -89,6 +99,9 @@ export function HomeBrowse({
 									Collection order
 								</SelectItem>
 							)}
+							<SelectItem value="recommended">
+								Recommended
+							</SelectItem>
 							<SelectItem value="name">Name</SelectItem>
 							<SelectItem value="recent">
 								Recently opened
@@ -127,7 +140,7 @@ export function HomeBrowse({
 						: "No launchable resources are available yet. Published apps, active forms, and chat agents will appear here when you have access."}
 				</p>
 			) : grid ? (
-				<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+				<div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
 					{visible.map((resource) => (
 						<ResourceCard
 							key={resource.key}

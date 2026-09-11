@@ -168,11 +168,17 @@ async function main() {
 			stage = "review Home layouts";
 			await page.goto("/");
 			await expect(
-				page.getByRole("heading", { name: "Home", exact: true }),
+				page.getByRole("heading", {
+					name: "Your workspace",
+					exact: true,
+				}),
 			).toBeVisible();
 			await expect(
 				page
-					.getByRole("region", { name: "Collections", exact: true })
+					.getByRole("navigation", {
+						name: "Collections",
+						exact: true,
+					})
 					.getByText(pack.names.collection, { exact: true }),
 			).toBeVisible();
 			await page.screenshot({
