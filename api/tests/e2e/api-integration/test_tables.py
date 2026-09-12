@@ -7,6 +7,7 @@ These tests require PostgreSQL to be running (via docker-compose.test.yml).
 
 import pytest
 import pytest_asyncio
+import unicodedata
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -298,6 +299,156 @@ class TestDocumentRepositoryIntegration:
             DocumentQuery(where={"id": "json-a"}, order_by="id")
         )
         assert [doc.id for doc in legacy_json_query] == ["tenant-a|002"]
+
+    @pytest.mark.asyncio
+    async def test_query_documents_by_literal_id_prefix_across_keyset_pages(
+        self, db_session: AsyncSession, test_table, test_user_email
+    ):
+        """Document-ID prefix pagination treats user prefixes as literal text."""
+        doc_repo = DocumentRepository(db_session, test_table)
+        target_prefix = "tenant%_A/folder\\caf\u00e9/"
+        decomposed_prefix = "tenant%_A/folder\\cafe\u0301/"
+        assert unicodedata.normalize("NFC", decomposed_prefix) == target_prefix
+        assert decomposed_prefix != target_prefix
+
+        target_ids = [f"{target_prefix}{i:03d}" for i in range(12)]
+        denied_target_id = target_ids[6]
+        allowed_target_ids = [
+            doc_id for doc_id in target_ids if doc_id != denied_target_id
+        ]
+        requested_ids = [
+            target_ids[0],
+            target_ids[1],
+            f"{target_prefix}404",
+            *target_ids[2:],
+        ]
+        other_rows = [
+            (f"{decomposed_prefix}000", "decomposed unicode"),
+            ("tenantX_A/folder\\caf\u00e9/000", "percent wildcard decoy"),
+            ("tenant%XA/folder\\caf\u00e9/000", "underscore wildcard decoy"),
+            ("tenant%_A/folder/caf\u00e9/000", "slash decoy"),
+            ("tenant%_A/folder/cafe\u0301/000", "slash decomposed decoy"),
+        ]
+
+        for doc_id in target_ids:
+            await doc_repo.insert(
+                {
+                    "tenant": "target",
+                    "doc_id": doc_id,
+                    "policy": "deny" if doc_id == denied_target_id else "allow",
+                },
+                created_by=test_user_email,
+                doc_id=doc_id,
+            )
+        for doc_id, label in other_rows:
+            await doc_repo.insert(
+                {"tenant": "other", "label": label},
+                created_by=test_user_email,
+                doc_id=doc_id,
+            )
+
+        other_table_repo = TableRepository(db_session, test_table.organization_id)
+        from src.models.contracts.tables import DocumentQuery, TableCreate
+
+        other_table = await other_table_repo.create_table(
+            TableCreate(name=f"prefix_isolation_{uuid4().hex[:8]}"),
+            created_by=test_user_email,
+        )
+        await DocumentRepository(db_session, other_table).insert(
+            {"tenant": "target", "doc_id": f"{target_prefix}001"},
+            created_by=test_user_email,
+            doc_id=f"{target_prefix}001",
+        )
+        allow_policy = Document.data["policy"].astext == "allow"
+
+        first_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=3,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert [doc.id for doc in first_page] == allowed_target_ids[:3]
+
+        middle_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                after_document_id=first_page[-1].id,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=3,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert [doc.id for doc in middle_page] == allowed_target_ids[3:6]
+
+        deep_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                after_document_id=middle_page[-1].id,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=3,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert [doc.id for doc in deep_page] == allowed_target_ids[6:9]
+
+        final_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                after_document_id=deep_page[-1].id,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=5,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert [doc.id for doc in final_page] == allowed_target_ids[9:]
+        paged_ids = [
+            doc.id
+            for page in [first_page, middle_page, deep_page, final_page]
+            for doc in page
+        ]
+        assert paged_ids == allowed_target_ids
+        assert len(paged_ids) == len(set(paged_ids))
+
+        empty_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                after_document_id=target_ids[-1],
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=2,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert empty_page == []
+
+        nonexistent_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=f"{target_prefix}missing/",
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=2,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert nonexistent_page == []
 
     @pytest.mark.asyncio
     async def test_query_documents_by_actual_document_ids(

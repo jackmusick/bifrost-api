@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import String, cast, false, func, select
+from sqlalchemy import String, bindparam, cast, false, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -177,6 +177,16 @@ async def _check_action_or_403(
 def _escape_like(value: str) -> str:
     """Escape LIKE/ILIKE wildcard characters in user input."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _document_id_prefix_like_pattern(prefix: str) -> str:
+    """Build a slash-escaped LIKE pattern for literal document ID prefixes."""
+    return (
+        prefix.replace("/", "//")
+        .replace("%", "/%")
+        .replace("_", "/_")
+        + "%"
+    )
 
 
 def _build_document_filters(base_query: Any, where: dict[str, Any]) -> Any:
@@ -419,17 +429,29 @@ class DocumentRepository:
             query_params.after_document_id is not None
             or query_params.document_id_prefix is not None
         )
+        document_id_order_expr = Document.id
         if query_params.document_id_prefix is not None:
             prefix = query_params.document_id_prefix
-            # The lower bound seeks into the existing ``(table_id, id)``
-            # btree. Keep the startswith predicate for the exact prefix
-            # boundary: synthesizing a textual upper bound is incorrect under
-            # locale-aware PostgreSQL collations (for example, ``|`` and ``}``
-            # do not necessarily sort by code point).
-            base_query = base_query.where(Document.id >= prefix)
-            base_query = base_query.where(Document.id.startswith(prefix, autoescape=True))
+            document_id_order_expr = literal_column(
+                'documents.id COLLATE "C"',
+                type_=String(),
+            )
+            base_query = base_query.where(document_id_order_expr >= prefix)
+            base_query = base_query.where(
+                document_id_order_expr.like(
+                    bindparam(
+                        "document_id_prefix_pattern",
+                        value=_document_id_prefix_like_pattern(prefix),
+                        type_=String(),
+                        literal_execute=True,
+                    ),
+                    escape="/",
+                )
+            )
         if query_params.after_document_id is not None:
-            base_query = base_query.where(Document.id > query_params.after_document_id)
+            base_query = base_query.where(
+                document_id_order_expr > query_params.after_document_id
+            )
 
         # Apply where filters using JSON-native operators
         if query_params.where:
@@ -452,7 +474,7 @@ class DocumentRepository:
         # Without a tiebreaker, Postgres returns tied rows in arbitrary order
         # and the same id can appear on adjacent pages — or be skipped entirely.
         if document_id_pagination:
-            base_query = base_query.order_by(Document.id)
+            base_query = base_query.order_by(document_id_order_expr)
         elif query_params.order_by:
             # Order by JSONB field
             order_expr = Document.data[query_params.order_by].astext
