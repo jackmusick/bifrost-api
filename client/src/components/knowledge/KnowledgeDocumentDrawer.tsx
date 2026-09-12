@@ -11,13 +11,21 @@ import {
 	useEffect,
 	useCallback,
 	useRef,
+	useId,
 	type RefObject,
+	type ReactNode,
 } from "react";
-import { Save, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import {
+	Save,
+	X,
+	ChevronDown,
+	ChevronRight,
+	Loader2,
+	BookOpen,
+} from "lucide-react";
 import {
 	Sheet,
 	SheetContent,
-	SheetHeader,
 	SheetTitle,
 	SheetDescription,
 } from "@/components/ui/sheet";
@@ -55,6 +63,8 @@ interface KnowledgeDocumentDrawerProps {
 	isCreating: boolean;
 	onClose: () => void;
 	returnFocusRef?: RefObject<HTMLElement | null>;
+	embedded?: boolean;
+	onBusyChange?: (busy: boolean) => void;
 }
 
 interface DocumentFull {
@@ -113,14 +123,100 @@ function responseMessage(detail: unknown, fallback: string): string {
 	return fallback;
 }
 
+function KnowledgeDocumentEditorFrame({
+	title,
+	description,
+	isSaving,
+	onClose,
+	headerId,
+	descriptionId,
+	embedded,
+	children,
+}: {
+	title: string;
+	description: string;
+	isSaving: boolean;
+	onClose: () => void;
+	headerId: string;
+	descriptionId: string;
+	embedded: boolean;
+	children: ReactNode;
+}) {
+	return (
+		<>
+			<header
+				className={
+					embedded
+						? "shrink-0 border-b bg-muted/20 px-4 py-3"
+						: "shrink-0 border-b px-4 py-5 pr-16 sm:px-6 sm:pr-16"
+				}
+			>
+				<div className="flex min-w-0 items-start justify-between gap-3">
+					{embedded && (
+						<BookOpen
+							aria-hidden="true"
+							className="mt-1 size-5 shrink-0 text-primary"
+						/>
+					)}
+					<div className="min-w-0 flex-1">
+						{embedded ? (
+							<h2
+								id={headerId}
+								className="text-sm font-semibold leading-6 [overflow-wrap:anywhere]"
+							>
+								{title}
+							</h2>
+						) : (
+							<SheetTitle
+								id={headerId}
+								className="leading-6 [overflow-wrap:anywhere]"
+							>
+								{title}
+							</SheetTitle>
+						)}
+						{embedded ? (
+							<p
+								id={descriptionId}
+								className="mt-1 text-sm text-muted-foreground"
+							>
+								{description}
+							</p>
+						) : (
+							<SheetDescription id={descriptionId}>
+								{description}
+							</SheetDescription>
+						)}
+					</div>
+					{embedded && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="shrink-0"
+							disabled={isSaving}
+							onClick={onClose}
+							aria-label="Close document"
+						>
+							<X className="size-4" />
+						</Button>
+					)}
+				</div>
+			</header>
+			{children}
+		</>
+	);
+}
+
 function KnowledgeDocumentSession({
 	namespace,
 	documentId,
 	isCreating,
 	onClose,
 	returnFocusRef,
+	embedded = false,
+	onBusyChange,
 }: KnowledgeDocumentDrawerProps) {
 	const returnFocus = useDialogReturnFocus(returnFocusRef, true);
+	const editorId = useId();
 	const { isPlatformAdmin, user } = useAuth();
 	const [document, setDocument] = useState<DocumentFull | null>(null);
 	const [content, setContent] = useState("");
@@ -145,6 +241,10 @@ function KnowledgeDocumentSession({
 			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
 		}
 	}, [saveError]);
+
+	useEffect(() => {
+		onBusyChange?.(isSaving);
+	}, [isSaving, onBusyChange]);
 
 	const loadDocument = useCallback(async () => {
 		if (!documentId || !namespace) return;
@@ -288,185 +388,190 @@ function KnowledgeDocumentSession({
 		}
 	};
 
-	return (
-		<>
-			<Sheet
-				open
-				onOpenChange={(open) => {
-					if (!open && !isSaving) onClose();
-				}}
-			>
-				<SheetContent
-					{...returnFocus}
-					className="w-full sm:max-w-[800px] h-dvh flex flex-col overflow-hidden"
-					showCloseButton={!isSaving}
-					onEscapeKeyDown={(event) => {
-						if (isSaving) event.preventDefault();
-					}}
-					onInteractOutside={(event) => {
-						if (isSaving) event.preventDefault();
-					}}
+	const title = isCreating ? "New Document" : document?.key || "Document";
+	const description = isCreating
+		? "Add a reference for your agents."
+		: namespace;
+
+	const editorFrame = (
+		<KnowledgeDocumentEditorFrame
+			title={title}
+			description={description}
+			isSaving={isSaving}
+			onClose={onClose}
+			headerId={`${editorId}-title`}
+			descriptionId={`${editorId}-description`}
+			embedded={embedded}
+		>
+			{isLoading ? (
+				<div role="status" className="p-6 text-muted-foreground">
+					Loading document…
+				</div>
+			) : loadError ? (
+				<Alert variant="destructive" className="m-4 w-auto">
+					<AlertTitle>Document could not be loaded</AlertTitle>
+					<AlertDescription>
+						<Button
+							className="mt-3 min-h-11"
+							variant="outline"
+							onClick={() => {
+								setIsLoading(true);
+								setLoadError(false);
+								void loadDocument();
+							}}
+						>
+							Retry document
+						</Button>
+					</AlertDescription>
+				</Alert>
+			) : (
+				<div
+					role="region"
+					aria-label="Document settings"
+					className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6"
 				>
-					<SheetHeader className="shrink-0 border-b px-4 py-5 pr-16 sm:px-6 sm:pr-16">
-						<SheetTitle className="leading-6 [overflow-wrap:anywhere]">
-							{isCreating
-								? "New Document"
-								: document?.key || "Document"}
-						</SheetTitle>
-						<SheetDescription>
-							{isCreating
-								? "Add a reference for your agents."
-								: namespace}
-						</SheetDescription>
-					</SheetHeader>
+					<fieldset
+						disabled={isSaving}
+						className="flex min-w-0 flex-col gap-4"
+					>
+						{/* Scope selector - shown at top for platform admins */}
+						{isPlatformAdmin && (
+							<div className="space-y-2">
+								<Label htmlFor="knowledge-scope">
+									Organization
+								</Label>
+								<OrganizationSelect
+									id="knowledge-scope"
+									disabled={isSaving}
+									value={scopeOrgId}
+									onChange={setScopeOrgId}
+									showGlobal={true}
+								/>
+							</div>
+						)}
 
-					{isLoading ? (
-						<div
-							role="status"
-							className="p-6 text-muted-foreground"
-						>
-							Loading document…
-						</div>
-					) : loadError ? (
-						<Alert variant="destructive" className="m-4 w-auto">
-							<AlertTitle>
-								Document could not be loaded
-							</AlertTitle>
-							<AlertDescription>
-								<Button
-									className="mt-3 min-h-11"
-									variant="outline"
-									onClick={() => {
-										setIsLoading(true);
-										setLoadError(false);
-										void loadDocument();
-									}}
-								>
-									Retry document
-								</Button>
-							</AlertDescription>
-						</Alert>
-					) : (
-						<div
-							role="region"
-							aria-label="Document settings"
-							className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6"
-						>
-							<fieldset
-								disabled={isSaving}
-								className="flex min-w-0 flex-col gap-4"
-							>
-								{/* Scope selector - shown at top for platform admins */}
-								{isPlatformAdmin && (
-									<div className="space-y-2">
-										<Label htmlFor="knowledge-scope">
-											Organization
-										</Label>
-										<OrganizationSelect
-											id="knowledge-scope"
-											disabled={isSaving}
-											value={scopeOrgId}
-											onChange={setScopeOrgId}
-											showGlobal={true}
-										/>
-									</div>
-								)}
-
-								{/* Create-mode fields */}
-								{isCreating && (
-									<>
-										<div className="space-y-2">
-											<Label htmlFor="doc-namespace">
-												Namespace
-											</Label>
-											<Input
-												className="min-h-11"
-												id="doc-namespace"
-												value={createNamespace}
-												onChange={(e) =>
-													setCreateNamespace(
-														e.target.value,
-													)
-												}
-												placeholder="e.g. company-docs"
-											/>
-										</div>
-										<div className="space-y-2">
-											<Label htmlFor="doc-key">
-												Key (optional)
-											</Label>
-											<Input
-												className="min-h-11"
-												id="doc-key"
-												value={key}
-												onChange={(e) =>
-													setKey(e.target.value)
-												}
-												placeholder="unique-document-key"
-											/>
-										</div>
-									</>
-								)}
-
-								{/* Editor */}
-								<div className="min-h-[380px] h-[50dvh] shrink-0 overflow-hidden rounded-[var(--bf-radius-control)] border border-border">
-									<TiptapEditor
-										ariaLabel="Document content"
-										readOnly={isSaving}
-										content={content}
-										onChange={setContent}
-										className="h-full border-0 rounded-none"
+						{/* Create-mode fields */}
+						{isCreating && (
+							<>
+								<div className="space-y-2">
+									<Label htmlFor="doc-namespace">
+										Namespace
+									</Label>
+									<Input
+										className="min-h-11"
+										id="doc-namespace"
+										value={createNamespace}
+										onChange={(e) =>
+											setCreateNamespace(e.target.value)
+										}
+										placeholder="e.g. company-docs"
 									/>
 								</div>
+								<div className="space-y-2">
+									<Label htmlFor="doc-key">
+										Key (optional)
+									</Label>
+									<Input
+										className="min-h-11"
+										id="doc-key"
+										value={key}
+										onChange={(e) => setKey(e.target.value)}
+										placeholder="unique-document-key"
+									/>
+								</div>
+							</>
+						)}
 
-								{/* Metadata (view mode only) */}
-								{!isCreating &&
-									document &&
-									Object.keys(document.metadata).length >
-										0 && (
-										<MetadataSection
-											metadata={document.metadata}
-										/>
-									)}
-							</fieldset>
+						{/* Editor */}
+						<div className="min-h-[380px] h-[50dvh] shrink-0 overflow-hidden rounded-[var(--bf-radius-control)] border border-border">
+							<TiptapEditor
+								ariaLabel="Document content"
+								readOnly={isSaving}
+								content={content}
+								onChange={setContent}
+								className="h-full border-0 rounded-none"
+							/>
 						</div>
-					)}
-					{saveError && !conflictMessage && (
-						<Alert
-							variant="destructive"
-							ref={saveErrorRef}
-							tabIndex={-1}
-							className="outline-none mx-4 mb-3 w-auto shrink-0 max-h-32 overflow-y-auto"
-						>
-							<AlertTitle>Document could not be saved</AlertTitle>
-							<AlertDescription>{saveError}</AlertDescription>
-						</Alert>
-					)}
-					<div className="flex shrink-0 justify-end gap-2 border-t px-4 py-4 sm:px-6">
-						<Button
-							variant="outline"
-							className="min-h-11"
-							disabled={isSaving}
-							onClick={onClose}
-						>
-							<X className="size-4" />
-							Cancel
-						</Button>
-						<Button
-							className="min-h-11"
-							onClick={() => void handleSave(false)}
-							disabled={isSaving || isLoading || loadError}
-						>
-							{isSaving ? (
-								<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-							) : (
-								<Save className="size-4" />
+
+						{/* Metadata (view mode only) */}
+						{!isCreating &&
+							document &&
+							Object.keys(document.metadata).length > 0 && (
+								<MetadataSection metadata={document.metadata} />
 							)}
-							{isSaving ? "Saving…" : "Save"}
-						</Button>
-					</div>
-				</SheetContent>
-			</Sheet>
+					</fieldset>
+				</div>
+			)}
+			{saveError && !conflictMessage && (
+				<Alert
+					variant="destructive"
+					ref={saveErrorRef}
+					tabIndex={-1}
+					className="outline-none mx-4 mb-3 w-auto shrink-0 max-h-32 overflow-y-auto"
+				>
+					<AlertTitle>Document could not be saved</AlertTitle>
+					<AlertDescription>{saveError}</AlertDescription>
+				</Alert>
+			)}
+			<div className="flex shrink-0 justify-end gap-2 border-t px-4 py-4 sm:px-6">
+				<Button
+					variant="outline"
+					className="min-h-11"
+					disabled={isSaving}
+					onClick={onClose}
+				>
+					<X className="size-4" />
+					Cancel
+				</Button>
+				<Button
+					className="min-h-11"
+					onClick={() => void handleSave(false)}
+					disabled={isSaving || isLoading || loadError}
+				>
+					{isSaving ? (
+						<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+					) : (
+						<Save className="size-4" />
+					)}
+					{isSaving ? "Saving…" : "Save"}
+				</Button>
+			</div>
+		</KnowledgeDocumentEditorFrame>
+	);
+
+	return (
+		<>
+			{embedded ? (
+				<div
+					role="region"
+					className="flex min-h-0 flex-1 flex-col overflow-hidden"
+					aria-labelledby={`${editorId}-title`}
+					aria-describedby={`${editorId}-description`}
+				>
+					{editorFrame}
+				</div>
+			) : (
+				<Sheet
+					open
+					onOpenChange={(open) => {
+						if (!open && !isSaving) onClose();
+					}}
+				>
+					<SheetContent
+						{...returnFocus}
+						className="w-full sm:max-w-[800px] h-dvh flex flex-col overflow-hidden"
+						showCloseButton={!isSaving}
+						onEscapeKeyDown={(event) => {
+							if (isSaving) event.preventDefault();
+						}}
+						onInteractOutside={(event) => {
+							if (isSaving) event.preventDefault();
+						}}
+					>
+						{editorFrame}
+					</SheetContent>
+				</Sheet>
+			)}
 
 			{/* Replace confirmation dialog */}
 			<AlertDialog

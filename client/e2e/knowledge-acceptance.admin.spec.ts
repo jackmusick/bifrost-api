@@ -153,19 +153,27 @@ async function waitForKnowledgeDocumentCreate(page: Page, api: AuthedApi) {
 		).toBe(true);
 	}
 	// Read persisted data independently of the browser's response-body capture.
-	const list = await api.get(`/api/knowledge-sources/${encodeURIComponent(NAMESPACE)}/documents`);
+	const list = await api.get(
+		`/api/knowledge-sources/${encodeURIComponent(NAMESPACE)}/documents`,
+	);
 	await expectApiStatus(list, "list created knowledge document");
 	const records = (await list.json()) as Array<{ id: string; key: string }>;
 	const record = records.find((item) => item.key === DOCUMENT_KEY);
 	expect(record, "created document exists in owned namespace").toBeDefined();
-	const stored = await api.get(`/api/knowledge-sources/${encodeURIComponent(NAMESPACE)}/documents/${record!.id}`);
+	const stored = await api.get(
+		`/api/knowledge-sources/${encodeURIComponent(NAMESPACE)}/documents/${record!.id}`,
+	);
 	await expectApiStatus(stored, "read persisted knowledge document");
 	createdDocument = (await stored.json()) as KnowledgeDocument;
-	expect(createdDocument).toMatchObject({ namespace: NAMESPACE, key: DOCUMENT_KEY, organization_id: null });
+	expect(createdDocument).toMatchObject({
+		namespace: NAMESPACE,
+		key: DOCUMENT_KEY,
+		organization_id: null,
+	});
 	// Rich-text editing serializes paragraph spacing; compare the saved words.
-	expect(createdDocument.content.replace(/\s+/g, " ").trim()).toBe(DOCUMENT_CONTENT.replace(/\s+/g, " ").trim());
-
-
+	expect(createdDocument.content.replace(/\s+/g, " ").trim()).toBe(
+		DOCUMENT_CONTENT.replace(/\s+/g, " ").trim(),
+	);
 }
 
 test.describe("Knowledge acceptance", () => {
@@ -188,7 +196,10 @@ test.describe("Knowledge acceptance", () => {
 				.getByRole("button", { name: "Add Document" })
 				.last()
 				.click();
-			const drawer = page.getByRole("dialog", { name: "New Document" });
+			const drawer = page.getByRole("region", {
+				name: "New Document",
+				exact: true,
+			});
 			await expect(drawer).toBeVisible({ timeout: 10000 });
 			await drawer.getByLabel("Namespace").fill(NAMESPACE);
 			await drawer.getByLabel("Key (optional)").fill(DOCUMENT_KEY);
@@ -201,12 +212,19 @@ test.describe("Knowledge acceptance", () => {
 			await page
 				.getByRole("textbox", { name: "Search documents" })
 				.fill(SENTINEL);
-			await expect(page.getByText(DOCUMENT_KEY)).toBeVisible({
+			await expect(
+				page.getByRole("button", { name: DOCUMENT_KEY, exact: true }),
+			).toBeVisible({
 				timeout: 10000,
 			});
 
-			await page.getByRole("button", { name: DOCUMENT_KEY, exact: true }).click();
-			const readDrawer = page.getByRole("dialog", { name: DOCUMENT_KEY });
+			await page
+				.getByRole("button", { name: DOCUMENT_KEY, exact: true })
+				.click();
+			const readDrawer = page.getByRole("region", {
+				name: DOCUMENT_KEY,
+				exact: true,
+			});
 			await expect(readDrawer).toBeVisible({ timeout: 10000 });
 			await expect(
 				readDrawer.getByRole("textbox", { name: "Document content" }),
@@ -231,7 +249,9 @@ test.describe("Knowledge acceptance", () => {
 			await page
 				.getByRole("textbox", { name: "Search documents" })
 				.fill(SENTINEL);
-			await expect(page.getByText(DOCUMENT_KEY)).toBeHidden({
+			await expect(
+				page.getByRole("button", { name: DOCUMENT_KEY, exact: true }),
+			).toBeHidden({
 				timeout: 10000,
 			});
 			const deletedRead = await api.get(

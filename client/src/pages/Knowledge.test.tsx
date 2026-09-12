@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, renderWithProviders, screen, waitFor, within } from "@/test-utils";
+import {
+	act,
+	renderWithProviders,
+	screen,
+	waitFor,
+	within,
+} from "@/test-utils";
 
 const mockUseMediaQuery = vi.fn();
 const mockUseAuth = vi.fn();
@@ -138,16 +144,13 @@ describe("Knowledge", () => {
 		);
 	});
 
-	it("renders compact mobile records with selection, pagination, and drawer access", async () => {
+	it("renders compact document rows with selection mode, pagination, and embedded drawer access", async () => {
 		const { user } = renderWithProviders(<Knowledge />);
 
 		expect(screen.queryByRole("table")).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("heading", { name: "Knowledge" }),
 		).toBeInTheDocument();
-
-		const refreshButton = screen.getByRole("button", { name: /refresh/i });
-		expect(refreshButton).toHaveClass("h-11", "w-11");
 
 		await waitFor(() => {
 			expect(
@@ -162,9 +165,6 @@ describe("Knowledge", () => {
 		expect(within(firstRecord).getByText("support")).toBeInTheDocument();
 		expect(within(firstRecord).getByText("Global")).toBeInTheDocument();
 		expect(
-			within(firstRecord).getByText("Content preview"),
-		).toBeInTheDocument();
-		expect(
 			within(firstRecord).getByText(/Support summary 01/),
 		).toBeInTheDocument();
 		expect(
@@ -173,12 +173,12 @@ describe("Knowledge", () => {
 			),
 		).toBeInTheDocument();
 
+		await user.click(screen.getByRole("button", { name: "Select" }));
 		const selectAllButton = screen.getByRole("button", {
 			name: /select all/i,
 		});
-		expect(selectAllButton).toHaveClass("h-11");
 		await user.click(selectAllButton);
-		expect(screen.getAllByText("50 selected")).toHaveLength(2);
+		expect(screen.getByText("50 selected")).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /clear all/i }),
 		).toBeInTheDocument();
@@ -193,10 +193,9 @@ describe("Knowledge", () => {
 			screen.getByRole("navigation", { name: /pagination/i }),
 		).toBeInTheDocument();
 
+		await user.click(screen.getByRole("button", { name: "Done" }));
 		await user.click(
-			within(firstRecord).getAllByRole("button", {
-				name: /support-01/i,
-			})[0],
+			within(firstRecord).getByRole("button", { name: /support-01/i }),
 		);
 		expect(await screen.findByRole("dialog")).toHaveTextContent(
 			"Knowledge drawer support doc-01",
@@ -212,7 +211,9 @@ describe("Knowledge", () => {
 		});
 
 		await user.click(
-			screen.getByRole("button", { name: /more actions for support-01/i }),
+			screen.getByRole("button", {
+				name: /more actions for support-01/i,
+			}),
 		);
 		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 		expect(
@@ -221,7 +222,9 @@ describe("Knowledge", () => {
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
 
 		await user.click(
-			screen.getByText("support-01", { selector: "button" }),
+			within(
+				screen.getByRole("article", { name: /support-01/i }),
+			).getByRole("button", { name: /support-01/i }),
 		);
 		expect(await screen.findByRole("dialog")).toHaveTextContent(
 			"Knowledge drawer support doc-01",
@@ -237,7 +240,7 @@ describe("Knowledge", () => {
 						? input
 						: input && typeof input === "object" && "url" in input
 							? String((input as Request).url)
-						: String(input);
+							: String(input);
 				if (
 					url.includes("/api/knowledge-sources/") &&
 					url.includes("/documents/") &&
@@ -281,7 +284,9 @@ describe("Knowledge", () => {
 		});
 
 		await user.click(
-			screen.getByRole("button", { name: /more actions for support-01/i }),
+			screen.getByRole("button", {
+				name: /more actions for support-01/i,
+			}),
 		);
 		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 		const dialog = screen.getByRole("alertdialog", {
@@ -295,9 +300,11 @@ describe("Knowledge", () => {
 		expect(
 			screen.getByRole("button", { name: "Retry deletion" }),
 		).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "Retry deletion" }));
+		await user.click(
+			screen.getByRole("button", { name: "Retry deletion" }),
+		);
 		await waitFor(() =>
-		expect(
+			expect(
 				screen.queryByRole("alertdialog", { name: /delete document/i }),
 			).not.toBeInTheDocument(),
 		);
@@ -306,64 +313,133 @@ describe("Knowledge", () => {
 
 	it("shows HTTP failures without a false empty state and preserves selected records on refresh failure", async () => {
 		let fail = true;
-		mockAuthFetch.mockImplementation(async (url: string) =>
-			new Response(JSON.stringify(url.includes("/documents") ? (fail ? {} : makeDocs().slice(0, 1)) : namespaces), {
-				status: url.includes("/documents") && fail ? 500 : 200,
-			}),
+		mockAuthFetch.mockImplementation(
+			async (url: string) =>
+				new Response(
+					JSON.stringify(
+						url.includes("/documents")
+							? fail
+								? {}
+								: makeDocs().slice(0, 1)
+							: namespaces,
+					),
+					{
+						status: url.includes("/documents") && fail ? 500 : 200,
+					},
+				),
 		);
 		const { user } = renderWithProviders(<Knowledge />);
 		await screen.findByText("Documents could not be loaded");
-		expect(screen.queryByText("No documents found")).not.toBeInTheDocument();
+		expect(
+			screen.queryByText("No documents found"),
+		).not.toBeInTheDocument();
 		fail = false;
-		await user.click(screen.getByRole("button", { name: "Retry documents" }));
-		const checkbox = await screen.findByRole("checkbox", { name: "Select support-01" });
+		await user.click(
+			screen.getByRole("button", { name: "Retry documents" }),
+		);
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		const checkbox = await screen.findByRole("checkbox", {
+			name: "Select support-01",
+		});
 		await user.click(checkbox);
 		fail = true;
-		await user.click(screen.getByRole("button", { name: "Refresh" }));
+		await user.click(
+			screen.getByRole("button", { name: "Knowledge actions" }),
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Refresh" }));
 		await screen.findByText("Documents could not be loaded");
 		expect(checkbox).toBeChecked();
-		expect(screen.getByRole("article", { name: "support-01" })).toBeVisible();
+		expect(
+			screen.getByRole("article", { name: "support-01" }),
+		).toBeVisible();
 		fail = false;
-		await user.click(screen.getByRole("button", { name: "Retry documents" }));
-		await waitFor(() => expect(screen.queryByText("Documents could not be loaded")).not.toBeInTheDocument());
+		await user.click(
+			screen.getByRole("button", { name: "Retry documents" }),
+		);
+		await waitFor(() =>
+			expect(
+				screen.queryByText("Documents could not be loaded"),
+			).not.toBeInTheDocument(),
+		);
 	});
 
 	it("discards an older search response after the current filter has loaded", async () => {
 		let releaseOld: (response: Response) => void = () => {};
 		let oldSignal: AbortSignal | undefined;
-		mockAuthFetch.mockImplementation(async (url: string, options?: { signal: AbortSignal }) => {
-			if (!url.includes("/documents")) return new Response(JSON.stringify(namespaces));
-			if (new URL(url, "http://test").searchParams.get("search") === "old") {
-				oldSignal = options?.signal;
-				return new Promise<Response>((resolve) => { releaseOld = resolve; });
-			}
-			return new Response(JSON.stringify([{ ...makeDocs()[0], key: "Current document" }]));
-		});
+		mockAuthFetch.mockImplementation(
+			async (url: string, options?: { signal: AbortSignal }) => {
+				if (!url.includes("/documents"))
+					return new Response(JSON.stringify(namespaces));
+				if (
+					new URL(url, "http://test").searchParams.get("search") ===
+					"old"
+				) {
+					oldSignal = options?.signal;
+					return new Promise<Response>((resolve) => {
+						releaseOld = resolve;
+					});
+				}
+				return new Response(
+					JSON.stringify([
+						{ ...makeDocs()[0], key: "Current document" },
+					]),
+				);
+			},
+		);
 		const { user } = renderWithProviders(<Knowledge />);
 		await screen.findByRole("article", { name: "Current document" });
-		const search = screen.getByRole("textbox", {name:"Search documents"});
+		const search = screen.getByRole("textbox", {
+			name: "Search documents",
+		});
 		await user.type(search, "old");
 		await waitFor(() => expect(oldSignal).toBeDefined());
 		await user.clear(search);
 		await user.type(search, "new");
 		await screen.findByRole("article", { name: "Current document" });
 		expect(oldSignal?.aborted).toBe(true);
-		await act(async () => { releaseOld(new Response(JSON.stringify([{ ...makeDocs()[0], key: "Old document" }]))); });
-		expect(screen.queryByRole("article", { name: "Old document" })).not.toBeInTheDocument();
+		await act(async () => {
+			releaseOld(
+				new Response(
+					JSON.stringify([{ ...makeDocs()[0], key: "Old document" }]),
+				),
+			);
+		});
+		expect(
+			screen.queryByRole("article", { name: "Old document" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("recovers unavailable namespace filters without hiding documents", async () => {
 		let failNamespaces = true;
-		mockAuthFetch.mockImplementation(async (url: string) => new Response(
-			JSON.stringify(url.includes("/documents") ? makeDocs().slice(0, 1) : namespaces),
-			{ status: !url.includes("/documents") && failNamespaces ? 500 : 200 },
-		));
+		mockAuthFetch.mockImplementation(
+			async (url: string) =>
+				new Response(
+					JSON.stringify(
+						url.includes("/documents")
+							? makeDocs().slice(0, 1)
+							: namespaces,
+					),
+					{
+						status:
+							!url.includes("/documents") && failNamespaces
+								? 500
+								: 200,
+					},
+				),
+		);
 		const { user } = renderWithProviders(<Knowledge />);
 		await screen.findByText("Namespace filters could not be updated");
-		expect(await screen.findByRole("article", { name: "support-01" })).toBeVisible();
+		expect(
+			await screen.findByRole("article", { name: "support-01" }),
+		).toBeVisible();
 		failNamespaces = false;
-		await user.click(screen.getByRole("button", { name: "Retry namespace filters" }));
-		await waitFor(() => expect(screen.queryByText("Namespace filters could not be updated")).not.toBeInTheDocument());
+		await user.click(
+			screen.getByRole("button", { name: "Retry namespace filters" }),
+		);
+		await waitFor(() =>
+			expect(
+				screen.queryByText("Namespace filters could not be updated"),
+			).not.toBeInTheDocument(),
+		);
 	});
-
 });

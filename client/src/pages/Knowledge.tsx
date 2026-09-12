@@ -1,40 +1,27 @@
 /**
  * Knowledge Management Page
  *
- * Flat document list across all namespaces with org/namespace filters.
- * Supports multi-select for bulk scope changes and pagination.
+ * Contained document workspace with org/namespace filters, embedded editing,
+ * bulk scope changes, import/export, deletion, and pagination.
  */
 
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AnimatePresence } from "framer-motion";
 import {
-	RefreshCw,
-	BookOpen,
-	FileText,
-	Plus,
-	Trash2,
-	Globe,
-	Building2,
+	AlertCircle,
 	ArrowRightLeft,
 	Download,
+	FileText,
+	Loader2,
+	Plus,
+	RefreshCw,
 	Upload,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableFooter,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
 import { PaginationFooter } from "@/components/pagination/PaginationFooter";
 import {
 	Select,
@@ -47,10 +34,7 @@ import { SearchBox } from "@/components/search/SearchBox";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
-import {
-	PageScrollArea,
-	PageWorkspace,
-} from "@/components/layout/PageWorkspace";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -60,30 +44,23 @@ import { authFetch } from "@/lib/api-client";
 import { KnowledgeDocumentDrawer } from "@/components/knowledge/KnowledgeDocumentDrawer";
 import { exportEntities } from "@/services/exportImport";
 import { ImportDialog } from "@/components/ImportDialog";
+import { cn } from "@/lib/utils";
+import type { RefObject } from "react";
 
 import { KnowledgeFilters } from "./knowledge/KnowledgeFilters";
 import { KnowledgeScopeDialog } from "./knowledge/KnowledgeScopeDialog";
 import { KnowledgeDeleteDialog } from "./knowledge/KnowledgeDeleteDialog";
+import { KnowledgeEditorPane } from "./knowledge/KnowledgeEditorPane";
+import {
+	KnowledgeDocumentList,
+	type DocumentSummary,
+} from "./knowledge/KnowledgeDocumentList";
 
 const PAGE_SIZE = 50;
-
-interface DocumentSummary {
-	id: string;
-	namespace: string;
-	key: string | null;
-	content_preview: string;
-	metadata: Record<string, unknown>;
-	organization_id: string | null;
-	created_at: string | null;
-}
 
 interface KnowledgeNamespace {
 	namespace: string;
 	document_count: number;
-}
-
-function formatKnowledgeDate(value: string | null): string {
-	return value ? new Date(value).toLocaleDateString() : "-";
 }
 
 async function readResponseDetail(
@@ -101,229 +78,6 @@ async function readResponseDetail(
 	} catch {
 		return fallback;
 	}
-}
-
-function KnowledgeDocumentScopeBadge({
-	organizationId,
-	getOrgName,
-}: {
-	organizationId: string | null;
-	getOrgName: (orgId: string | null | undefined) => string;
-}) {
-	if (organizationId) {
-		return (
-			<Badge
-				variant="outline"
-				className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
-			>
-				<Building2 className="mr-1 h-3 w-3" />
-				{getOrgName(organizationId)}
-			</Badge>
-		);
-	}
-
-	return (
-		<Badge
-			variant="outline"
-			className="h-auto min-h-5 max-w-full whitespace-normal text-xs leading-4 [overflow-wrap:anywhere]"
-		>
-			<Globe className="mr-1 h-3 w-3" />
-			Global
-		</Badge>
-	);
-}
-
-function KnowledgeMobileRecord({
-	doc,
-	isPlatformAdmin,
-	isSelected,
-	getOrgName,
-	onToggleSelect,
-	onOpen,
-	onDelete,
-}: {
-	doc: DocumentSummary;
-	isPlatformAdmin: boolean;
-	isSelected: boolean;
-	getOrgName: (orgId: string | null | undefined) => string;
-	onToggleSelect: (id: string) => void;
-	onOpen: (doc: DocumentSummary) => void;
-	onDelete: (doc: DocumentSummary) => void;
-}) {
-	const titleId = `knowledge-doc-${doc.id}-title`;
-	const identityLabel = doc.key || doc.id;
-	const actions = (
-		<RecordActionsMenu label={`More actions for ${identityLabel}`}>
-			<DropdownMenuItem
-				variant="destructive"
-				className="min-h-11 whitespace-nowrap px-3"
-				onClick={() => onDelete(doc)}
-			>
-				<Trash2 className="mr-2 h-4 w-4" />
-				Delete
-			</DropdownMenuItem>
-		</RecordActionsMenu>
-	);
-
-	return (
-		<li>
-			<Card className="border-border/70 bg-card shadow-none">
-				<CardContent className="space-y-4 p-4">
-					<article aria-labelledby={titleId} className="space-y-4">
-						<div className="flex items-start gap-3">
-							{isPlatformAdmin ? (
-								<label
-									className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] "
-									onClick={(e) => e.stopPropagation()}
-								>
-									<span className="sr-only">
-										{`Select ${identityLabel}`}
-									</span>
-									<Checkbox
-										checked={isSelected}
-										onCheckedChange={() =>
-											onToggleSelect(doc.id)
-										}
-										onClick={(e) => e.stopPropagation()}
-										className="size-5"
-									/>
-								</label>
-							) : null}
-
-							<div className="min-w-0 flex-1">
-								<h3
-									id={titleId}
-									className="text-base font-semibold leading-6"
-								>
-									<button
-										type="button"
-										className="min-h-11 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-										onClick={() => onOpen(doc)}
-									>
-										{identityLabel}
-									</button>
-								</h3>
-							</div>
-
-							{actions}
-						</div>
-
-						<dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-							<div className="min-w-0">
-								<dt className="text-xs leading-5 text-muted-foreground">
-									Namespace
-								</dt>
-								<dd className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
-									{doc.namespace}
-								</dd>
-							</div>
-							<div className="min-w-0">
-								<dt className="text-xs leading-5 text-muted-foreground">
-									Scope
-								</dt>
-								<dd className="min-w-0">
-									<KnowledgeDocumentScopeBadge
-										organizationId={doc.organization_id}
-										getOrgName={getOrgName}
-									/>
-								</dd>
-							</div>
-							<div className="col-span-2 min-w-0">
-								<dt className="text-xs leading-5 text-muted-foreground">
-									Content preview
-								</dt>
-								<dd className="mt-0.5 min-w-0 text-sm leading-6 text-foreground/90 [overflow-wrap:anywhere]">
-									{doc.content_preview}
-								</dd>
-							</div>
-							<div className="min-w-0">
-								<dt className="text-xs leading-5 text-muted-foreground">
-									Created
-								</dt>
-								<dd className="min-w-0 text-sm font-medium text-foreground/90">
-									{formatKnowledgeDate(doc.created_at)}
-								</dd>
-							</div>
-						</dl>
-					</article>
-				</CardContent>
-			</Card>
-		</li>
-	);
-}
-
-function KnowledgeMobileList({
-	documents,
-	isPlatformAdmin,
-	selectedIds,
-	getOrgName,
-	onToggleSelect,
-	onToggleSelectAll,
-	onOpen,
-	onDelete,
-	page,
-	hasMore,
-	onPageChange,
-}: {
-	documents: DocumentSummary[];
-	isPlatformAdmin: boolean;
-	selectedIds: Set<string>;
-	getOrgName: (orgId: string | null | undefined) => string;
-	onToggleSelect: (id: string) => void;
-	onToggleSelectAll: () => void;
-	onOpen: (doc: DocumentSummary) => void;
-	onDelete: (doc: DocumentSummary) => void;
-	page: number;
-	hasMore: boolean;
-	onPageChange: (page: number) => void;
-}) {
-	const showPagination = page > 0 || hasMore;
-
-	return (
-		<section className="space-y-3 lg:hidden">
-			{isPlatformAdmin && (
-				<div className="flex items-center justify-between gap-3">
-					<p className="text-sm text-muted-foreground">
-						{selectedIds.size > 0
-							? `${selectedIds.size} selected`
-							: "Select documents for bulk changes"}
-					</p>
-					<Button
-						type="button"
-						variant="outline"
-						className="h-11"
-						onClick={onToggleSelectAll}
-					>
-						{documents.length > 0 &&
-						documents.every((doc) => selectedIds.has(doc.id))
-							? "Clear all"
-							: "Select all"}
-					</Button>
-				</div>
-			)}
-			<ul aria-label="Knowledge documents" className="space-y-3">
-				{documents.map((doc) => (
-					<KnowledgeMobileRecord
-						key={doc.id}
-						doc={doc}
-						isPlatformAdmin={isPlatformAdmin}
-						isSelected={selectedIds.has(doc.id)}
-						getOrgName={getOrgName}
-						onToggleSelect={onToggleSelect}
-						onOpen={onOpen}
-						onDelete={onDelete}
-					/>
-				))}
-			</ul>
-			{showPagination && (
-				<KnowledgePagination
-					page={page}
-					hasMore={hasMore}
-					onPageChange={onPageChange}
-				/>
-			)}
-		</section>
-	);
 }
 
 function KnowledgePagination({
@@ -347,9 +101,159 @@ function KnowledgePagination({
 	);
 }
 
+function KnowledgeToolbarActions({
+	isPlatformAdmin,
+	selectionMode,
+	selectedCount,
+	isExporting,
+	isRefreshing,
+	busy,
+	onToggleSelectionMode,
+	onChangeScope,
+	onExport,
+	onImport,
+	onRefresh,
+	onCreate,
+	createRef,
+}: {
+	isPlatformAdmin: boolean;
+	selectionMode: boolean;
+	selectedCount: number;
+	isExporting: boolean;
+	isRefreshing: boolean;
+	busy: boolean;
+	onToggleSelectionMode: () => void;
+	onChangeScope: () => void;
+	onExport: () => void;
+	onImport: () => void;
+	onRefresh: () => void;
+	onCreate: () => void;
+	createRef: RefObject<HTMLButtonElement | null>;
+}) {
+	return (
+		<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto">
+			{isPlatformAdmin && (
+				<>
+					<Button
+						type="button"
+						variant={selectionMode ? "secondary" : "outline"}
+						className="h-10"
+						onClick={onToggleSelectionMode}
+						disabled={busy}
+					>
+						{selectionMode ? "Done" : "Select"}
+					</Button>
+					{selectionMode && selectedCount > 0 && (
+						<>
+							<Button
+								variant="outline"
+								className="h-10"
+								onClick={onChangeScope}
+								disabled={busy}
+							>
+								<ArrowRightLeft className="size-4" />
+								Change Scope
+							</Button>
+						</>
+					)}
+				</>
+			)}
+			<RecordActionsMenu label="Knowledge actions">
+				<DropdownMenuItem
+					onSelect={onRefresh}
+					disabled={busy || isRefreshing}
+				>
+					<RefreshCw className="size-4" />
+					Refresh
+				</DropdownMenuItem>
+				{isPlatformAdmin && (
+					<>
+						<DropdownMenuItem
+							onSelect={onExport}
+							disabled={busy || isExporting}
+						>
+							<Download className="size-4" />
+							{selectedCount > 0
+								? `Export (${selectedCount})`
+								: "Export"}
+						</DropdownMenuItem>
+						<DropdownMenuItem onSelect={onImport} disabled={busy}>
+							<Upload className="size-4" />
+							Import
+						</DropdownMenuItem>
+					</>
+				)}
+			</RecordActionsMenu>
+
+			<Button
+				className="h-10"
+				ref={createRef}
+				onClick={onCreate}
+				disabled={busy}
+			>
+				<Plus className="size-4" />
+				Add Document
+			</Button>
+		</div>
+	);
+}
+
+function KnowledgeLoadingRows() {
+	return (
+		<div
+			role="status"
+			aria-label="Loading documents"
+			className="space-y-2 p-3"
+		>
+			{[...Array(6)].map((_, index) => (
+				<Skeleton key={index} className="h-16 w-full" />
+			))}
+		</div>
+	);
+}
+
+function KnowledgeEmptyState({
+	page,
+	onCreate,
+	onFirstPage,
+}: {
+	page: number;
+	onCreate: () => void;
+	onFirstPage: () => void;
+}) {
+	return (
+		<div className="flex min-h-[22rem] flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+			<FileText className="size-12 text-muted-foreground" />
+			<h3 className="mt-4 text-lg font-semibold">
+				{page > 0 ? "No more documents" : "No documents found"}
+			</h3>
+			<p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+				{page > 0
+					? "You've reached the end of the results."
+					: "Add documents to knowledge namespaces for AI agent RAG."}
+			</p>
+			<Button
+				variant="outline"
+				onClick={page > 0 ? onFirstPage : onCreate}
+				className="mt-4"
+			>
+				{page > 0 ? (
+					"Back to first page"
+				) : (
+					<>
+						<Plus className="size-4" />
+						Add Document
+					</>
+				)}
+			</Button>
+		</div>
+	);
+}
+
 export function Knowledge() {
 	const { isPlatformAdmin } = useAuth();
-	const compactLayout = useMediaQuery("(max-width: 1023px)");
+	const compactFilters = useMediaQuery("(max-width: 767px)");
+	const inlineEditor = useMediaQuery("(min-width: 1280px)");
 	const [searchTerm, setSearchTerm] = useState("");
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
@@ -364,6 +268,8 @@ export function Knowledge() {
 	const [viewDocId, setViewDocId] = useState<string | null>(null);
 	const [viewDocNamespace, setViewDocNamespace] = useState<string>("");
 	const [isCreating, setIsCreating] = useState(false);
+	const [editorBusy, setEditorBusy] = useState(false);
+	const [selectionMode, setSelectionMode] = useState(false);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [bulkScopeIds, setBulkScopeIds] = useState<string[] | null>(null);
 	const [isImportOpen, setIsImportOpen] = useState(false);
@@ -379,7 +285,6 @@ export function Knowledge() {
 		return org?.name || orgId;
 	};
 
-	// Keep all-scopes and global distinct, including when resetting pagination.
 	const filtersKey = JSON.stringify([
 		searchTerm,
 		filterNamespace,
@@ -420,14 +325,21 @@ export function Knowledge() {
 			if (!response.ok) throw new Error("Could not load documents");
 			return response.json();
 		},
+		placeholderData: (previousData, previousQuery) => {
+			const previousKey = previousQuery?.queryKey as
+				unknown[] | undefined;
+			return previousKey?.[2] === filtersKey ? previousData : undefined;
+		},
 		retry: false,
 	});
 	const documents = documentQuery.data ?? [];
 	const namespaces = namespaceQuery.data ?? [];
-	const isLoading = documentQuery.isPending;
+	const isInitialLoading = documentQuery.isPending && !documentQuery.data;
 	const hasMore = documents.length === PAGE_SIZE;
 	const fetchDocuments = () => documentQuery.refetch();
 	const fetchNamespaces = () => namespaceQuery.refetch();
+	const editorOpen = Boolean(viewDocId || isCreating);
+	const externalBusy = editorBusy;
 
 	const handleDelete = async () => {
 		if (!deleteDoc) return;
@@ -442,6 +354,10 @@ export function Knowledge() {
 		toast.success("Document deleted");
 		setIsDeleteDialogOpen(false);
 		setDeleteDoc(null);
+		if (viewDocId === deleteDoc.id) {
+			setViewDocId(null);
+			setViewDocNamespace("");
+		}
 		void fetchDocuments();
 	};
 	const handleDeleteRequest = (doc: DocumentSummary) => {
@@ -450,18 +366,27 @@ export function Knowledge() {
 	};
 
 	const openDocument = (doc: DocumentSummary) => {
+		if (externalBusy) return;
+		setIsCreating(false);
 		setViewDocNamespace(doc.namespace);
 		setViewDocId(doc.id);
+	};
+
+	const closeEditor = (force = false) => {
+		if (editorBusy && !force) return;
+		setEditorBusy(false);
+		setViewDocId(null);
+		setViewDocNamespace("");
+		setIsCreating(false);
+		void fetchDocuments();
+		void fetchNamespaces();
 	};
 
 	const toggleSelect = (id: string) => {
 		setSelectedIds((prev) => {
 			const next = new Set(prev);
-			if (next.has(id)) {
-				next.delete(id);
-			} else {
-				next.add(id);
-			}
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
 			return next;
 		});
 	};
@@ -497,393 +422,226 @@ export function Knowledge() {
 	};
 
 	return (
-		<PageWorkspace className="max-w-7xl mx-auto">
+		<PageWorkspace className="mx-auto w-full max-w-[1600px] gap-4">
 			<ListPageHeader
+				className="shrink-0"
 				title="Knowledge"
-				description="Manage knowledge documents for AI agents"
-				actions={
-					<>
-						<Button
-							variant="outline"
-							size="icon-lg"
-							className="h-11 w-11"
-							onClick={() => {
-								void fetchDocuments();
-								void fetchNamespaces();
-							}}
-							disabled={
-								documentQuery.isFetching ||
-								namespaceQuery.isFetching
-							}
-							title="Refresh"
-						>
-							<RefreshCw className="h-4 w-4" />
-						</Button>
-						<Button
-							className="h-11"
-							ref={createRef}
-							onClick={() => setIsCreating(true)}
-						>
-							<Plus className="h-4 w-4 mr-1" />
-							Add Document
-						</Button>
-					</>
-				}
+				description="Manage knowledge documents for AI agents."
 			/>
 
-			<ListToolbar>
-				<KnowledgeFilters
-					compact={compactLayout}
-					activeCount={
-						Number(filterNamespace !== undefined) +
-						Number(filterOrgId !== undefined)
-					}
-					search={
-						<SearchBox
-							value={searchTerm}
-							onChange={setSearchTerm}
-							placeholder={
-								compactLayout
-									? "Search…"
-									: "Search documents..."
-							}
-							className="w-full sm:flex-1"
-							aria-label="Search documents"
-						/>
-					}
-				>
-					<Select
-						value={filterNamespace ?? "__ALL__"}
-						onValueChange={(v) =>
-							setFilterNamespace(v === "__ALL__" ? undefined : v)
+			<div className="min-h-0 flex-1 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card shadow-sm">
+				<ListToolbar className="shrink-0 border-b border-border/70 bg-card/95 p-3">
+					<KnowledgeFilters
+						compact={compactFilters}
+						activeCount={
+							Number(filterNamespace !== undefined) +
+							Number(filterOrgId !== undefined)
+						}
+						search={
+							<SearchBox
+								value={searchTerm}
+								onChange={setSearchTerm}
+								placeholder="Search documents..."
+								className="w-full sm:w-72"
+								aria-label="Search documents"
+							/>
 						}
 					>
-						<SelectTrigger
-							aria-label="Filter by namespace"
-							className="min-h-11 w-full sm:w-48"
+						<Select
+							value={filterNamespace ?? "__ALL__"}
+							onValueChange={(v) =>
+								setFilterNamespace(
+									v === "__ALL__" ? undefined : v,
+								)
+							}
+							disabled={externalBusy}
 						>
-							<SelectValue placeholder="All namespaces" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="__ALL__">
-								All namespaces
-							</SelectItem>
-							{namespaces.map((ns) => (
-								<SelectItem
-									key={ns.namespace}
-									value={ns.namespace}
-								>
-									{ns.namespace}
+							<SelectTrigger
+								aria-label="Filter by namespace"
+								className="min-h-10 w-full sm:w-40"
+							>
+								<SelectValue placeholder="All namespaces" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="__ALL__">
+									All namespaces
 								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					{isPlatformAdmin && (
-						<div className="w-full sm:w-64">
-							<OrganizationSelect
-								value={filterOrgId}
-								onChange={setFilterOrgId}
-								showAll={true}
-								showGlobal={true}
-								placeholder="All organizations"
-							/>
-						</div>
-					)}
-				</KnowledgeFilters>
-				{isPlatformAdmin && (
-					<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-						{selectedIds.size > 0 && (
-							<>
-								<span className="text-sm text-muted-foreground">
-									{selectedIds.size} selected
-								</span>
-								<Button
-									variant="outline"
-									className="h-11"
-									onClick={() => {
-										setBulkScopeIds(
-											Array.from(selectedIds),
-										);
-									}}
-								>
-									<ArrowRightLeft className="h-4 w-4 mr-1" />
-									Change Scope
-								</Button>
-							</>
-						)}
-						<Button
-							variant="outline"
-							className="h-11"
-							onClick={handleExport}
-							disabled={isExporting}
-						>
-							<Download className="h-4 w-4 mr-1" />
-							{selectedIds.size > 0
-								? `Export (${selectedIds.size})`
-								: "Export All"}
-						</Button>
-						<Button
-							variant="outline"
-							className="h-11"
-							onClick={() => setIsImportOpen(true)}
-						>
-							<Upload className="h-4 w-4 mr-1" />
-							Import
-						</Button>
-					</div>
-				)}
-			</ListToolbar>
-
-			{namespaceQuery.isError && (
-				<Alert>
-					<AlertTitle>
-						Namespace filters could not be updated
-					</AlertTitle>
-					<AlertDescription>
-						<p>
-							You can still search documents or try loading the
-							filters again.
-						</p>
-						<Button
-							variant="outline"
-							className="mt-3 min-h-11"
-							onClick={() => void fetchNamespaces()}
-						>
-							Retry namespace filters
-						</Button>
-					</AlertDescription>
-				</Alert>
-			)}
-			{documentQuery.isError && (
-				<Alert variant="destructive">
-					<AlertTitle>Documents could not be loaded</AlertTitle>
-					<AlertDescription>
-						<p>
-							{documentQuery.data
-								? "Showing the last loaded documents. Your selection is preserved."
-								: "Try again to load documents for these filters."}
-						</p>
-						<Button
-							variant="outline"
-							className="mt-3 min-h-11"
-							onClick={() => void fetchDocuments()}
-						>
-							Retry documents
-						</Button>
-					</AlertDescription>
-				</Alert>
-			)}
-			{documentQuery.isFetching && !isLoading && (
-				<p role="status" className="text-sm text-muted-foreground">
-					Updating documents…
-				</p>
-			)}
-			{/* Content */}
-			<PageScrollArea
-				aria-label="Knowledge documents list"
-				className="lg:flex lg:flex-col lg:overflow-hidden"
-			>
-				{isLoading ? (
-					<div
-						role="status"
-						aria-label="Loading documents"
-						className="space-y-2"
-					>
-						{[...Array(5)].map((_, i) => (
-							<Skeleton key={i} className="h-12 w-full" />
-						))}
-					</div>
-				) : documents.length > 0 ? (
-					compactLayout ? (
-						<KnowledgeMobileList
-							documents={documents}
-							isPlatformAdmin={isPlatformAdmin}
-							selectedIds={selectedIds}
-							getOrgName={getOrgName}
-							onToggleSelect={toggleSelect}
-							onToggleSelectAll={toggleSelectAll}
-							onOpen={openDocument}
-							onDelete={handleDeleteRequest}
-							page={page}
-							hasMore={hasMore}
-							onPageChange={setPage}
-						/>
-					) : (
-						<div className="flex-1 min-h-0 flex flex-col">
-							<div className="flex-1 min-h-0">
-								<DataTable className="max-h-full">
-									<DataTableHeader>
-										<DataTableRow>
-											{isPlatformAdmin && (
-												<DataTableHead className="w-10">
-													<Checkbox
-														aria-label="Select visible documents"
-														checked={
-															allVisibleSelected
-																? true
-																: someVisibleSelected
-																	? "indeterminate"
-																	: false
-														}
-														onCheckedChange={
-															toggleSelectAll
-														}
-													/>
-												</DataTableHead>
-											)}
-											<DataTableHead className="w-0 whitespace-nowrap">
-												Scope
-											</DataTableHead>
-											<DataTableHead className="w-0 whitespace-nowrap">
-												Namespace
-											</DataTableHead>
-											<DataTableHead>Key</DataTableHead>
-											<DataTableHead className="w-0 whitespace-nowrap">
-												Created
-											</DataTableHead>
-											<DataTableHead className="w-px whitespace-nowrap text-right">
-												Actions
-											</DataTableHead>
-										</DataTableRow>
-									</DataTableHeader>
-									<DataTableBody>
-										{documents.map((doc) => (
-											<DataTableRow
-												key={doc.id}
-												clickable
-												onClick={() =>
-													openDocument(doc)
-												}
-											>
-												{isPlatformAdmin && (
-													<DataTableCell>
-														<Checkbox
-															aria-label={`Select ${doc.key || doc.id}`}
-															checked={selectedIds.has(
-																doc.id,
-															)}
-															onCheckedChange={() =>
-																toggleSelect(
-																	doc.id,
-																)
-															}
-															onClick={(e) =>
-																e.stopPropagation()
-															}
-														/>
-													</DataTableCell>
-												)}
-												<DataTableCell className="w-0 whitespace-nowrap">
-													<KnowledgeDocumentScopeBadge
-														organizationId={
-															doc.organization_id
-														}
-														getOrgName={getOrgName}
-													/>
-												</DataTableCell>
-												<DataTableCell className="w-0 whitespace-nowrap">
-													<div className="flex items-center gap-2">
-														<BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
-														{doc.namespace}
-													</div>
-												</DataTableCell>
-												<DataTableCell className="font-mono text-xs">
-													<button
-														type="button"
-														className="min-h-11 text-left [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring"
-														onClick={(event) => {
-															event.stopPropagation();
-															openDocument(doc);
-														}}
-													>
-														{doc.key || doc.id}
-													</button>
-												</DataTableCell>
-												<DataTableCell className="w-0 whitespace-nowrap text-xs text-muted-foreground">
-													{formatKnowledgeDate(
-														doc.created_at,
-													)}
-												</DataTableCell>
-												<DataTableCell className="w-0 whitespace-nowrap text-right">
-													<RecordActionsMenu
-														label={`More actions for ${doc.key || doc.id}`}
-													>
-														<DropdownMenuItem
-															variant="destructive"
-															className="min-h-11 whitespace-nowrap px-3"
-															onClick={(e) => {
-																e.stopPropagation();
-																handleDeleteRequest(
-																	doc,
-																);
-															}}
-														>
-															<Trash2 className="mr-2 h-4 w-4" />
-															Delete
-														</DropdownMenuItem>
-													</RecordActionsMenu>
-												</DataTableCell>
-											</DataTableRow>
-										))}
-									</DataTableBody>
-									{(page > 0 || hasMore) && (
-										<DataTableFooter>
-											<DataTableRow>
-												<DataTableCell
-													colSpan={
-														isPlatformAdmin ? 6 : 5
-													}
-													className="p-0"
-												>
-													<KnowledgePagination
-														page={page}
-														hasMore={hasMore}
-														onPageChange={setPage}
-													/>
-												</DataTableCell>
-											</DataTableRow>
-										</DataTableFooter>
-									)}
-								</DataTable>
+								{namespaces.map((ns) => (
+									<SelectItem
+										key={ns.namespace}
+										value={ns.namespace}
+									>
+										{ns.namespace}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						{isPlatformAdmin && (
+							<div className="w-full sm:w-48">
+								<OrganizationSelect
+									value={filterOrgId}
+									onChange={setFilterOrgId}
+									showAll={true}
+									showGlobal={true}
+									placeholder="All organizations"
+									disabled={externalBusy}
+								/>
 							</div>
-						</div>
-					)
-				) : documentQuery.isError ? null : (
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-							<FileText className="h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-semibold">
-								{page > 0
-									? "No more documents"
-									: "No documents found"}
-							</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{page > 0
-									? "You've reached the end of the results."
-									: "Add documents to knowledge namespaces for AI agent RAG"}
+						)}
+					</KnowledgeFilters>
+					<KnowledgeToolbarActions
+						isPlatformAdmin={isPlatformAdmin}
+						selectionMode={selectionMode}
+						selectedCount={selectedIds.size}
+						isExporting={isExporting}
+						isRefreshing={
+							documentQuery.isFetching ||
+							namespaceQuery.isFetching
+						}
+						busy={externalBusy}
+						onToggleSelectionMode={() => {
+							setSelectionMode((value) => !value);
+							if (selectionMode) setSelectedIds(new Set());
+						}}
+						onChangeScope={() =>
+							setBulkScopeIds(Array.from(selectedIds))
+						}
+						onExport={() => void handleExport()}
+						onImport={() => setIsImportOpen(true)}
+						onRefresh={() => {
+							void fetchDocuments();
+							void fetchNamespaces();
+						}}
+						onCreate={() => {
+							if (externalBusy) return;
+							setViewDocId(null);
+							setViewDocNamespace("");
+							setIsCreating(true);
+						}}
+						createRef={createRef}
+					/>
+				</ListToolbar>
+
+				{namespaceQuery.isError && (
+					<Alert className="m-3 w-auto">
+						<AlertTitle>
+							Namespace filters could not be updated
+						</AlertTitle>
+						<AlertDescription>
+							<p>
+								You can still search documents or try loading
+								the filters again.
 							</p>
-							{page > 0 ? (
-								<Button
-									variant="outline"
-									onClick={() => setPage(0)}
-									className="mt-4"
-								>
-									Back to first page
-								</Button>
-							) : (
-								<Button
-									variant="outline"
-									onClick={() => setIsCreating(true)}
-									className="mt-4"
-								>
-									<Plus className="h-4 w-4 mr-2" />
-									Add Document
-								</Button>
-							)}
-						</CardContent>
-					</Card>
+							<Button
+								variant="outline"
+								className="mt-3 min-h-11"
+								onClick={() => void fetchNamespaces()}
+							>
+								Retry namespace filters
+							</Button>
+						</AlertDescription>
+					</Alert>
 				)}
-			</PageScrollArea>
+				{documentQuery.isError && (
+					<Alert variant="destructive" className="m-3 w-auto">
+						<AlertCircle className="size-4" />
+						<AlertTitle>Documents could not be loaded</AlertTitle>
+						<AlertDescription>
+							<p>
+								{documentQuery.data
+									? "Showing the last loaded documents. Your selection is preserved."
+									: "Try again to load documents for these filters."}
+							</p>
+							<Button
+								variant="outline"
+								className="mt-3 min-h-11"
+								onClick={() => void fetchDocuments()}
+							>
+								Retry documents
+							</Button>
+						</AlertDescription>
+					</Alert>
+				)}
+				{documentQuery.isFetching && !isInitialLoading && (
+					<p
+						role="status"
+						className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-2 text-sm text-muted-foreground"
+					>
+						<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+						Updating documents...
+					</p>
+				)}
+
+				<div className="relative flex min-h-[32rem] flex-1 overflow-hidden lg:min-h-0">
+					<div
+						className={cn(
+							"flex min-h-0 min-w-0 flex-1 flex-col",
+							editorOpen &&
+								!inlineEditor &&
+								"invisible pointer-events-none",
+						)}
+					>
+						{isInitialLoading ? (
+							<KnowledgeLoadingRows />
+						) : documents.length > 0 ? (
+							<>
+								<KnowledgeDocumentList
+									documents={documents}
+									selectedDocId={viewDocId}
+									selectionMode={selectionMode}
+									isPlatformAdmin={isPlatformAdmin}
+									selectedIds={selectedIds}
+									allVisibleSelected={allVisibleSelected}
+									someVisibleSelected={someVisibleSelected}
+									getOrgName={getOrgName}
+									busy={externalBusy}
+									onToggleSelect={toggleSelect}
+									onToggleSelectAll={toggleSelectAll}
+									onOpen={openDocument}
+									onDelete={handleDeleteRequest}
+								/>
+								{(page > 0 || hasMore) && (
+									<div className="shrink-0 border-t border-border/70">
+										<KnowledgePagination
+											page={page}
+											hasMore={hasMore}
+											onPageChange={setPage}
+										/>
+									</div>
+								)}
+							</>
+						) : documentQuery.isError ? null : (
+							<KnowledgeEmptyState
+								page={page}
+								onFirstPage={() => setPage(0)}
+								onCreate={() => setIsCreating(true)}
+							/>
+						)}
+					</div>
+
+					<AnimatePresence initial={false}>
+						{editorOpen && (
+							<KnowledgeEditorPane
+								key="knowledge-editor"
+								open={editorOpen}
+								inline={inlineEditor}
+								busy={editorBusy}
+								onClose={() => closeEditor()}
+							>
+								<KnowledgeDocumentDrawer
+									returnFocusRef={createRef}
+									namespace={viewDocNamespace}
+									documentId={viewDocId}
+									isCreating={isCreating}
+									onClose={() => closeEditor(true)}
+									embedded
+									onBusyChange={setEditorBusy}
+								/>
+							</KnowledgeEditorPane>
+						)}
+					</AnimatePresence>
+				</div>
+			</div>
 
 			{isDeleteDialogOpen && deleteDoc && (
 				<KnowledgeDeleteDialog
@@ -907,32 +665,17 @@ export function Knowledge() {
 					onSaved={(updated) => {
 						toast.success(`Updated scope for ${updated} documents`);
 						setSelectedIds(new Set());
+						setSelectionMode(false);
 						void fetchDocuments();
 					}}
 				/>
 			)}
 
-			{/* Import Dialog */}
 			<ImportDialog
 				open={isImportOpen}
 				onOpenChange={setIsImportOpen}
 				entityType="knowledge"
 				onImportComplete={() => fetchDocuments()}
-			/>
-
-			{/* Document Drawer */}
-			<KnowledgeDocumentDrawer
-				returnFocusRef={createRef}
-				namespace={viewDocNamespace}
-				documentId={viewDocId}
-				isCreating={isCreating}
-				onClose={() => {
-					setViewDocId(null);
-					setViewDocNamespace("");
-					setIsCreating(false);
-					fetchDocuments();
-					fetchNamespaces();
-				}}
 			/>
 		</PageWorkspace>
 	);

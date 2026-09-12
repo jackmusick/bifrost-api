@@ -92,3 +92,12 @@ source and resolve named rules, while user/action decisions require Test Access.
 Edit policy attachments and test access inside the inspector, with readable rules
 first and a lossless Advanced editor for custom conditions. Keep mutation guards,
 source/blast-radius context, and a return path to the same Access tab.
+
+Knowledge uses the same contained workspace grammar for document operations.
+The toolbar owns search plus namespace and scope filtering. Rows lead with the
+document title and preview, with namespace and organization scope wrapping under
+the title as metadata instead of occupying narrow columns. Bulk actions require
+an explicit selection mode. Opening a document attaches the embedded editor to
+the workspace as a contained pane on desktop and as the workspace pane on mobile,
+without a modal or portal. Preserve loading, save, conflict replacement, scope,
+permission, and mutation guards while the editor is attached.

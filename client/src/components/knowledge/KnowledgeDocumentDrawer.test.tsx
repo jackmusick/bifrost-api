@@ -208,4 +208,41 @@ describe("KnowledgeDocumentDrawer", () => {
 			}),
 		);
 	});
+
+	it("renders embedded editing in the parent pane and reports save busy state", async () => {
+		let release: (value: Response) => void = () => {};
+		const onBusyChange = vi.fn();
+		fetchMock.mockImplementation(
+			async (_url: string, options?: RequestInit) => {
+				if (options?.method !== "PUT") return response(doc);
+				return new Promise<Response>((resolve) => {
+					release = resolve;
+				});
+			},
+		);
+		const { user } = renderWithProviders(
+			<KnowledgeDocumentDrawer
+				{...props}
+				embedded
+				onBusyChange={onBusyChange}
+			/>,
+		);
+		const editor = await screen.findByRole("textbox", {
+			name: "Document content",
+		});
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Close document" }),
+		).toBeEnabled();
+		await user.clear(editor);
+		await user.type(editor, "Pane guidance");
+		await user.click(screen.getByRole("button", { name: "Save" }));
+		expect(
+			screen.getByRole("button", { name: "Close document" }),
+		).toBeDisabled();
+		await waitFor(() => expect(onBusyChange).toHaveBeenCalledWith(true));
+		await act(async () => release(response(doc)));
+		await waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
+		expect(onBusyChange).toHaveBeenLastCalledWith(false);
+	});
 });
