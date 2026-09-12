@@ -22,10 +22,24 @@ from src.jobs.platform.base import (
 )
 from src.models.orm.applications import Application
 from src.services.application_deploy_storage import ApplicationDeployStorage
+from src.services.application_sdk_status import current_sdk_metadata
+from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.solutions.app_build import SolutionAppBuilder
 
 logger = logging.getLogger(__name__)
 MAX_EXPANDED_SOURCE_BYTES = 256 * 1024 * 1024
+_SOURCE_SKIP_DIRS = {
+    ".cache",
+    ".git",
+    ".next",
+    ".turbo",
+    ".vite",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "out",
+}
 
 
 class ApplicationDeployPayload(BaseModel):
@@ -50,6 +64,8 @@ def _read_source_zip(path: Path) -> dict[str, bytes]:
                 raise PlatformJobFailure(
                     "invalid_app_source", f"Unsafe path in App source: {info.filename}"
                 )
+            if _should_skip_source_path(rel):
+                continue
             expanded += info.file_size
             if expanded > MAX_EXPANDED_SOURCE_BYTES:
                 raise PlatformJobFailure(
@@ -65,10 +81,25 @@ def _read_source_zip(path: Path) -> dict[str, bytes]:
     return files
 
 
+def _should_skip_source_path(rel: PurePosixPath) -> bool:
+    first = rel.parts[0]
+    return first in _SOURCE_SKIP_DIRS or first == ".env" or first.startswith(".env.")
+
+
+def _write_source_zip(path: Path, files: dict[str, bytes]) -> None:
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name in sorted(files):
+            info = zipfile.ZipInfo(name)
+            info.date_time = (1980, 1, 1, 0, 0, 0)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, files[name])
+
+
 async def run_application_deploy(
     context: PlatformJobContext, payload: ApplicationDeployPayload
 ) -> dict[str, str]:
     storage = ApplicationDeployStorage(context.job_id)
+    source_artifacts = ApplicationSourceArtifactStorage()
     builder = SolutionAppBuilder()
     activated = False
     old_deployment_id: UUID | None = None
@@ -80,30 +111,43 @@ async def run_application_deploy(
                 source_zip, expected_sha256=payload.input_sha256
             )
             source_files = _read_source_zip(source_zip)
+            retained_source_zip = Path(tmp) / "retained-source.zip"
+            _write_source_zip(retained_source_zip, source_files)
 
-        await context.report("Building App", percent=20)
-        try:
-            dist = await asyncio.to_thread(
-                builder.compile_dist,
-                payload.application_id,
-                source_files,
-                {},
+            await context.report("Building App", percent=20)
+            try:
+                sdk_metadata = await asyncio.to_thread(current_sdk_metadata)
+                if not sdk_metadata.fingerprint or sdk_metadata.contract_version is None:
+                    raise PlatformJobFailure(
+                        "sdk_provenance_unavailable",
+                        "Current SDK provenance is unavailable.",
+                    )
+                dist = await asyncio.to_thread(
+                    builder.compile_dist,
+                    payload.application_id,
+                    source_files,
+                    {},
+                )
+            except PlatformJobFailure:
+                raise
+            except subprocess.CalledProcessError as exc:
+                detail = (exc.stderr or exc.stdout or b"").decode(errors="replace")[-4000:]
+                raise PlatformJobFailure(
+                    "app_build_failed",
+                    f"Vite build failed.\n{detail}" if detail else "Vite build failed.",
+                ) from exc
+            except Exception as exc:
+                raise PlatformJobFailure("app_build_failed", str(exc)) from exc
+
+            await context.report("Uploading App artifact", percent=70)
+            await builder.upload_deployment(
+                payload.application_id, payload.deployment_id, dist
             )
-        except PlatformJobFailure:
-            raise
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or b"").decode(errors="replace")[-4000:]
-            raise PlatformJobFailure(
-                "app_build_failed",
-                f"Vite build failed.\n{detail}" if detail else "Vite build failed.",
-            ) from exc
-        except Exception as exc:
-            raise PlatformJobFailure("app_build_failed", str(exc)) from exc
 
-        await context.report("Uploading App artifact", percent=70)
-        await builder.upload_deployment(
-            payload.application_id, payload.deployment_id, dist
-        )
+            await context.report("Retaining App source", percent=85)
+            await source_artifacts.write_deployment_source(
+                payload.application_id, payload.deployment_id, retained_source_zip
+            )
 
         await context.report("Activating App", percent=95)
         async with get_db_context() as db:
@@ -115,6 +159,10 @@ async def run_application_deploy(
             old_deployment_id = app.active_deployment_id
             app.active_deployment_id = payload.deployment_id
             app.deployed_at = datetime.now(timezone.utc)
+            app.sdk_package_version = sdk_metadata.package_version
+            app.sdk_fingerprint = sdk_metadata.fingerprint
+            app.sdk_contract_version = sdk_metadata.contract_version
+            app.sdk_built_at = app.deployed_at
             await db.flush()
         activated = True
 
@@ -124,6 +172,16 @@ async def run_application_deploy(
             except Exception:
                 logger.warning(
                     "Failed to remove superseded App deployment %s",
+                    old_deployment_id,
+                    exc_info=True,
+                )
+            try:
+                await source_artifacts.delete_deployment_source(
+                    payload.application_id, old_deployment_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to remove superseded App source %s",
                     old_deployment_id,
                     exc_info=True,
                 )
@@ -142,6 +200,16 @@ async def run_application_deploy(
                 exc_info=True,
             )
         if not activated:
+            try:
+                await source_artifacts.delete_deployment_source(
+                    payload.application_id, payload.deployment_id
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to clean incomplete retained App source %s",
+                    payload.deployment_id,
+                    exc_info=True,
+                )
             try:
                 await builder.delete_deployment(
                     payload.application_id, payload.deployment_id

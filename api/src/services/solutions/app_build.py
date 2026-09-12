@@ -4,8 +4,9 @@ SolutionAppBuilder — server-side Vite build for v2 standalone apps (criterion 
 A v2 app's transient ``src/`` is built into a ``dist/`` and uploaded to
 ``_apps/{app_id}/dist/``, from which the platform serves the standalone app. A
 deploy bundle may instead ship a prebuilt ``dist/`` (the disconnected fast-path),
-in which case the Vite build is skipped. App ``src/`` is NEVER persisted under
-``_solutions/`` — it is transient build input only (success-criteria §3.6).
+in which case the Vite build is skipped. Solution app ``src/`` is not persisted
+under ``_solutions/`` by this builder; independent deploy source retention is
+owned by ``ApplicationSourceArtifactStorage``.
 
 This is the ONE canonical build path: git-connected installs always build here
 (from the clone); disconnected installs build here too unless they pre-ship

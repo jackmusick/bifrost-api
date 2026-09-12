@@ -64,6 +64,7 @@ from src.services.application_sdk_status import (
     load_current_sdk_metadata,
     sdk_source_available,
 )
+from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.core.exceptions import AccessDeniedError
 from shared.logo_processing import (
@@ -526,6 +527,14 @@ async def delete_application(
             detail=f"Application '{app_id}' not found",
         )
     await ctx.db.commit()
+    try:
+        await ApplicationSourceArtifactStorage().delete_application_artifacts(app_id)
+    except Exception:
+        logger.warning(
+            "Failed to remove retained App source artifacts for %s",
+            app_id,
+            exc_info=True,
+        )
     if active_deployment_id is not None:
         from src.services.solutions.app_build import SolutionAppBuilder
 
@@ -644,9 +653,9 @@ async def deploy_application(
 ) -> PlatformJobAccepted:
     """Build local App source and atomically activate the resulting artifact.
 
-    Source is staged only for the platform job and is deleted whether the job
-    succeeds or fails. The Application row and object storage retain compiled
-    ``dist`` files only.
+    The raw upload is staged only for the platform job and is deleted whether
+    the job succeeds or fails. Successful deployments retain a sanitized source
+    archive beside the immutable compiled deployment artifact.
     """
     application = await get_application_by_id_or_404(ctx, app_id)
     if application.solution_id is not None or application.app_model != "standalone_v2":
