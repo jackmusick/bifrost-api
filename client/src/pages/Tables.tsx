@@ -1,39 +1,22 @@
 import { TableActionsMenu } from "./tables/TableActionsMenu";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-	Database,
-	Plus,
-	RefreshCw,
-	Globe,
-	Building2,
-	Download,
-	Upload,
-} from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Database, Download, Plus, RefreshCw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { TableDeleteDialog } from "./tables/TableDeleteDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { SearchBox } from "@/components/search/SearchBox";
-import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
 import { PageWorkspace } from "@/components/layout/PageWorkspace";
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { TableRecordList } from "@/components/tables/TableRecordList";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useSearch } from "@/hooks/useSearch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -43,11 +26,14 @@ import { TablesClaimsTab } from "@/pages/TablesClaimsTab";
 import { ImportDialog } from "@/components/ImportDialog";
 import { exportEntities } from "@/services/exportImport";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import type { TablePublic } from "@/services/tables";
 
 export function Tables() {
 	const createButtonRef = useRef<HTMLButtonElement>(null);
-	const compactLayout = useMediaQuery("(max-width: 1023px)");
+	const reduceMotion = useReducedMotion();
+	const inlineEditor = useMediaQuery("(min-width: 1280px)");
+	const frameRef = useRef<HTMLDivElement>(null);
 	const navigate = useNavigate();
 	const [activeTab, setActiveTab] = useState("tables");
 	const { isPlatformAdmin } = useAuth();
@@ -55,6 +41,16 @@ export function Tables() {
 		TablePublic | undefined
 	>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
+	useEffect(() => {
+		if (!isDialogOpen || inlineEditor) return;
+		const id = requestAnimationFrame(() =>
+			frameRef.current?.scrollIntoView?.({
+				block: "start",
+				behavior: "instant",
+			}),
+		);
+		return () => cancelAnimationFrame(id);
+	}, [isDialogOpen, inlineEditor]);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [tableToDelete, setTableToDelete] = useState<
 		TablePublic | undefined
@@ -64,8 +60,10 @@ export function Tables() {
 		undefined,
 	);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+	const [selectionMode, setSelectionMode] = useState(false);
 	const [isImportOpen, setIsImportOpen] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
+	const [editorBusy, setEditorBusy] = useState(false);
 
 	// Convert filterOrgId to scope for API: undefined = all, null = global only, string = org UUID
 	const apiScope =
@@ -99,16 +97,19 @@ export function Tables() {
 	]);
 
 	const handleEdit = (table: TablePublic) => {
+		if (editorBusy) return;
 		setSelectedTable(table);
 		setIsDialogOpen(true);
 	};
 
 	const handleAdd = () => {
+		if (editorBusy) return;
 		setSelectedTable(undefined);
 		setIsDialogOpen(true);
 	};
 
 	const handleDelete = (table: TablePublic) => {
+		if (editorBusy) return;
 		setTableToDelete(table);
 		setIsDeleteDialogOpen(true);
 	};
@@ -137,13 +138,19 @@ export function Tables() {
 	};
 
 	const handleViewDocuments = (table: TablePublic) => {
+		if (editorBusy) return;
 		navigate(`/tables/${table.id}`);
 	};
 
 	const handleDialogClose = () => {
+		setEditorBusy(false);
 		setIsDialogOpen(false);
 		setSelectedTable(undefined);
 	};
+
+	const handleEditorBusyChange = useCallback((busy: boolean) => {
+		setEditorBusy(busy);
+	}, []);
 
 	const toggleSelect = (id: string) => {
 		setSelectedIds((prev) => {
@@ -157,9 +164,6 @@ export function Tables() {
 	const allVisibleSelected =
 		filteredTables.length > 0 &&
 		filteredTables.every((table) => selectedIds.has(table.id));
-	const someVisibleSelected = filteredTables.some((table) =>
-		selectedIds.has(table.id),
-	);
 	const toggleSelectAll = () => {
 		setSelectedIds((previous) => {
 			const next = new Set(previous);
@@ -202,281 +206,308 @@ export function Tables() {
 	);
 
 	return (
-		<PageWorkspace className="max-w-7xl mx-auto">
+		<PageWorkspace className="mx-auto w-full max-w-[1600px] gap-4">
 			<ListPageHeader
+				className="shrink-0"
 				title="Data Tables"
 				description="Manage document tables for your applications"
-				actions={
-					activeTab === "tables" ? (
-						<>
-							<Button
-								variant="outline"
-								size="icon"
-								onClick={() => refetch()}
-								title="Refresh"
-								aria-label="Refresh"
-								disabled={isFetching}
-								className="h-11 w-11 lg:h-10 lg:w-10"
-							>
-								<RefreshCw
-									className={`h-4 w-4 ${isFetching ? "animate-spin motion-reduce:animate-none" : ""}`}
-								/>
-							</Button>
-							<Button
-								variant="default"
-								ref={createButtonRef}
-								onClick={handleAdd}
-								title="Create table"
-								aria-label="Create table"
-								className="min-h-11 min-w-0 lg:min-h-10"
-							>
-								<Plus className="h-4 w-4" />
-								New table
-							</Button>
-						</>
-					) : undefined
-				}
 			/>
 
 			<Tabs
 				value={activeTab}
-				onValueChange={setActiveTab}
-				className="flex flex-1 min-h-0 flex-col"
+				onValueChange={(value) => {
+					if (!editorBusy) {
+						setActiveTab(value);
+						handleDialogClose();
+					}
+				}}
+				ref={frameRef}
+				className={cn(
+					"scroll-mt-4 flex min-h-0 max-h-full flex-col gap-0 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card",
+					isDialogOpen
+						? "h-[calc(100dvh-6rem)] lg:h-auto lg:flex-1"
+						: "shrink",
+				)}
 			>
-				<TabsList className="w-fit">
-					<TabsTrigger value="tables">Tables</TabsTrigger>
-					<TabsTrigger value="claims">Custom Claims</TabsTrigger>
+				<TabsList
+					variant="line"
+					className="min-h-12 w-full shrink-0 justify-start rounded-none border-b bg-muted/10 px-3"
+				>
+					<TabsTrigger value="tables" className="flex-none px-4">
+						Tables
+					</TabsTrigger>
+					<TabsTrigger value="claims" className="flex-none px-4">
+						Custom Claims
+					</TabsTrigger>
 				</TabsList>
 
 				<TabsContent
 					value="tables"
-					className="flex flex-1 min-h-0 flex-col space-y-6"
+					className="mt-0 flex min-h-0 flex-1 flex-col"
 				>
-					<ListToolbar>
-						<SearchBox
-							value={searchTerm}
-							onChange={setSearchTerm}
-							aria-label="Search tables"
-							placeholder="Search tables by name or description..."
-							className="w-full sm:flex-1"
-						/>
-						{isPlatformAdmin && (
-							<div className="w-full sm:w-64">
-								<OrganizationSelect
-									value={filterOrgId}
-									onChange={setFilterOrgId}
-									showAll={true}
-									showGlobal={true}
-									placeholder="All organizations"
-								/>
-							</div>
+					<div
+						className={cn(
+							"flex min-h-0 max-h-full flex-col overflow-hidden",
+							isDialogOpen ? "flex-1" : "shrink",
 						)}
-						{isPlatformAdmin && (
-							<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-								{selectedIds.size > 0 && (
-									<span className="text-sm text-muted-foreground">
-										{selectedIds.size} selected
-									</span>
-								)}
-								<Button
-									variant="outline"
-									size="sm"
-									className="min-h-11 lg:min-h-9"
-									onClick={handleExport}
-									disabled={isExporting}
-								>
-									<Download className="h-4 w-4 mr-1" />
-									{selectedIds.size > 0
-										? `Export (${selectedIds.size})`
-										: "Export All"}
-								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									className="min-h-11 lg:min-h-9"
-									onClick={() => setIsImportOpen(true)}
-								>
-									<Upload className="h-4 w-4 mr-1" />
-									Import
-								</Button>
-							</div>
-						)}
-					</ListToolbar>
-
-					{error && (
-						<Alert variant="destructive">
-							<AlertTitle>Tables could not be loaded</AlertTitle>
-							<AlertDescription className="space-y-3">
-								<p>
-									{data
-										? "Showing the last loaded tables. Refresh to get the latest changes."
-										: "Try again to load your tables. Your filters are preserved."}
-								</p>
-								<Button
-									variant="outline"
-									className="min-h-11"
-									disabled={isFetching}
-									onClick={() => refetch()}
-								>
-									{isFetching ? "Retrying…" : "Retry tables"}
-								</Button>
-							</AlertDescription>
-						</Alert>
-					)}
-					{/* Content */}
-					{isLoading ? (
-						<div
-							role="status"
-							aria-label="Loading tables"
-							className="space-y-2"
-						>
-							<span className="sr-only">Loading tables…</span>
-							{[...Array(5)].map((_, i) => (
-								<Skeleton key={i} className="h-12 w-full" />
-							))}
-						</div>
-					) : error && !data ? null : filteredTables &&
-					  filteredTables.length > 0 ? (
-						<div
-							className="flex-1 min-h-0"
-							role="region"
-							aria-label="Data tables"
-						>
-							{compactLayout ? (
-								<TableRecordList
-									tables={filteredTables}
-									isPlatformAdmin={isPlatformAdmin}
-									selectedIds={selectedIds}
-									allVisibleSelected={allVisibleSelected}
-									someVisibleSelected={someVisibleSelected}
-									onToggleAll={toggleSelectAll}
-									onToggle={toggleSelect}
-									scopeName={getOrgName}
-									formatDate={formatDate}
-									renderActions={renderTableActions}
+					>
+						<ListToolbar className="shrink-0 gap-0 border-b border-border/70 bg-muted/20 p-0">
+							{isPlatformAdmin && (
+								<div className="w-full shrink-0 border-b sm:w-56 sm:self-stretch sm:border-b-0 sm:border-r">
+									<OrganizationSelect
+										value={filterOrgId}
+										onChange={setFilterOrgId}
+										showAll={true}
+										showGlobal={true}
+										placeholder="All Organizations"
+										aria-label="Tables scope"
+										disabled={editorBusy}
+										triggerClassName="h-full min-h-12 rounded-none border-0 bg-transparent px-4 py-2 shadow-none hover:bg-muted/50 focus-visible:ring-inset"
+									/>
+								</div>
+							)}
+							<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-2 sm:gap-0 sm:px-0 sm:py-0">
+								<SearchBox
+									value={searchTerm}
+									onChange={setSearchTerm}
+									aria-label="Search tables"
+									placeholder="Search tables by name or description..."
+									className="min-w-0 w-full sm:min-w-40 sm:flex-1 [&>input]:h-10 sm:[&>input]:h-12 sm:[&>input]:rounded-none sm:[&>input]:border-0 sm:[&>input]:bg-transparent sm:[&>input]:shadow-none sm:[&>input]:focus-visible:ring-inset"
 								/>
-							) : (
-								<DataTable className="max-h-full">
-									<DataTableHeader>
-										<DataTableRow>
-											{isPlatformAdmin && (
-												<DataTableHead className="w-10">
-													<Checkbox
-														aria-label="Select visible tables"
-														checked={
-															allVisibleSelected
-																? true
-																: someVisibleSelected
-																	? "indeterminate"
-																	: false
-														}
-														onCheckedChange={
-															toggleSelectAll
-														}
-													/>
-												</DataTableHead>
+								<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:border-l sm:border-border sm:px-3">
+									{isPlatformAdmin && (
+										<label className="flex min-h-10 items-center gap-2 text-sm sm:min-h-12">
+											<Switch
+												aria-label="Select"
+												checked={selectionMode}
+												onCheckedChange={(value) => {
+													setSelectionMode(value);
+													if (!value)
+														setSelectedIds(
+															new Set(),
+														);
+												}}
+												disabled={editorBusy}
+											/>
+											Select
+										</label>
+									)}
+									<Button
+										variant="ghost"
+										size="icon"
+										aria-label="Refresh"
+										aria-busy={isFetching}
+										title="Refresh"
+										disabled={editorBusy || isFetching}
+										onClick={() => refetch()}
+									>
+										<RefreshCw
+											aria-hidden="true"
+											className={cn(
+												"size-4",
+												isFetching &&
+													"animate-spin motion-reduce:animate-none",
 											)}
-											<DataTableHead className="w-0 whitespace-nowrap">
-												Scope
-											</DataTableHead>
-											<DataTableHead>Name</DataTableHead>
-											<DataTableHead>
-												Description
-											</DataTableHead>
-											<DataTableHead className="w-0 whitespace-nowrap">
-												Created
-											</DataTableHead>
-											<DataTableHead className="w-0 whitespace-nowrap text-right" />
-										</DataTableRow>
-									</DataTableHeader>
-									<DataTableBody>
-										{filteredTables.map((table) => (
-											<DataTableRow
-												key={table.id}
-												clickable
-												href={`/tables/${table.id}`}
-												onClick={() =>
-													handleViewDocuments(table)
+										/>
+									</Button>
+									{isPlatformAdmin && (
+										<RecordActionsMenu label="Tables actions">
+											<DropdownMenuItem
+												onSelect={handleExport}
+												disabled={
+													editorBusy || isExporting
 												}
 											>
-												{isPlatformAdmin && (
-													<DataTableCell>
-														<Checkbox
-															aria-label={`Select ${table.name}`}
-															checked={selectedIds.has(
-																table.id,
-															)}
-															onCheckedChange={() =>
-																toggleSelect(
-																	table.id,
-																)
+												<Download className="size-4" />
+												{selectedIds.size > 0
+													? `Export (${selectedIds.size})`
+													: "Export"}
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												onSelect={() =>
+													setIsImportOpen(true)
+												}
+												disabled={editorBusy}
+											>
+												<Upload className="size-4" />
+												Import
+											</DropdownMenuItem>
+										</RecordActionsMenu>
+									)}
+									<Button
+										className="h-10"
+										ref={createButtonRef}
+										onClick={handleAdd}
+										disabled={editorBusy}
+									>
+										<Plus className="size-4" />
+										New Table
+									</Button>
+								</div>
+							</div>
+						</ListToolbar>
+
+						{error && (
+							<Alert variant="destructive">
+								<AlertTitle>
+									Tables could not be loaded
+								</AlertTitle>
+								<AlertDescription className="space-y-3">
+									<p>
+										{data
+											? "Showing the last loaded tables. Refresh to get the latest changes."
+											: "Try again to load your tables. Your filters are preserved."}
+									</p>
+									<Button
+										variant="outline"
+										className="min-h-11"
+										disabled={isFetching}
+										onClick={() => refetch()}
+									>
+										{isFetching
+											? "Retrying…"
+											: "Retry tables"}
+									</Button>
+								</AlertDescription>
+							</Alert>
+						)}
+						{/* Content */}
+						{isLoading ? (
+							<div
+								role="status"
+								aria-label="Loading tables"
+								className="p-6"
+							>
+								<span className="sr-only">Loading tables…</span>
+								<RefreshCw
+									aria-hidden="true"
+									className="size-5 animate-spin text-primary motion-reduce:animate-none"
+								/>
+							</div>
+						) : error && !data ? null : filteredTables.length > 0 ||
+						  isDialogOpen ? (
+							<div
+								className="relative flex min-h-0 flex-1"
+								role="region"
+								aria-label="Data tables"
+							>
+								<div
+									className="flex min-h-0 min-w-0 flex-1 flex-col"
+									inert={
+										isDialogOpen && !inlineEditor
+											? true
+											: undefined
+									}
+								>
+									{filteredTables.length > 0 ? (
+										<TableRecordList
+											tables={filteredTables}
+											isPlatformAdmin={isPlatformAdmin}
+											selectionMode={selectionMode}
+											selectedIds={selectedIds}
+											allVisibleSelected={
+												allVisibleSelected
+											}
+											busy={editorBusy}
+											onToggleAll={toggleSelectAll}
+											onToggle={toggleSelect}
+											onOpen={handleViewDocuments}
+											scopeName={getOrgName}
+											formatDate={formatDate}
+											renderActions={renderTableActions}
+										/>
+									) : (
+										<div className="flex min-h-[22rem] flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+											<Database className="h-12 w-12 text-muted-foreground" />
+											<h3 className="mt-4 text-lg font-semibold">
+												No tables found
+											</h3>
+											<p className="mt-2 text-sm text-muted-foreground">
+												Get started by creating your
+												first data table
+											</p>
+										</div>
+									)}
+								</div>
+								<AnimatePresence initial={false}>
+									{isDialogOpen && (
+										<motion.aside
+											key="table-editor"
+											aria-label={
+												selectedTable
+													? "Edit table pane"
+													: "Create table pane"
+											}
+
+											className={cn(
+												"z-20 flex min-h-0 min-w-0 flex-col overflow-hidden bg-card",
+												inlineEditor
+													? "relative shrink-0 border-l"
+													: "absolute inset-0",
+											)}
+											initial={
+												reduceMotion
+													? false
+													: inlineEditor
+														? {
+																width: 0,
+																opacity: 0,
 															}
-															onClick={(
-																e: React.MouseEvent,
-															) =>
-																e.stopPropagation()
+														: {
+																x: "100%",
+																opacity: 0,
 															}
-														/>
-													</DataTableCell>
-												)}
-												<DataTableCell className="w-0 whitespace-nowrap">
-													{table.organization_id ? (
-														<Badge
-															variant="outline"
-															className="gap-1"
-														>
-															<Building2 className="h-3 w-3" />
-															{isPlatformAdmin
-																? getOrgName(
-																		table.organization_id,
-																	)
-																: "Organization"}
-														</Badge>
-													) : (
-														<Badge
-															variant="secondary"
-															className="gap-1"
-														>
-															<Globe className="h-3 w-3" />
-															Global
-														</Badge>
-													)}
-												</DataTableCell>
-												<DataTableCell className="min-w-0 font-medium font-mono">
-													<span className="flex min-w-0 items-center gap-2">
-														<span className="truncate">
-															{table.name}
-														</span>
-														{table.is_solution_managed && (
-															<SolutionManagedBadge
-																solutionId={
-																	table.solution_id
-																}
-															/>
-														)}
-													</span>
-												</DataTableCell>
-												<DataTableCell className="max-w-xs truncate text-muted-foreground">
-													{table.description || "-"}
-												</DataTableCell>
-												<DataTableCell className="w-0 whitespace-nowrap text-sm text-muted-foreground">
-													{formatDate(
-														table.created_at,
-													)}
-												</DataTableCell>
-												<DataTableCell className="w-0 whitespace-nowrap text-right">
-													{renderTableActions(table)}
-												</DataTableCell>
-											</DataTableRow>
-										))}
-									</DataTableBody>
-								</DataTable>
-							)}
-						</div>
-					) : (
-						// Empty State
-						<Card>
-							<CardContent className="flex flex-col items-center justify-center py-12 text-center">
+											}
+											animate={
+												inlineEditor
+													? {
+															width: "min(42vw, 560px)",
+															opacity: 1,
+														}
+													: {
+															width: "100%",
+															x: 0,
+															opacity: 1,
+														}
+											}
+											exit={
+												inlineEditor
+													? { width: 0, opacity: 0 }
+													: { x: "100%", opacity: 0 }
+											}
+											transition={{
+												duration: reduceMotion
+													? 0
+													: 0.2,
+												ease: [0.22, 1, 0.36, 1],
+											}}
+											onKeyDown={(event) => {
+												if (
+													event.key === "Escape" &&
+													!event.defaultPrevented &&
+													!editorBusy
+												) {
+													event.stopPropagation();
+													handleDialogClose();
+												}
+											}}
+										>
+											<TableDialog
+												table={selectedTable}
+												open={isDialogOpen}
+												onClose={handleDialogClose}
+												embedded
+												onBusyChange={
+													handleEditorBusyChange
+												}
+											/>
+										</motion.aside>
+									)}
+								</AnimatePresence>
+							</div>
+						) : (
+							// Empty State
+							<div className="flex min-h-[22rem] flex-1 flex-col items-center justify-center px-6 py-12 text-center">
 								<Database className="h-12 w-12 text-muted-foreground" />
 								<h3 className="mt-4 text-lg font-semibold">
 									{searchTerm
@@ -498,21 +529,15 @@ export function Tables() {
 										Create your first table
 									</Button>
 								)}
-							</CardContent>
-						</Card>
-					)}
+							</div>
+						)}
+					</div>
 				</TabsContent>
 
 				<TabsContent value="claims" className="flex-1 min-h-0">
 					<TablesClaimsTab />
 				</TabsContent>
 			</Tabs>
-
-			<TableDialog
-				table={selectedTable}
-				open={isDialogOpen}
-				onClose={handleDialogClose}
-			/>
 
 			<ImportDialog
 				open={isImportOpen}

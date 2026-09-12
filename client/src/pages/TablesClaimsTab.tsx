@@ -1,3 +1,4 @@
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useMemo, useRef, useState } from "react";
@@ -5,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	Building2,
 	KeyRound,
+	Loader2,
 	Pencil,
 	Plus,
 	RefreshCw,
@@ -18,7 +20,6 @@ import { ClaimDeleteDialog } from "./tables/ClaimDeleteDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
 	DataTable,
 	DataTableBody,
@@ -27,7 +28,6 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SearchBox } from "@/components/search/SearchBox";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
@@ -200,49 +200,51 @@ export function TablesClaimsTab() {
 	}
 
 	return (
-		<div className="flex flex-1 min-h-0 flex-col space-y-6">
-			<ListToolbar>
-				<SearchBox
-					value={searchTerm}
-					onChange={setSearchTerm}
-					aria-label="Search custom claims"
-					placeholder="Search custom claims by name or description..."
-					className="w-full sm:flex-1"
-				/>
+		<div className="flex min-h-0 max-h-full flex-col gap-0">
+			<ListToolbar className="shrink-0 gap-0 border-b border-border/70 bg-muted/20 p-0">
 				{isPlatformAdmin && (
-					<div className="w-full sm:w-64">
+					<div className="w-full shrink-0 border-b sm:w-56 sm:self-stretch sm:border-b-0 sm:border-r">
 						<OrganizationSelect
 							value={filterOrgId}
 							onChange={setFilterOrgId}
 							showAll={true}
 							showGlobal={false}
-							placeholder="All organizations"
+							placeholder="All Organizations"
+							triggerClassName="h-full min-h-12 rounded-none border-0 bg-transparent px-4 py-2 shadow-none hover:bg-muted/50 focus-visible:ring-inset"
 						/>
 					</div>
 				)}
-				<div className="flex items-center gap-2 sm:ml-auto">
+				<SearchBox
+					value={searchTerm}
+					onChange={setSearchTerm}
+					aria-label="Search custom claims"
+					placeholder="Search custom claims by name or description..."
+					className="min-w-40 flex-1 [&>input]:h-12 [&>input]:rounded-none [&>input]:border-0 [&>input]:bg-transparent [&>input]:shadow-none [&>input]:focus-visible:ring-inset"
+				/>
+				<div className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-1 sm:ml-auto">
 					<Button
-						variant="outline"
+						variant="ghost"
 						size="icon"
 						onClick={() => refresh()}
 						title="Refresh"
 						aria-label="Refresh claims"
+						aria-busy={loading}
 						disabled={loading}
-						className="h-11 w-11 lg:h-10 lg:w-10"
+						className="h-11 w-11 shrink-0 lg:h-10 lg:w-10"
 					>
 						<RefreshCw
 							className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
 						/>
 					</Button>
 					<Button
-						className="min-h-11 flex-1 sm:flex-none lg:min-h-10"
+						className="min-h-11 min-w-0 flex-1 sm:flex-none lg:min-h-10"
 						onClick={handleAdd}
 						ref={addClaimRef}
 						title="Add Claim"
 						aria-label="Add Claim"
 					>
 						<Plus className="h-4 w-4" />
-						New claim
+						New Claim
 					</Button>
 				</div>
 			</ListToolbar>
@@ -271,19 +273,20 @@ export function TablesClaimsTab() {
 				<div
 					role="status"
 					aria-label="Loading custom claims"
-					className="space-y-2"
+					className="flex min-h-40 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
 				>
-					<span className="sr-only">Loading custom claims…</span>
-					{[...Array(5)].map((_, i) => (
-						<Skeleton key={i} className="h-12 w-full" />
-					))}
+					<Loader2
+						aria-hidden="true"
+						className="size-4 animate-spin motion-reduce:animate-none"
+					/>
+					Loading custom claims
 				</div>
 			) : loadError && !hasLoaded ? null : filteredClaims.length > 0 ? (
-				<div className="flex-1 min-h-0">
+				<div className="flex min-h-0 max-h-full flex-col">
 					{compactLayout ? (
 						<ul
 							aria-label="Custom claims"
-							className="divide-y rounded-[var(--bf-radius-surface)] border bg-card"
+							className="min-h-0 divide-y overflow-auto"
 						>
 							{filteredClaims.map((claim) => (
 								<li key={claim.id} className="space-y-3 p-4">
@@ -291,7 +294,13 @@ export function TablesClaimsTab() {
 										{claim.name}
 									</h2>
 									<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-										{claim.description || "No description"}
+										<MarkdownContent
+											content={
+												claim.description ||
+												"No description"
+											}
+											variant="preview"
+										/>
 									</p>
 									<dl className="grid gap-3 text-sm">
 										{isPlatformAdmin && (
@@ -350,7 +359,7 @@ export function TablesClaimsTab() {
 							))}
 						</ul>
 					) : (
-						<DataTable className="max-h-full">
+						<DataTable className="max-h-full rounded-none border-0">
 							<DataTableHeader>
 								<DataTableRow>
 									{isPlatformAdmin && (
@@ -440,31 +449,29 @@ export function TablesClaimsTab() {
 					)}
 				</div>
 			) : (
-				<Card>
-					<CardContent className="flex flex-col items-center justify-center py-12 text-center">
-						<KeyRound className="h-12 w-12 text-muted-foreground" />
-						<h3 className="mt-4 text-lg font-semibold">
-							{searchTerm
-								? "No custom claims match your search"
-								: "No custom claims yet"}
-						</h3>
-						<p className="mt-2 text-sm text-muted-foreground">
-							{searchTerm
-								? "Try adjusting your search term or clear the filter"
-								: "Custom claims are reusable query-resolved facts you can reference from table policies."}
-						</p>
-						{!searchTerm && (
-							<Button
-								variant="outline"
-								onClick={handleAdd}
-								className="mt-4"
-							>
-								<Plus className="mr-2 h-4 w-4" />
-								Create your first custom claim
-							</Button>
-						)}
-					</CardContent>
-				</Card>
+				<div className="flex min-h-48 flex-col items-center justify-center px-6 py-8 text-center">
+					<KeyRound className="h-12 w-12 text-muted-foreground" />
+					<h3 className="mt-4 text-lg font-semibold">
+						{searchTerm
+							? "No custom claims match your search"
+							: "No custom claims yet"}
+					</h3>
+					<p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+						{searchTerm
+							? "Try adjusting your search term or clear the filter"
+							: "Custom claims are reusable query-resolved facts you can reference from table policies."}
+					</p>
+					{!searchTerm && (
+						<Button
+							variant="outline"
+							onClick={handleAdd}
+							className="mt-4"
+						>
+							<Plus className="size-4" />
+							Create your first custom claim
+						</Button>
+					)}
+				</div>
 			)}
 
 			{claimToDelete && (

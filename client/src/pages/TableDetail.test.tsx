@@ -25,6 +25,28 @@ vi.mock("@/components/tables/DocumentDialog", () => ({
 	DocumentDialog: () => null,
 }));
 
+vi.mock("@/components/tables/DocumentInspector", () => ({
+	DocumentInspector: ({
+		document,
+		editing,
+		onEdit,
+		onClose,
+	}: {
+		document?: { id: string };
+		editing: boolean;
+		onEdit: () => void;
+		onClose: () => void;
+	}) => (
+		<div>
+			<span>
+				{editing ? "Editing Record" : "Formatted Record"} {document?.id}
+			</span>
+			<button onClick={onEdit}>Edit Record</button>
+			<button onClick={onClose}>Close Record</button>
+		</div>
+	),
+}));
+
 vi.mock("@/components/tables/TableFilterSidebar", () => ({
 	TableFilterSidebar: () => null,
 }));
@@ -230,4 +252,35 @@ it("gives the initial loading and failed table states a page heading and retry",
 	).not.toBeInTheDocument();
 	await user.click(screen.getByRole("button", { name: "Retry table" }));
 	expect(retry).toHaveBeenCalledOnce();
+});
+
+it("opens formatted records in the workspace and switches to editing without a modal", async () => {
+	mockUseDocuments.mockReturnValue({
+		data: {
+			documents: [
+				{ id: "doc-1", data: { name: "Alpha" }, created_at: null },
+			],
+			total: 1,
+		},
+		isLoading: false,
+		refetch: vi.fn(),
+	});
+	const { user } = await renderAtRoute("/tables/tbl-1");
+	await user.click(
+		screen.getByRole("button", { name: "Open document doc-1" }),
+	);
+	expect(
+		screen.getByRole("region", { name: "Document inspector" }),
+	).toHaveTextContent("Formatted Record doc-1");
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Edit Record" }));
+	expect(
+		screen.getByRole("region", { name: "Document inspector" }),
+	).toHaveTextContent("Editing Record");
+	await user.click(screen.getByRole("button", { name: "Close Record" }));
+	await waitFor(() =>
+		expect(
+			screen.queryByRole("region", { name: "Document inspector" }),
+		).not.toBeInTheDocument(),
+	);
 });

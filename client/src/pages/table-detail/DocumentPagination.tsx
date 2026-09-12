@@ -29,10 +29,10 @@ export function DocumentPagination({
 		total === 0 || page * pageSize >= total ? 0 : page * pageSize + 1;
 	const last = Math.min((page + 1) * pageSize, total);
 	return (
-		<footer className="shrink-0 border-t">
+		<footer className="shrink-0 border-t bg-muted/10 px-4">
 			<PaginationFooter
 				aria-label="Document pages"
-				className="gap-4 pt-4"
+				className="gap-3 py-3"
 				summary={
 					<span className="flex flex-wrap items-center gap-3">
 						<span role="status" className="text-muted-foreground">

@@ -101,3 +101,13 @@ an explicit selection mode. Opening a document attaches the embedded editor to
 the workspace as a contained pane on desktop and as the workspace pane on mobile,
 without a modal or portal. Preserve loading, save, conflict replacement, scope,
 permission, and mutation guards while the editor is attached.
+
+Tables follows the same workspace grammar. Catalog selection is an explicit
+Select switch, with compact title/Markdown preview/scope/date rows. Scope and
+search are flush adjoining toolbar regions; refresh stays an icon. Compare
+scalar record fields in a bounded desktop grid and use summaries on narrow
+screens. Open formatted data and complete JSON in the attached inspector, never
+in expanding table rows. Table settings and record editing keep fixed footer
+actions within that workspace. IDs use HoverCopyText, with a copy hint above
+the text on hover/focus and direct keyboard/touch copying. See
+docs/design-modernization/tables-workspace.md for the preserved behaviors.

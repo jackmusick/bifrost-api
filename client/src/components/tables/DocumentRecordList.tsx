@@ -1,9 +1,7 @@
+import { FileJson, Calendar } from "lucide-react";
 import { DocumentActionsMenu } from "./DocumentActionsMenu";
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Check, Copy } from "lucide-react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
+import { HoverCopyText } from "@/components/common/HoverCopyText";
 import {
 	DataTable,
 	DataTableBody,
@@ -12,329 +10,202 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
+import { cn } from "@/lib/utils";
 import type { DocumentPublic } from "@/services/tables";
-import { copyToClipboard } from "@/lib/clipboard";
 
 interface DocumentRecordListProps {
 	documents: DocumentPublic[];
 	dataColumns: string[];
+	selectedId?: string;
+	onOpen: (doc: DocumentPublic) => void;
 	onEdit: (doc: DocumentPublic) => void;
 	onDelete: (doc: DocumentPublic) => void;
+	disabled?: boolean;
 }
 
-type CopyState = {
-	id: string;
-	status: "copied" | "error";
-};
-
-function valueToText(value: unknown): string {
-	if (value === null) return "null";
-	if (value === undefined) return "—";
-	if (typeof value === "string") return value;
-	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
-	}
-
-	try {
-		return JSON.stringify(value);
-	} catch {
-		return String(value);
-	}
-}
-
-function formatDate(dateStr: string | null | undefined): string {
-	if (!dateStr) return "—";
-
-	const date = new Date(dateStr);
-	if (Number.isNaN(date.getTime())) return "—";
-
-	return date.toLocaleString(undefined, {
-		year: "numeric",
-		month: "short",
-		day: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	});
-}
-
-function CopyIdButton({
-	id,
-	copyState,
-	onCopy,
-}: {
-	id: string;
-	copyState: CopyState | null;
-	onCopy: (id: string) => void;
-}) {
-	const copied = copyState?.id === id && copyState.status === "copied";
-
-	return (
-		<Button
-			type="button"
-			variant="outline"
-			className="h-11 shrink-0 gap-2 px-3"
-			onClick={() => onCopy(id)}
-			aria-label={copied ? "Document ID copied" : "Copy document ID"}
-			title={copied ? "Copied" : "Copy document ID"}
-		>
-			{copied ? (
-				<Check aria-hidden="true" className="size-4" />
-			) : (
-				<Copy aria-hidden="true" className="size-4" />
-			)}
-			<span>{copied ? "Copied" : "Copy ID"}</span>
-		</Button>
-	);
-}
-
-function DocumentJsonDisclosure({ data }: { data: Record<string, unknown> }) {
-	return (
-		<details className="group">
-			<summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 outline-none transition-colors duration-[var(--bf-motion-feedback)] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
-				<span className="text-sm font-medium text-foreground">
-					View full JSON
-				</span>
-				<ChevronDown
-					aria-hidden="true"
-					className="size-4 shrink-0 text-muted-foreground transition-transform duration-[var(--bf-motion-feedback)] group-open:rotate-180 motion-reduce:transition-none"
-				/>
-			</summary>
-			<pre
-				tabIndex={0}
-				className="mt-2 max-h-72 overflow-auto rounded-[var(--bf-radius-control)] bg-muted/20 p-3 font-mono text-xs leading-6 whitespace-pre-wrap break-words text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
-			>
-				{JSON.stringify(data, null, 2)}
-			</pre>
-		</details>
-	);
-}
-
-function DocumentDesktopRow({
-	doc,
-	dataColumns,
-	copyState,
-	onCopy,
-	onEdit,
-	onDelete,
-}: {
-	doc: DocumentPublic;
-	dataColumns: string[];
-	copyState: CopyState | null;
-	onCopy: (id: string) => void;
-	onEdit: (doc: DocumentPublic) => void;
-	onDelete: (doc: DocumentPublic) => void;
-}) {
-	const data = (doc.data ?? {}) as Record<string, unknown>;
-	const visibleColumns = dataColumns.slice(0, 3);
-
-	return (
-		<DataTableRow>
-			<DataTableCell className="min-w-0 align-top">
-				<div className="space-y-2">
-					<div className="flex flex-wrap items-center gap-2">
-						<span className="select-text font-mono text-xs text-foreground [overflow-wrap:anywhere]">
-							{doc.id}
-						</span>
-						<CopyIdButton
-							id={doc.id}
-							copyState={copyState}
-							onCopy={onCopy}
-						/>
-					</div>
-				</div>
-			</DataTableCell>
-			{visibleColumns.map((column) => (
-				<DataTableCell
-					key={column}
-					className="min-w-[7.5rem] max-w-[12rem] align-top text-sm [overflow-wrap:anywhere] whitespace-normal"
-				>
-					<span className="line-clamp-3">
-						{valueToText(data[column])}
-					</span>
-				</DataTableCell>
-			))}
-			<DataTableCell className="min-w-[12rem] max-w-[18rem] align-top">
-				<DocumentJsonDisclosure data={data} />
-			</DataTableCell>
-			<DataTableCell className="min-w-[8rem] whitespace-normal align-top text-sm text-muted-foreground">
-				{formatDate(doc.created_at)}
-			</DataTableCell>
-			<DataTableCell className="whitespace-nowrap align-top text-right">
-				<DocumentActionsMenu
-					id={doc.id}
-					onEdit={() => onEdit(doc)}
-					onDelete={() => onDelete(doc)}
-				/>
-			</DataTableCell>
-		</DataTableRow>
-	);
-}
-
-function DocumentMobileRecord({
-	doc,
-	dataColumns,
-	copyState,
-	onCopy,
-	onEdit,
-	onDelete,
-}: {
-	doc: DocumentPublic;
-	dataColumns: string[];
-	copyState: CopyState | null;
-	onCopy: (id: string) => void;
-	onEdit: (doc: DocumentPublic) => void;
-	onDelete: (doc: DocumentPublic) => void;
-}) {
-	const data = (doc.data ?? {}) as Record<string, unknown>;
-	const visibleColumns = dataColumns.slice(0, 3);
-
-	return (
-		<li className="space-y-4 rounded-[var(--bf-radius-surface)] border border-border bg-card px-[var(--bf-surface-pad)] py-[var(--bf-surface-pad)]">
-			<div className="space-y-2">
-				<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-					Document ID
-				</p>
-				<div className="flex flex-wrap items-start gap-2">
-					<span className="select-text font-mono text-xs leading-6 text-foreground [overflow-wrap:anywhere]">
-						{doc.id}
-					</span>
-					<CopyIdButton
-						id={doc.id}
-						copyState={copyState}
-						onCopy={onCopy}
-					/>
-				</div>
-			</div>
-
-			<dl className="grid gap-3 sm:grid-cols-2">
-				{visibleColumns.map((column) => (
-					<div key={column} className="min-w-0 space-y-1">
-						<dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-							{column}
-						</dt>
-						<dd className="min-w-0 text-sm [overflow-wrap:anywhere] whitespace-normal text-foreground">
-							{valueToText(data[column])}
-						</dd>
-					</div>
-				))}
-				<div className="min-w-0 space-y-1 sm:col-span-2">
-					<dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-						Created
-					</dt>
-					<dd className="text-sm text-foreground">
-						{formatDate(doc.created_at)}
-					</dd>
-				</div>
-			</dl>
-
-			<DocumentJsonDisclosure data={data} />
-
-			<DocumentActionsMenu
-				id={doc.id}
-				onEdit={() => onEdit(doc)}
-				onDelete={() => onDelete(doc)}
+function FieldValue({ value }: { value: unknown }) {
+	if (value === undefined)
+		return <span className="text-muted-foreground">—</span>;
+	if (value === null)
+		return <span className="text-muted-foreground">null</span>;
+	if (typeof value === "string")
+		return (
+			<MarkdownContent
+				content={value}
+				variant="preview"
+				className="line-clamp-2 break-words"
 			/>
-		</li>
-	);
+		);
+	if (typeof value === "object")
+		return (
+			<span className="text-xs text-muted-foreground">
+				{Array.isArray(value)
+					? `${value.length} items`
+					: `${Object.keys(value).length} fields`}
+			</span>
+		);
+	return <span className="tabular-nums">{String(value)}</span>;
 }
 
+function dateLabel(value: string | null | undefined) {
+	return value ? new Date(value).toLocaleDateString() : "—";
+}
+
+/** Compare actual fields at roomy widths; narrow panes use compact record summaries. */
 export function DocumentRecordList({
 	documents,
 	dataColumns,
+	selectedId,
+	onOpen,
 	onEdit,
 	onDelete,
+	disabled,
 }: DocumentRecordListProps) {
-	const [copyState, setCopyState] = useState<CopyState | null>(null);
-
-	useEffect(() => {
-		if (!copyState) return;
-
-		const timeout = window.setTimeout(
-			() => {
-				setCopyState(null);
-			},
-			copyState.status === "copied" ? 1600 : 2600,
-		);
-
-		return () => window.clearTimeout(timeout);
-	}, [copyState]);
-
-	const visibleColumns = useMemo(
-		() => dataColumns.slice(0, 3),
-		[dataColumns],
-	);
-
-	const handleCopy = async (id: string) => {
-		const copied = await copyToClipboard(id);
-		if (copied) {
-			setCopyState({ id, status: "copied" });
-			toast.success("Document ID copied");
-			return;
-		}
-
-		setCopyState({ id, status: "error" });
-		toast.error("Failed to copy document ID");
-	};
-
-	if (documents.length === 0) {
-		return null;
-	}
-
+	const columns = dataColumns.slice(0, 3);
 	return (
-		<div className="@container flex min-w-0 flex-col gap-4 lg:min-h-0 lg:flex-1">
-			<div className="hidden min-h-0 flex-1 flex-col @5xl:flex">
-				<DataTable className="max-h-full">
+		<div className="@container flex min-h-0 min-w-0 flex-col">
+			<div className="hidden min-h-0 flex-col @[700px]:flex">
+				<DataTable className="rounded-none border-0">
 					<DataTableHeader>
 						<DataTableRow>
-							<DataTableHead className="min-w-0">
-								ID
-							</DataTableHead>
-							{visibleColumns.map((column) => (
+							<DataTableHead className="w-44">ID</DataTableHead>
+							{columns.map((column) => (
 								<DataTableHead key={column}>
 									{column}
 								</DataTableHead>
 							))}
-							<DataTableHead className="min-w-[12rem]">
-								Data
-							</DataTableHead>
-							<DataTableHead className="whitespace-normal">
+							<DataTableHead className="w-0 whitespace-nowrap">
 								Created
 							</DataTableHead>
-							<DataTableHead className="w-0 whitespace-nowrap text-right">
-								Actions
+							<DataTableHead className="w-0">
+								<span className="sr-only">Actions</span>
 							</DataTableHead>
 						</DataTableRow>
 					</DataTableHeader>
 					<DataTableBody>
 						{documents.map((doc) => (
-							<DocumentDesktopRow
+							<DataTableRow
 								key={doc.id}
-								doc={doc}
-								dataColumns={dataColumns}
-								copyState={copyState}
-								onCopy={handleCopy}
-								onEdit={onEdit}
-								onDelete={onDelete}
-							/>
+								clickable={!disabled}
+								aria-label={`Open document ${doc.id}`}
+								aria-selected={selectedId === doc.id}
+								onClick={() => !disabled && onOpen(doc)}
+								className={cn(
+									selectedId === doc.id &&
+										"tree-row-selected",
+								)}
+							>
+								<DataTableCell className="w-44 max-w-44 align-top">
+									<HoverCopyText
+										value={doc.id}
+										label="Document ID"
+										className="block max-w-36 truncate font-mono text-xs text-muted-foreground"
+									/>
+								</DataTableCell>
+								{columns.map((column) => (
+									<DataTableCell
+										key={column}
+										className="max-w-64 align-top whitespace-normal"
+									>
+										<FieldValue value={doc.data[column]} />
+									</DataTableCell>
+								))}
+								<DataTableCell className="w-0 whitespace-nowrap align-top text-xs text-muted-foreground">
+									{dateLabel(doc.created_at)}
+								</DataTableCell>
+								<DataTableCell className="w-0 align-top">
+									{!disabled && (
+										<DocumentActionsMenu
+											id={doc.id}
+											onEdit={() => onEdit(doc)}
+											onDelete={() => onDelete(doc)}
+										/>
+									)}
+								</DataTableCell>
+							</DataTableRow>
 						))}
 					</DataTableBody>
 				</DataTable>
 			</div>
-
 			<ul
 				aria-label="Document records"
-				className="@5xl:hidden space-y-3 lg:min-h-0 lg:overflow-auto"
+				className="min-h-0 divide-y divide-border/70 overflow-y-auto @[700px]:hidden"
 			>
 				{documents.map((doc) => (
-					<DocumentMobileRecord
+					<li
 						key={doc.id}
-						doc={doc}
-						dataColumns={dataColumns}
-						copyState={copyState}
-						onCopy={handleCopy}
-						onEdit={onEdit}
-						onDelete={onDelete}
-					/>
+						className={cn(
+							"relative min-w-0 transition-colors hover:bg-muted/40",
+							selectedId === doc.id && "tree-row-selected",
+						)}
+					>
+						<button
+							type="button"
+							disabled={disabled}
+							aria-label={`Open document ${doc.id}`}
+							aria-pressed={selectedId === doc.id}
+							onClick={() => onOpen(doc)}
+							className="flex w-full min-w-0 gap-3 p-4 pr-14 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+						>
+							<span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+								<FileJson className="size-4" />
+							</span>
+							<span className="grid min-w-0 flex-1 grid-cols-2 gap-x-3 gap-y-2">
+								{columns.map((column, i) => (
+									<span
+										key={column}
+										className={cn(
+											"min-w-0",
+											i === 0
+												? "col-span-2 block"
+												: "block",
+										)}
+									>
+										{i > 0 && (
+											<span className="block text-xs text-muted-foreground">
+												{column}
+											</span>
+										)}
+										<span
+											className={cn(
+												"block text-sm",
+												i === 0 && "font-medium",
+											)}
+										>
+											<FieldValue
+												value={doc.data[column]}
+											/>
+										</span>
+									</span>
+								))}
+								{columns.length === 0 && (
+									<span className="block text-sm font-medium">
+										Empty Document
+									</span>
+								)}
+								<span className="col-span-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+									<Calendar className="size-3.5" />
+									{dateLabel(doc.created_at)}
+								</span>
+							</span>
+						</button>
+						<div className="pb-3 pl-16 pr-4">
+							<HoverCopyText
+								value={doc.id}
+								label="Document ID"
+								className="block max-w-full truncate font-mono text-xs text-muted-foreground"
+							/>
+						</div>
+						<div className="absolute right-2 top-2">
+							{!disabled && (
+								<DocumentActionsMenu
+									id={doc.id}
+									onEdit={() => onEdit(doc)}
+									onDelete={() => onDelete(doc)}
+								/>
+							)}
+						</div>
+					</li>
 				))}
 			</ul>
 		</div>

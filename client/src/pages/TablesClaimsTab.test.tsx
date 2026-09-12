@@ -39,6 +39,19 @@ beforeEach(() => {
 });
 
 describe("TablesClaimsTab", () => {
+	it("uses a compact loading status while claims load", () => {
+		mockListClaims.mockReturnValue(new Promise(() => undefined));
+
+		renderWithProviders(<TablesClaimsTab />);
+
+		expect(
+			screen.getByRole("status", { name: "Loading custom claims" }),
+		).toHaveTextContent("Loading custom claims");
+		expect(
+			screen.queryByText("No custom claims yet"),
+		).not.toBeInTheDocument();
+	});
+
 	it("lists claims fetched from the service", async () => {
 		mockListClaims.mockResolvedValue({
 			claims: [

@@ -212,6 +212,26 @@ describe("TableDialog — validation", () => {
 });
 
 describe("TableDialog — create mode", () => {
+	it("renders as an embedded settings panel with close control", async () => {
+		const onClose = vi.fn();
+		const { user } = renderWithProviders(
+			<TableDialog embedded open={true} onClose={onClose} />,
+		);
+
+		expect(
+			screen.getByRole("heading", { name: "Create Table" }),
+		).toBeVisible();
+		expect(
+			screen.getByRole("region", { name: "Table settings" }),
+		).toBeVisible();
+
+		await user.click(
+			screen.getByRole("button", { name: "Close table settings" }),
+		);
+
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
 	it("submits with parsed JSON schema and scope query", async () => {
 		const onClose = vi.fn();
 		const { user } = renderWithProviders(

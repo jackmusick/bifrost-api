@@ -19,7 +19,7 @@ export function DocumentCollectionState({
 }) {
 	const Heading = headingLevel === 1 ? "h1" : "h2";
 	return (
-		<section className="space-y-3 rounded-[var(--bf-radius-surface)] border p-[var(--bf-surface-pad)]">
+		<section className="shrink-0 space-y-3 p-[var(--bf-surface-pad)]">
 			<div role={error ? "alert" : "status"}>
 				<Heading
 					className={

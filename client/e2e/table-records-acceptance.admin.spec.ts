@@ -61,26 +61,40 @@ async function fillDocumentEditor(
 	page: PlaywrightPage,
 	value: Record<string, unknown>,
 ) {
-	const dialog = page.getByRole("dialog", {
+	const dialog = page.getByRole("region", {
 		name: /create document|edit document/i,
 	});
 	await expect(dialog).toBeVisible({ timeout: 10000 });
-	const editor = dialog.getByRole("textbox", { name: "Document data (JSON)", exact: true });
+	const editor = dialog.getByRole("textbox", {
+		name: "Document data (JSON)",
+		exact: true,
+	});
 	await editor.focus();
-	await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-	await page.evaluate(async (text) => navigator.clipboard.writeText(text), JSON.stringify(value, null, 2));
+	await page
+		.context()
+		.grantPermissions(["clipboard-read", "clipboard-write"]);
+	await page.evaluate(
+		async (text) => navigator.clipboard.writeText(text),
+		JSON.stringify(value, null, 2),
+	);
 	await page.keyboard.press("ControlOrMeta+A");
 	await page.keyboard.press("ControlOrMeta+V");
 	await expect(dialog.getByRole("alert")).toHaveCount(0);
-
 }
 
 async function expectDocumentStatus(page: PlaywrightPage, status: string) {
 	const documents = page.getByRole("region", { name: "Documents" });
-	await expect(documents.getByRole("cell", { name: INITIAL_DOCUMENT.name, exact: true })).toBeVisible({
+	await expect(
+		documents.getByRole("cell", {
+			name: INITIAL_DOCUMENT.name,
+			exact: true,
+		}),
+	).toBeVisible({
 		timeout: 10000,
 	});
-	await expect(documents.getByRole("cell", { name: status, exact: true })).toBeVisible({
+	await expect(
+		documents.getByRole("cell", { name: status, exact: true }),
+	).toBeVisible({
 		timeout: 10000,
 	});
 }
@@ -101,8 +115,8 @@ test.describe("Table records acceptance", () => {
 	}) => {
 		await gotoTables(page);
 
-		await page.getByRole("button", { name: "Create table" }).click();
-		const createDialog = page.getByRole("dialog", { name: "Create Table" });
+		await page.getByRole("button", { name: "New Table" }).click();
+		const createDialog = page.getByRole("region", { name: "Create Table" });
 		await expect(createDialog).toBeVisible({ timeout: 10000 });
 		await createDialog.getByLabel("Table Name").fill(TABLE_NAME);
 		await createDialog
@@ -135,7 +149,7 @@ test.describe("Table records acceptance", () => {
 			.getByRole("button", { name: `${TABLE_NAME} actions` })
 			.click();
 		await page.getByRole("menuitem", { name: "Edit" }).click();
-		const editDialog = page.getByRole("dialog", { name: "Edit Table" });
+		const editDialog = page.getByRole("region", { name: "Edit Table" });
 		await expect(editDialog).toBeVisible({ timeout: 10000 });
 		await editDialog.getByLabel("Description (Optional)").clear();
 		await editDialog
@@ -149,18 +163,21 @@ test.describe("Table records acceptance", () => {
 		await expect(page.getByText(UPDATED_DESCRIPTION)).toBeVisible();
 		await openCreatedTable(page);
 
-		const pageContent = page.getByRole("region", { name: "Page content" });
+		const pageContent = page.getByRole("region", {
+			name: "Documents",
+			exact: true,
+		});
 		await expect(pageContent.getByText("No documents yet")).toBeVisible({
 			timeout: 10000,
 		});
 		await pageContent.getByRole("button", { name: "Add document" }).click();
 		await fillDocumentEditor(page, INITIAL_DOCUMENT);
 		await page
-			.getByRole("dialog", { name: "Create Document" })
+			.getByRole("region", { name: "Create Document" })
 			.getByRole("button", { name: "Create" })
 			.click();
 		await expect(
-			page.getByRole("dialog", { name: "Create Document" }),
+			page.getByRole("region", { name: "Create Document" }),
 		).toBeHidden({ timeout: 10000 });
 
 		await page.reload();
@@ -169,17 +186,35 @@ test.describe("Table records acceptance", () => {
 		const documentRow = page.getByRole("row").filter({
 			has: page.getByText(INITIAL_DOCUMENT.name, { exact: true }),
 		});
+		await documentRow.click();
+		const inspector = page.getByRole("region", {
+			name: "Document inspector",
+			exact: true,
+		});
+		await expect(inspector).toBeVisible();
+		await expect(
+			inspector.getByRole("tab", { name: "Data", exact: true }),
+		).toBeVisible();
+		await inspector.getByRole("tab", { name: "JSON", exact: true }).click();
+		await expect(inspector.getByLabel("Document JSON")).toContainText(
+			'"status": "draft"',
+		);
+		await inspector
+			.getByRole("button", { name: "Close document inspector" })
+			.click();
+		await expect(inspector).toBeHidden();
+
 		await documentRow
 			.getByRole("button", { name: /^Document .* actions$/ })
 			.click();
 		await page.getByRole("menuitem", { name: "Edit" }).click();
 		await fillDocumentEditor(page, UPDATED_DOCUMENT);
 		await page
-			.getByRole("dialog", { name: "Edit Document" })
+			.getByRole("region", { name: "Edit Document" })
 			.getByRole("button", { name: "Update" })
 			.click();
 		await expect(
-			page.getByRole("dialog", { name: "Edit Document" }),
+			page.getByRole("region", { name: "Edit Document" }),
 		).toBeHidden({ timeout: 10000 });
 
 		await page.reload();
@@ -203,7 +238,7 @@ test.describe("Table records acceptance", () => {
 		await page.reload();
 		await expect(
 			page
-				.getByRole("region", { name: "Page content" })
+				.getByRole("region", { name: "Documents", exact: true })
 				.getByText("No documents yet"),
 		).toBeVisible({ timeout: 10000 });
 

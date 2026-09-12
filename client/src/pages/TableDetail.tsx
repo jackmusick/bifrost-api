@@ -1,13 +1,18 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
-import { ArrowLeft, SlidersHorizontal } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-	PageScrollArea,
-	PageWorkspace,
-} from "@/components/layout/PageWorkspace";
+	ArrowLeft,
+	SlidersHorizontal,
+	Plus,
+	RefreshCw,
+	Database,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { useTable, useDocuments, useDeleteDocument } from "@/services/tables";
-import { DocumentDialog } from "@/components/tables/DocumentDialog";
+import { DocumentInspector } from "@/components/tables/DocumentInspector";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { TableFilterSidebar } from "@/components/tables/TableFilterSidebar";
 import { DocumentRecordList } from "@/components/tables/DocumentRecordList";
 import { SearchBox } from "@/components/search/SearchBox";
@@ -26,11 +31,11 @@ export function TableDetail() {
 }
 
 function TableDetailSession({ tableId }: { tableId: string }) {
-	// Short desktop windows need one useful content scroller instead of a
-	// records pane squeezed between the page controls and wrapping pagination.
-	const shortDesktop = useMediaQuery(
-		"(min-width: 1024px) and (max-height: 700px)",
-	);
+	const inlineInspector = useMediaQuery("(min-width: 1280px)");
+	const reduceMotion = useReducedMotion();
+	const frameRef = useRef<HTMLDivElement>(null);
+	const [editing, setEditing] = useState(false);
+	const [editorBusy, setEditorBusy] = useState(false);
 	const { search } = useLocation();
 	const fromSolution = parseSolutionFrom(search);
 	const backTo = fromSolution ? `/solutions/${fromSolution}` : "/tables";
@@ -44,6 +49,16 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const [filterRevision, setFilterRevision] = useState(0);
+	useEffect(() => {
+		if (!isDialogOpen || inlineInspector) return;
+		const frame = requestAnimationFrame(() =>
+			frameRef.current?.scrollIntoView?.({
+				block: "start",
+				behavior: "instant",
+			}),
+		);
+		return () => cancelAnimationFrame(frame);
+	}, [isDialogOpen, inlineInspector]);
 	const filterToggle = useRef<HTMLButtonElement>(null);
 	const query = useMemo(
 		() => ({
@@ -74,16 +89,47 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 		() =>
 			Array.from(
 				new Set(documents.flatMap((doc) => Object.keys(doc.data))),
-			).slice(0, 3),
+			)
+				.sort((a, b) => {
+					const priority = (key: string) => {
+						if (["name", "title", "label"].includes(key)) return 0;
+						const value = documents.find(
+							(doc) => doc.data[key] != null,
+						)?.data[key];
+						return value !== null && typeof value === "object"
+							? 2
+							: 1;
+					};
+					return priority(a) - priority(b);
+				})
+				.slice(0, 3),
 		[documents],
 	);
 	const handleAdd = () => {
 		setSelectedDocument(undefined);
+		setEditing(true);
+		setSidebarOpen(false);
 		setIsDialogOpen(true);
 	};
 	const handleEdit = (doc: DocumentPublic) => {
+		if (editorBusy) return;
 		setSelectedDocument(doc);
+		setEditing(true);
+		setSidebarOpen(false);
 		setIsDialogOpen(true);
+	};
+	const handleOpen = (doc: DocumentPublic) => {
+		if (editorBusy) return;
+		setSelectedDocument(doc);
+		setEditing(false);
+		setSidebarOpen(false);
+		setIsDialogOpen(true);
+	};
+	const closeInspector = () => {
+		setIsDialogOpen(false);
+		setSelectedDocument(undefined);
+		setEditing(false);
+		setEditorBusy(false);
 	};
 	const handleClearFilters = () => {
 		setWhereClause({});
@@ -134,70 +180,98 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 		);
 
 	return (
-		<PageWorkspace>
+		<PageWorkspace className="mx-auto w-full max-w-[1600px] gap-4">
 			<TableDetailHeader
 				name={table.name}
 				description={table.description}
 				backTo={backTo}
 				backLabel={backLabel}
-				refreshing={documentsQuery.isFetching}
-				onRefresh={() => void documentsQuery.refetch()}
-				onAdd={handleAdd}
 			/>
-			{tableQuery.isError && (
-				<DocumentCollectionState
-					title="Table details could not be refreshed"
-					description="Showing the last available table details."
-					error
-					busy={tableQuery.isFetching}
-					action="Retry table"
-					onAction={() => void tableQuery.refetch()}
-				/>
-			)}
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-				<div className="min-w-0 flex-1">
+			<div
+				ref={frameRef}
+				className={cn(
+					"scroll-mt-4 flex min-h-0 max-h-full flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card",
+					isDialogOpen || sidebarOpen
+						? "h-[calc(100dvh-6rem)] lg:h-auto lg:flex-1"
+						: "shrink",
+				)}
+			>
+				<div className="flex shrink-0 flex-wrap items-center border-b border-border/70 bg-muted/20">
+					<div className="flex h-12 w-full shrink-0 items-center gap-2 border-b px-4 text-sm sm:w-44 sm:border-b-0 sm:border-r">
+						<Database className="size-4 text-primary" />
+						Documents
+					</div>
 					<SearchBox
 						value={searchTerm}
 						onChange={setSearchTerm}
-						placeholder="Search this page…"
+						placeholder="Search This Page..."
 						aria-label="Search documents on this page"
-						className="w-full"
+						className="min-w-40 flex-1 [&>input]:h-12 [&>input]:rounded-none [&>input]:border-0 [&>input]:bg-transparent [&>input]:shadow-none [&>input]:focus-visible:ring-inset"
 					/>
-					<p className="mt-2 text-xs text-muted-foreground">
-						Search checks this page. Use filters to query the entire
-						table.
-					</p>
+					<div className="flex min-w-0 flex-wrap items-center gap-1 px-3 py-1">
+						<Button
+							ref={filterToggle}
+							variant="ghost"
+							disabled={editorBusy || (isDialogOpen && editing)}
+							aria-expanded={sidebarOpen}
+							aria-controls="document-filters"
+							onClick={() => {
+								setSidebarOpen(!sidebarOpen);
+								if (!sidebarOpen) closeInspector();
+							}}
+						>
+							<SlidersHorizontal className="size-4" />
+							Filters
+							{hasActiveFilters
+								? ` (${Object.keys(whereClause).length})`
+								: ""}
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Refresh documents"
+							title="Refresh"
+							aria-busy={documentsQuery.isFetching}
+							disabled={documentsQuery.isFetching || editorBusy}
+							onClick={() => void documentsQuery.refetch()}
+						>
+							<RefreshCw
+								className={cn(
+									"size-4",
+									documentsQuery.isFetching &&
+										"animate-spin motion-reduce:animate-none",
+								)}
+							/>
+						</Button>
+						<Button
+							disabled={editorBusy || (isDialogOpen && editing)}
+							onClick={handleAdd}
+						>
+							<Plus className="size-4" />
+							Add Document
+						</Button>
+					</div>
 				</div>
-				<Button
-					ref={filterToggle}
-					type="button"
-					variant="outline"
-					className="min-h-11"
-					aria-expanded={sidebarOpen}
-					aria-controls="document-filters"
-					onClick={() => setSidebarOpen((open) => !open)}
-				>
-					<SlidersHorizontal aria-hidden="true" className="size-4" />
-					Filters
-					{hasActiveFilters
-						? ` (${Object.keys(whereClause).length})`
-						: ""}
-				</Button>
-			</div>
-			<PageScrollArea
-				className={
-					shortDesktop
-						? undefined
-						: "lg:flex lg:flex-col lg:overflow-hidden"
-				}
-			>
+				{tableQuery.isError && (
+					<DocumentCollectionState
+						title="Table details could not be refreshed"
+						description="Showing the last available table details."
+						error
+						busy={tableQuery.isFetching}
+						action="Retry table"
+						onAction={() => void tableQuery.refetch()}
+					/>
+				)}
 				<div
-					className={`flex min-w-0 flex-col gap-6 lg:flex-row ${shortDesktop ? "lg:items-start" : "lg:h-full lg:min-h-0"}`}
+					className={cn(
+						"relative flex min-h-0 min-w-0 flex-col lg:flex-row",
+						(isDialogOpen || sidebarOpen) && "flex-1",
+					)}
 				>
 					<div
 						id="document-filters"
 						hidden={!sidebarOpen}
-						className="w-full shrink-0 lg:max-h-full lg:w-64 lg:overflow-auto xl:w-72"
+						className="min-h-0 w-full shrink-0 overflow-auto border-b lg:w-72 lg:border-b-0 lg:border-r"
 					>
 						<TableFilterSidebar
 							key={filterRevision}
@@ -208,14 +282,17 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 							onClearFilters={handleClearFilters}
 							hasActiveFilters={hasActiveFilters}
 							onClose={closeFilters}
-							className="w-full"
+							className="min-h-0 w-full rounded-none border-0"
 						/>
 					</div>
 					<section
 						aria-label="Documents"
-						className="min-w-0 w-full flex-1 space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:gap-4 lg:space-y-0"
+						className="flex min-h-0 min-w-0 flex-1 flex-col"
 						aria-busy={
 							documentsQuery.isFetching ? "true" : undefined
+						}
+						inert={
+							isDialogOpen && !inlineInspector ? true : undefined
 						}
 					>
 						{documentsQuery.isError && (
@@ -227,7 +304,7 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 										: "Your query is preserved. Try loading it again."
 								}
 								error
-								busy={documentsQuery.isFetching}
+								busy={documentsQuery.isFetching || editorBusy}
 								action="Retry documents"
 								onAction={() => void documentsQuery.refetch()}
 							/>
@@ -236,18 +313,16 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 							<DocumentCollectionState title="Loading documents…" />
 						) : (
 							<>
-								{documentsQuery.isFetching && (
-									<p
-										role="status"
-										className="text-sm text-muted-foreground"
-									>
-										Refreshing documents…
-									</p>
-								)}
 								{filteredDocuments.length > 0 ? (
 									<DocumentRecordList
 										documents={filteredDocuments}
 										dataColumns={dataColumns}
+										selectedId={selectedDocument?.id}
+										onOpen={handleOpen}
+										disabled={
+											editorBusy ||
+											(isDialogOpen && editing)
+										}
 										onEdit={handleEdit}
 										onDelete={setDocumentToDelete}
 									/>
@@ -302,7 +377,10 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 										page={currentPage}
 										pageSize={pageSize}
 										total={total}
-										busy={documentsQuery.isFetching}
+										busy={
+											documentsQuery.isFetching ||
+											editorBusy
+										}
 										onPageChange={setCurrentPage}
 										onPageSizeChange={(size) => {
 											setPageSize(size);
@@ -313,34 +391,93 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 							</>
 						)}
 					</section>
+					<AnimatePresence initial={false}>
+						{isDialogOpen && (
+							<motion.aside
+								key="record-inspector"
+								role="region"
+								aria-label="Document inspector"
+								className={cn(
+									"z-20 flex min-h-0 flex-col overflow-hidden bg-card",
+									inlineInspector
+										? "relative shrink-0 border-l"
+										: "absolute inset-0",
+								)}
+								initial={
+									reduceMotion
+										? false
+										: inlineInspector
+											? { width: 0, opacity: 0 }
+											: { x: "100%", opacity: 0 }
+								}
+								animate={
+									inlineInspector
+										? {
+												width: "min(42vw, 560px)",
+												opacity: 1,
+											}
+										: { width: "100%", x: 0, opacity: 1 }
+								}
+								exit={
+									inlineInspector
+										? { width: 0, opacity: 0 }
+										: { x: "100%", opacity: 0 }
+								}
+								transition={{
+									duration: reduceMotion ? 0 : 0.2,
+									ease: [0.22, 1, 0.36, 1],
+								}}
+								onKeyDown={(event) => {
+									if (
+										event.key === "Escape" &&
+										!event.defaultPrevented &&
+										!editorBusy
+									) {
+										event.stopPropagation();
+										closeInspector();
+										filterToggle.current?.focus();
+									}
+								}}
+							>
+								<DocumentInspector
+									document={selectedDocument}
+									tableId={tableId}
+									editing={editing}
+									onEdit={() => setEditing(true)}
+									onClose={closeInspector}
+									onBusyChange={setEditorBusy}
+									onDelete={
+										selectedDocument
+											? () =>
+													setDocumentToDelete(
+														selectedDocument,
+													)
+											: undefined
+									}
+								/>
+							</motion.aside>
+						)}
+					</AnimatePresence>
 				</div>
-			</PageScrollArea>
-			<DocumentDialog
-				returnFocusRef={filterToggle}
-				document={selectedDocument}
-				tableId={tableId}
-				open={isDialogOpen}
-				onClose={() => {
-					setIsDialogOpen(false);
-					setSelectedDocument(undefined);
-				}}
-			/>
+			</div>
 			{documentToDelete && (
 				<DocumentDeleteDialog
 					key={documentToDelete.id}
 					returnFocusRef={filterToggle}
 					id={documentToDelete.id}
 					onClose={() => setDocumentToDelete(undefined)}
-					onDelete={() =>
-						deleteDocument.mutateAsync({
+					onDelete={async () => {
+						await deleteDocument.mutateAsync({
 							params: {
 								path: {
 									table_id: tableId,
 									doc_id: documentToDelete.id,
 								},
 							},
-						})
-					}
+						});
+						if (selectedDocument?.id === documentToDelete.id)
+							closeInspector();
+					}}
 				/>
 			)}
 		</PageWorkspace>

@@ -185,3 +185,44 @@ it("guards the pending session and retains its draft after failure for retry", a
 		mockInsertMutate.mock.calls[0][0],
 	);
 });
+
+it("renders as an embedded editor and reports pending state to the parent", async () => {
+	let resolveSave!: (value: unknown) => void;
+	mockInsertMutate.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				resolveSave = resolve;
+			}),
+	);
+	const onClose = vi.fn();
+	const onBusyChange = vi.fn();
+	const { user } = renderWithProviders(
+		<DocumentDialog
+			tableId="tbl-1"
+			open
+			onClose={onClose}
+			embedded
+			onBusyChange={onBusyChange}
+		/>,
+	);
+
+	expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	expect(
+		screen.getByRole("region", { name: "Create Document" }),
+	).toBeInTheDocument();
+
+	fireEvent.change(screen.getByLabelText("document-json"), {
+		target: { value: '{"name":"Inline"}' },
+	});
+	await user.click(screen.getByRole("button", { name: "Create" }));
+	expect(onBusyChange).toHaveBeenLastCalledWith(true);
+	expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+	await user.click(
+		screen.getByRole("button", { name: "Close document editor" }),
+	);
+	expect(onClose).not.toHaveBeenCalled();
+
+	resolveSave({});
+	await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+	expect(onClose).toHaveBeenCalledOnce();
+});

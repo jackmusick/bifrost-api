@@ -10,6 +10,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Table2, X } from "lucide-react";
 import {
 	Form,
 	FormControl,
@@ -57,9 +58,17 @@ interface TableDialogProps {
 	table?: TablePublic | undefined;
 	open: boolean;
 	onClose: () => void;
+	embedded?: boolean;
+	onBusyChange?: (busy: boolean) => void;
 }
 
-export function TableDialog({ table, open, onClose }: TableDialogProps) {
+export function TableDialog({
+	table,
+	open,
+	onClose,
+	embedded = false,
+	onBusyChange,
+}: TableDialogProps) {
 	const createTable = useCreateTable();
 	const updateTable = useUpdateTable();
 	const { isPlatformAdmin, user } = useAuth();
@@ -188,6 +197,9 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 	};
 
 	const isPending = createTable.isPending || updateTable.isPending;
+	useEffect(() => {
+		onBusyChange?.(isPending);
+	}, [isPending, onBusyChange]);
 
 	const saveError = form.formState.errors.root?.save?.message;
 	useEffect(() => {
@@ -197,174 +209,147 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 		}
 	}, [saveError]);
 
-	return (
-		<Dialog
-			open={open}
-			onOpenChange={(nextOpen) => {
-				if (!nextOpen && !isPending) onClose();
-			}}
-		>
-			<DialogContent
-				className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[760px]"
-				showCloseButton={!isPending}
-				onEscapeKeyDown={(event) => {
-					if (isPending) event.preventDefault();
-				}}
-				onInteractOutside={(event) => {
-					if (isPending) event.preventDefault();
-				}}
-			>
-				<DialogHeader>
-					<DialogTitle>
-						{isEditing ? "Edit Table" : "Create Table"}
-					</DialogTitle>
-					<DialogDescription>
-						{isEditing
-							? "Update the table metadata"
-							: "Create a new data table for storing documents"}
-					</DialogDescription>
-				</DialogHeader>
+	const title = isEditing ? "Edit Table" : "Create Table";
+	const description = isEditing
+		? "Update the table metadata"
+		: "Create a new data table for storing documents";
+	const content = (
+		<>
+			{isSolutionManaged && <SolutionManagedBanner entityLabel="table" />}
 
-				{isSolutionManaged && (
-					<SolutionManagedBanner entityLabel="table" />
-				)}
-
-				<Form {...form}>
-					<form
-						onSubmit={(event) =>
-							void form.handleSubmit(onSubmit)(event)
-						}
-						className="flex min-h-0 min-w-0 flex-1 flex-col gap-5"
+			<Form {...form}>
+				<form
+					onSubmit={(event) =>
+						void form.handleSubmit(onSubmit)(event)
+					}
+					className="flex min-h-0 min-w-0 flex-1 flex-col"
+				>
+					<div
+						role="region"
+						aria-label="Table settings"
+						className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto px-1 py-1"
 					>
-						<div
-							role="region"
-							aria-label="Table settings"
-							className="min-h-0 min-w-0 flex-1 space-y-5 overflow-y-auto px-1 py-1"
-						>
-							{/* Organization Scope - Only show for platform admins */}
-							{isPlatformAdmin && (
-								<FormField
-									control={form.control}
-									name="organization_id"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Organization</FormLabel>
-											<FormControl>
-												<OrganizationSelect
-													value={field.value}
-													onChange={field.onChange}
-													showGlobal={true}
-													disabled={
-														isEditing || isPending
-													}
-												/>
-											</FormControl>
-											<FormDescription>
-												{isEditing
-													? "Organization scope cannot be changed after a table is created."
-													: "Global tables are available to all organizations."}
-											</FormDescription>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							)}
-
+						{/* Organization Scope - Only show for platform admins */}
+						{isPlatformAdmin && (
 							<FormField
 								control={form.control}
-								name="name"
+								name="organization_id"
 								render={({ field }) => (
 									<FormItem>
-										<FormLabel>Table Name</FormLabel>
+										<FormLabel>Organization</FormLabel>
 										<FormControl>
-											<Input
-												placeholder="my_table_name"
+											<OrganizationSelect
+												value={field.value}
+												onChange={field.onChange}
+												showGlobal={true}
 												disabled={
 													isEditing || isPending
 												}
-												className="h-11 font-mono"
-												{...field}
 											/>
 										</FormControl>
 										<FormDescription>
-											Start with a lowercase letter. Use
-											lowercase letters, numbers,
-											underscores, or hyphens.
+											{isEditing
+												? "Organization scope cannot be changed after a table is created."
+												: "Global tables are available to all organizations."}
 										</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
 							/>
+						)}
 
-							<FormField
-								control={form.control}
-								name="description"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>
-											Description (Optional)
-										</FormLabel>
-										<FormControl>
-											<Textarea
-												disabled={
-													isPending ||
-													isSolutionManaged
-												}
-												placeholder="Describe the purpose of this table..."
-												{...field}
-											/>
-										</FormControl>
-										<FormMessage />
-									</FormItem>
-								)}
+						<FormField
+							control={form.control}
+							name="name"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Table Name</FormLabel>
+									<FormControl>
+										<Input
+											placeholder="my_table_name"
+											disabled={isEditing || isPending}
+											className="h-11 font-mono"
+											{...field}
+										/>
+									</FormControl>
+									<FormDescription>
+										Start with a lowercase letter. Use
+										lowercase letters, numbers, underscores,
+										or hyphens.
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="description"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>
+										Description (Optional)
+									</FormLabel>
+									<FormControl>
+										<Textarea
+											disabled={
+												isPending || isSolutionManaged
+											}
+											placeholder="Describe the purpose of this table..."
+											{...field}
+										/>
+									</FormControl>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<FormField
+							control={form.control}
+							name="schema"
+							render={({ field }) => (
+								<FormItem>
+									<FormLabel>Schema (Optional)</FormLabel>
+									<FormControl>
+										<CodeEditor
+											readOnly={
+												isPending || isSolutionManaged
+											}
+											mode="json"
+											text={field.value ?? ""}
+											onChange={(next) =>
+												field.onChange(next)
+											}
+											path="table-schema.json"
+											height="200px"
+											data-testid="table-schema-editor"
+										/>
+									</FormControl>
+									<FormDescription>
+										Optional JSON schema for validation
+										hints
+									</FormDescription>
+									<FormMessage />
+								</FormItem>
+							)}
+						/>
+
+						<div className="border-t pt-4">
+							<PolicyEditor
+								readOnly={isPending || isSolutionManaged}
+								onParseErrorChange={setPolicyParseError}
+								value={policies}
+								onChange={setPolicies}
 							/>
-
-							<FormField
-								control={form.control}
-								name="schema"
-								render={({ field }) => (
-									<FormItem>
-										<FormLabel>Schema (Optional)</FormLabel>
-										<FormControl>
-											<CodeEditor
-												readOnly={
-													isPending ||
-													isSolutionManaged
-												}
-												mode="json"
-												text={field.value ?? ""}
-												onChange={(next) =>
-													field.onChange(next)
-												}
-												path="table-schema.json"
-												height="200px"
-												data-testid="table-schema-editor"
-											/>
-										</FormControl>
-										<FormDescription>
-											Optional JSON schema for validation
-											hints
-										</FormDescription>
-										<FormMessage />
-									</FormItem>
-								)}
-							/>
-
-							<div className="border-t pt-4">
-								<PolicyEditor
-									readOnly={isPending || isSolutionManaged}
-									onParseErrorChange={setPolicyParseError}
-									value={policies}
-									onChange={setPolicies}
-								/>
-							</div>
 						</div>
+					</div>
+					<div className="shrink-0 space-y-4 border-t bg-background pt-4">
 						{form.formState.errors.root?.save && (
 							<Alert
 								variant="destructive"
 								ref={saveErrorRef}
 								tabIndex={-1}
-								className="max-h-36 shrink-0 overflow-y-auto outline-none"
+								className="max-h-36 overflow-y-auto outline-none"
 							>
 								<AlertTitle>
 									Table could not be saved
@@ -374,7 +359,7 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 								</AlertDescription>
 							</Alert>
 						)}
-						<DialogFooter className="shrink-0 border-t pt-4">
+						<DialogFooter>
 							<Button
 								type="button"
 								variant="outline"
@@ -400,8 +385,76 @@ export function TableDialog({ table, open, onClose }: TableDialogProps) {
 										: "Create"}
 							</Button>
 						</DialogFooter>
-					</form>
-				</Form>
+					</div>
+				</form>
+			</Form>
+		</>
+	);
+
+	if (embedded) {
+		if (!open) return null;
+		return (
+			<section
+				aria-labelledby="table-dialog-title"
+				className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card"
+			>
+				<div className="flex shrink-0 items-start gap-3 border-b border-border/70 bg-muted/20 px-4 py-3">
+					<div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border bg-background">
+						<Table2 aria-hidden="true" className="size-4" />
+					</div>
+					<div className="min-w-0 flex-1">
+						<h2
+							id="table-dialog-title"
+							className="text-base font-semibold leading-6"
+						>
+							{title}
+						</h2>
+						<p className="text-sm leading-5 text-muted-foreground">
+							{description}
+						</p>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						aria-label="Close table settings"
+						disabled={isPending}
+						onClick={onClose}
+						className="size-9 shrink-0"
+					>
+						<X aria-hidden="true" className="size-4" />
+					</Button>
+				</div>
+				<div className="flex min-h-0 flex-1 flex-col p-4">
+					{content}
+				</div>
+			</section>
+		);
+	}
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!nextOpen && !isPending) onClose();
+			}}
+		>
+			<DialogContent
+				className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-[760px]"
+				showCloseButton={!isPending}
+				onEscapeKeyDown={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (isPending) event.preventDefault();
+				}}
+			>
+				<DialogHeader>
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+
+				{content}
 			</DialogContent>
 		</Dialog>
 	);

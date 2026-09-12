@@ -8,6 +8,19 @@ import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUseTables = vi.fn();
 const mockUseDeleteTable = vi.fn();
+const mockUseNavigate = vi.fn();
+let mockIsPlatformAdmin = false;
+
+vi.mock("react-router-dom", async () => {
+	const actual =
+		await vi.importActual<typeof import("react-router-dom")>(
+			"react-router-dom",
+		);
+	return {
+		...actual,
+		useNavigate: () => mockUseNavigate,
+	};
+});
 
 vi.mock("@/services/tables", () => ({
 	useTables: (...a: unknown[]) => mockUseTables(...a),
@@ -15,7 +28,7 @@ vi.mock("@/services/tables", () => ({
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({ isPlatformAdmin: false }),
+	useAuth: () => ({ isPlatformAdmin: mockIsPlatformAdmin }),
 }));
 
 vi.mock("@/hooks/useOrganizations", () => ({
@@ -44,9 +57,12 @@ const regularTable = {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockIsPlatformAdmin = false;
 	mockUseTables.mockReturnValue({
 		data: { tables: [regularTable] },
 		isLoading: false,
+		isFetching: false,
+		error: null,
 		refetch: vi.fn(),
 	});
 	mockUseDeleteTable.mockReturnValue({ mutateAsync: vi.fn() });
@@ -75,6 +91,8 @@ describe("Tables — list", () => {
 				],
 			},
 			isLoading: false,
+			isFetching: false,
+			error: null,
 			refetch: vi.fn(),
 		});
 		const { user } = await renderPage();
@@ -122,6 +140,8 @@ describe("Tables — solution-managed rows are read-only (audit U1)", () => {
 		mockUseTables.mockReturnValue({
 			data: { tables: [managedTable] },
 			isLoading: false,
+			isFetching: false,
+			error: null,
 			refetch: vi.fn(),
 		});
 		const { user } = await renderPage();
@@ -145,6 +165,8 @@ describe("Tables — solution-managed rows are read-only (audit U1)", () => {
 		mockUseTables.mockReturnValue({
 			data: { tables: [managedTable] },
 			isLoading: false,
+			isFetching: false,
+			error: null,
 			refetch: vi.fn(),
 		});
 		const { user } = await renderPage();
@@ -156,5 +178,32 @@ describe("Tables — solution-managed rows are read-only (audit U1)", () => {
 		const del = screen.getByRole("menuitem", { name: "Delete" });
 		await user.click(del).catch(() => {});
 		expect(mutateAsync).not.toHaveBeenCalled();
+	});
+});
+
+describe("Tables — catalog selection", () => {
+	it("opens rows normally and does not render selection checkboxes", async () => {
+		mockIsPlatformAdmin = true;
+		const { user } = await renderPage();
+
+		expect(
+			screen.queryByRole("checkbox", { name: /select/i }),
+		).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Customers" }));
+		expect(mockUseNavigate).toHaveBeenCalledWith("/tables/tbl-1");
+	});
+
+	it("toggles whole rows in explicit Select mode", async () => {
+		mockIsPlatformAdmin = true;
+		const { user } = await renderPage();
+
+		await user.click(screen.getByRole("switch", { name: "Select" }));
+		const rowButton = screen.getByRole("button", { name: "Customers" });
+		await user.click(rowButton);
+
+		expect(mockUseNavigate).not.toHaveBeenCalled();
+		expect(rowButton).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByText("1 selected")).toBeInTheDocument();
 	});
 });

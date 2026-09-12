@@ -18,6 +18,7 @@ import {
 } from "@/services/tables";
 
 import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
+import { Database, X } from "lucide-react";
 
 interface DocumentDialogProps {
 	returnFocusRef?: RefObject<HTMLElement | null>;
@@ -25,6 +26,8 @@ interface DocumentDialogProps {
 	tableId: string;
 	open: boolean;
 	onClose: () => void;
+	embedded?: boolean;
+	onBusyChange?: (busy: boolean) => void;
 }
 
 function parseDocument(
@@ -66,6 +69,8 @@ function DocumentDialogSession({
 	open,
 	onClose,
 	returnFocusRef,
+	embedded = false,
+	onBusyChange,
 }: DocumentDialogProps) {
 	const returnFocus = useDialogReturnFocus(returnFocusRef, true);
 	const insertDocument = useInsertDocument();
@@ -77,6 +82,9 @@ function DocumentDialogSession({
 	const [pending, setPending] = useState(false);
 	const [saveError, setSaveError] = useState(false);
 	const saveErrorRef = useRef<HTMLParagraphElement>(null);
+	useEffect(() => {
+		onBusyChange?.(pending);
+	}, [onBusyChange, pending]);
 	useEffect(() => {
 		if (saveError) {
 			saveErrorRef.current?.focus();
@@ -128,6 +136,172 @@ function DocumentDialogSession({
 			if (active.current) setPending(false);
 		}
 	}
+	const title = isEditing ? "Edit Document" : "Create Document";
+	const description = isEditing
+		? "Update the document data. Changes merge with the existing record."
+		: "Add a new document to this table.";
+	const content = (
+		<>
+			{embedded ? (
+				<header className="flex shrink-0 items-start justify-between gap-3 border-b bg-muted/20 px-4 py-3">
+					<div className="flex min-w-0 items-start gap-3">
+						<Database
+							aria-hidden="true"
+							className="mt-1 size-5 shrink-0 text-primary"
+						/>
+						<div className="min-w-0">
+							<h2 className="text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
+								{title}
+							</h2>
+							<p className="mt-1 text-sm text-muted-foreground">
+								{description}
+							</p>
+						</div>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="shrink-0"
+						disabled={pending}
+						onClick={close}
+						aria-label="Close document editor"
+					>
+						<X aria-hidden="true" className="size-4" />
+					</Button>
+				</header>
+			) : (
+				<DialogHeader className="shrink-0 p-[var(--bf-surface-pad)] pr-14 text-left">
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+			)}
+			<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[var(--bf-surface-pad)] pb-4">
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+					<p className="text-sm font-medium">Document Data (JSON)</p>
+					<Button
+						type="button"
+						variant="ghost"
+						className="min-h-11"
+						disabled={pending}
+						onClick={() => {
+							if (!pendingRef.current)
+								void editorRef.current
+									?.getAction("editor.action.formatDocument")
+									?.run();
+						}}
+					>
+						Format
+					</Button>
+				</div>
+				<div className="min-h-24 flex-1 overflow-hidden rounded-[var(--bf-radius-surface)] border">
+					<Editor
+						height="100%"
+						language="json"
+						value={jsonValue}
+						onChange={(value) => {
+							if (!pendingRef.current) {
+								setJsonValue(value ?? "");
+								setSaveError(false);
+							}
+						}}
+						onMount={handleMount}
+						theme={appearance.theme}
+						beforeMount={appearance.beforeMount}
+						options={{
+							...appearance.options,
+							ariaLabel: "Document data (JSON)",
+							readOnly: pending,
+							minimap: { enabled: false },
+							scrollBeyondLastLine: false,
+							fontSize: 13,
+							wordWrap: "on",
+							automaticLayout: true,
+							tabSize: 2,
+							insertSpaces: true,
+							formatOnPaste: true,
+							autoClosingBrackets: "always",
+							autoClosingQuotes: "always",
+							bracketPairColorization: { enabled: true },
+							folding: true,
+							foldingStrategy: "indentation",
+							lineNumbers: "on",
+							renderWhitespace: "selection",
+							quickSuggestions: false,
+							suggestOnTriggerCharacters: false,
+							padding: { top: 12, bottom: 12 },
+						}}
+						loading={
+							<div
+								role="status"
+								className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground"
+							>
+								Loading editor…
+							</div>
+						}
+					/>
+				</div>
+				{parsed.error && (
+					<p
+						role="alert"
+						className="shrink-0 text-sm text-destructive"
+					>
+						{parsed.error}
+					</p>
+				)}
+				{saveError && (
+					<p
+						ref={saveErrorRef}
+						tabIndex={-1}
+						role="alert"
+						className="shrink-0 text-sm text-destructive outline-none"
+					>
+						Document could not be saved. Your JSON is preserved. Try
+						again.
+					</p>
+				)}
+			</div>
+			<DialogFooter className="shrink-0 border-t p-[var(--bf-surface-pad)]">
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11"
+					onClick={close}
+					disabled={pending}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					className="min-h-11"
+					disabled={pending || parsed.error !== null}
+					onClick={() => void save()}
+				>
+					{pending
+						? "Saving..."
+						: saveError
+							? "Retry save"
+							: isEditing
+								? "Update"
+								: "Create"}
+				</Button>
+			</DialogFooter>
+		</>
+	);
+
+	if (embedded) {
+		if (!open) return null;
+		return (
+			<section
+				className="flex min-h-0 flex-1 flex-col overflow-hidden"
+				aria-busy={pending}
+				aria-label={title}
+			>
+				{content}
+			</section>
+		);
+	}
+
 	return (
 		<Dialog
 			open={open}
@@ -144,130 +318,7 @@ function DocumentDialogSession({
 				}}
 				aria-busy={pending}
 			>
-				<DialogHeader className="shrink-0 p-[var(--bf-surface-pad)] pr-14 text-left">
-					<DialogTitle>
-						{isEditing ? "Edit Document" : "Create Document"}
-					</DialogTitle>
-					<DialogDescription>
-						{isEditing
-							? "Update the document data (will merge with existing)"
-							: "Add a new document to this table"}
-					</DialogDescription>
-				</DialogHeader>
-				<div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[var(--bf-surface-pad)] pb-4">
-					<div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-						<p className="text-sm font-medium">
-							Document Data (JSON)
-						</p>
-						<Button
-							type="button"
-							variant="ghost"
-							className="min-h-11"
-							disabled={pending}
-							onClick={() => {
-								if (!pendingRef.current)
-									void editorRef.current
-										?.getAction(
-											"editor.action.formatDocument",
-										)
-										?.run();
-							}}
-						>
-							Format
-						</Button>
-					</div>
-					<div className="min-h-24 flex-1 overflow-hidden rounded-[var(--bf-radius-surface)] border">
-						<Editor
-							height="100%"
-							language="json"
-							value={jsonValue}
-							onChange={(value) => {
-								if (!pendingRef.current) {
-									setJsonValue(value ?? "");
-									setSaveError(false);
-								}
-							}}
-							onMount={handleMount}
-							theme={appearance.theme}
-							beforeMount={appearance.beforeMount}
-							options={{
-								...appearance.options,
-								ariaLabel: "Document data (JSON)",
-								readOnly: pending,
-								minimap: { enabled: false },
-								scrollBeyondLastLine: false,
-								fontSize: 13,
-								wordWrap: "on",
-								automaticLayout: true,
-								tabSize: 2,
-								insertSpaces: true,
-								formatOnPaste: true,
-								autoClosingBrackets: "always",
-								autoClosingQuotes: "always",
-								bracketPairColorization: { enabled: true },
-								folding: true,
-								foldingStrategy: "indentation",
-								lineNumbers: "on",
-								renderWhitespace: "selection",
-								quickSuggestions: false,
-								suggestOnTriggerCharacters: false,
-								padding: { top: 12, bottom: 12 },
-							}}
-							loading={
-								<div
-									role="status"
-									className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground"
-								>
-									Loading editor…
-								</div>
-							}
-						/>
-					</div>
-					{parsed.error && (
-						<p
-							role="alert"
-							className="shrink-0 text-sm text-destructive"
-						>
-							{parsed.error}
-						</p>
-					)}
-					{saveError && (
-						<p
-							ref={saveErrorRef}
-							tabIndex={-1}
-							role="alert"
-							className="shrink-0 text-sm text-destructive outline-none"
-						>
-							Document could not be saved. Your JSON is preserved.
-							Try again.
-						</p>
-					)}
-				</div>
-				<DialogFooter className="shrink-0 border-t p-[var(--bf-surface-pad)]">
-					<Button
-						type="button"
-						variant="outline"
-						className="min-h-11"
-						onClick={close}
-						disabled={pending}
-					>
-						Cancel
-					</Button>
-					<Button
-						type="button"
-						className="min-h-11"
-						disabled={pending || parsed.error !== null}
-						onClick={() => void save()}
-					>
-						{pending
-							? "Saving..."
-							: saveError
-								? "Retry save"
-								: isEditing
-									? "Update"
-									: "Create"}
-					</Button>
-				</DialogFooter>
+				{content}
 			</DialogContent>
 		</Dialog>
 	);
