@@ -311,12 +311,16 @@ class TestDocumentRepositoryIntegration:
         assert unicodedata.normalize("NFC", decomposed_prefix) == target_prefix
         assert decomposed_prefix != target_prefix
 
-        target_ids = [
-            f"{target_prefix}000",
-            f"{target_prefix}001",
-            f"{target_prefix}002",
-            f"{target_prefix}010",
-            f"{target_prefix}099",
+        target_ids = [f"{target_prefix}{i:03d}" for i in range(12)]
+        denied_target_id = target_ids[6]
+        allowed_target_ids = [
+            doc_id for doc_id in target_ids if doc_id != denied_target_id
+        ]
+        requested_ids = [
+            target_ids[0],
+            target_ids[1],
+            f"{target_prefix}404",
+            *target_ids[2:],
         ]
         other_rows = [
             (f"{decomposed_prefix}000", "decomposed unicode"),
@@ -328,7 +332,11 @@ class TestDocumentRepositoryIntegration:
 
         for doc_id in target_ids:
             await doc_repo.insert(
-                {"tenant": "target", "doc_id": doc_id},
+                {
+                    "tenant": "target",
+                    "doc_id": doc_id,
+                    "policy": "deny" if doc_id == denied_target_id else "allow",
+                },
                 created_by=test_user_email,
                 doc_id=doc_id,
             )
@@ -351,71 +359,73 @@ class TestDocumentRepositoryIntegration:
             created_by=test_user_email,
             doc_id=f"{target_prefix}001",
         )
+        allow_policy = Document.data["policy"].astext == "allow"
 
         first_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=target_prefix,
-                document_ids=[
-                    target_ids[0],
-                    target_ids[1],
-                    f"{target_prefix}404",
-                    target_ids[2],
-                    target_ids[3],
-                    target_ids[4],
-                ],
-                limit=2,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=3,
                 skip_count=True,
-            )
+            ),
+            extra_where=allow_policy,
         )
         assert total == -1
-        assert [doc.id for doc in first_page] == target_ids[:2]
+        assert [doc.id for doc in first_page] == allowed_target_ids[:3]
 
         middle_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=target_prefix,
                 after_document_id=first_page[-1].id,
-                document_ids=[
-                    target_ids[0],
-                    target_ids[1],
-                    f"{target_prefix}404",
-                    target_ids[2],
-                    target_ids[3],
-                    target_ids[4],
-                ],
-                limit=2,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=3,
                 skip_count=True,
-            )
+            ),
+            extra_where=allow_policy,
         )
         assert total == -1
-        assert [doc.id for doc in middle_page] == target_ids[2:4]
+        assert [doc.id for doc in middle_page] == allowed_target_ids[3:6]
+
+        deep_page, total = await doc_repo.query(
+            DocumentQuery(
+                document_id_prefix=target_prefix,
+                after_document_id=target_ids[7],
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=2,
+                skip_count=True,
+            ),
+            extra_where=allow_policy,
+        )
+        assert total == -1
+        assert [doc.id for doc in deep_page] == allowed_target_ids[7:9]
 
         final_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=target_prefix,
-                after_document_id=middle_page[-1].id,
-                document_ids=[
-                    target_ids[0],
-                    target_ids[1],
-                    f"{target_prefix}404",
-                    target_ids[2],
-                    target_ids[3],
-                    target_ids[4],
-                ],
-                limit=2,
+                after_document_id=deep_page[-1].id,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
+                limit=5,
                 skip_count=True,
-            )
+            ),
+            extra_where=allow_policy,
         )
         assert total == -1
-        assert [doc.id for doc in final_page] == target_ids[4:]
+        assert [doc.id for doc in final_page] == allowed_target_ids[9:]
 
         empty_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=target_prefix,
                 after_document_id=target_ids[-1],
-                document_ids=target_ids,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
                 limit=2,
                 skip_count=True,
-            )
+            ),
+            extra_where=allow_policy,
         )
         assert total == -1
         assert empty_page == []
@@ -423,10 +433,12 @@ class TestDocumentRepositoryIntegration:
         nonexistent_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=f"{target_prefix}missing/",
-                document_ids=target_ids,
+                document_ids=requested_ids,
+                where={"tenant": "target"},
                 limit=2,
                 skip_count=True,
-            )
+            ),
+            extra_where=allow_policy,
         )
         assert total == -1
         assert nonexistent_page == []

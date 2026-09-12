@@ -54,9 +54,16 @@ async def test_document_prefix_statement_uses_c_collation_and_literal_pattern(
             DocumentQuery(
                 document_id_prefix="tenant%_A/folder\\caf\u00e9/",
                 after_document_id="tenant%_A/folder\\caf\u00e9/001",
+                document_ids=[
+                    "tenant%_A/folder\\caf\u00e9/001",
+                    "tenant%_A/folder\\caf\u00e9/002",
+                    "tenant%_A/folder\\caf\u00e9/missing",
+                ],
+                where={"tenant": "target", "rank": {"gte": 10}},
                 skip_count=True,
                 limit=25,
-            )
+            ),
+            extra_where=Document.data["policy"].astext == "allow",
         )
     finally:
         event.remove(db_session.sync_session, "do_orm_execute", capture_statement)
@@ -89,10 +96,17 @@ async def test_document_prefix_statement_uses_c_collation_and_literal_pattern(
     assert any(key.startswith("table_id_") for key in compiled.params)
     assert table.id in compiled.params.values()
     assert "tenant%_A/folder\\caf\u00e9/001" in compiled.params.values()
+    assert "tenant%_A/folder\\caf\u00e9/002" in compiled.params.values()
+    assert "tenant%_A/folder\\caf\u00e9/missing" in compiled.params.values()
+    assert "target" in compiled.params.values()
+    assert "10" in compiled.params.values()
+    assert "allow" in compiled.params.values()
     assert all(
         value != "tenant/%/_A//folder\\caf\u00e9//%"
         for value in compiled.params.values()
     )
+    assert "IN (" in sql
+    assert "documents.data" in sql
 
 
 @pytest.mark.asyncio
