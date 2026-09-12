@@ -1,5 +1,6 @@
 """Public entity models expose solution_id so the UI badge can link to the owner."""
 import asyncio
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -96,6 +97,11 @@ class _FakeAppRow:
         self.logo_thumbnail_content_type = None
         self.logo_thumbnail_version = None
         self.solution_id = solution_id
+        self.active_deployment_id = None
+        self.sdk_package_version = "v1.0.0"
+        self.sdk_fingerprint = "current-fp"
+        self.sdk_contract_version = 1
+        self.sdk_built_at = datetime(2026, 9, 12, tzinfo=timezone.utc)
 
 
 class _FakeAppRepo:
@@ -110,6 +116,38 @@ def test_application_to_public_populates_solution_id(sol_id) -> None:
     app = asyncio.run(application_to_public(_FakeAppRow(sol_id), _FakeAppRepo()))
     assert app.solution_id == sol_id
     assert app.is_solution_managed is (sol_id is not None)
+
+
+def test_application_to_public_populates_sdk_fields(monkeypatch) -> None:
+    from src.routers import applications
+    from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+
+    app_row = _FakeAppRow(None)
+    app_row.app_model = "standalone_v2"
+    app_row.active_deployment_id = uuid4()
+
+    calls = 0
+
+    def fake_current_metadata():
+        nonlocal calls
+        calls += 1
+        return CurrentApplicationSdkMetadata(
+            package_version="v1.0.1",
+            fingerprint="current-fp",
+            contract_version=1,
+        )
+
+    monkeypatch.setattr(applications, "current_sdk_metadata", fake_current_metadata)
+
+    app = asyncio.run(applications.application_to_public(app_row, _FakeAppRepo()))
+
+    assert calls == 1
+    assert app.sdk_package_version == "v1.0.0"
+    assert app.sdk_fingerprint == "current-fp"
+    assert app.sdk_contract_version == 1
+    assert app.sdk_built_at == app_row.sdk_built_at
+    assert app.sdk_status == "current"
+    assert app.sdk_source_available is True
 
 
 def test_solution_id_defaults_none() -> None:

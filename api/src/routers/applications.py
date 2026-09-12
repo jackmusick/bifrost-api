@@ -58,6 +58,11 @@ from src.services.platform_jobs import (
     publish_platform_job_update,
 )
 from src.services.application_deploy_storage import ApplicationDeployStorage
+from src.services.application_sdk_status import (
+    application_sdk_status,
+    current_sdk_metadata,
+    sdk_source_available,
+)
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.core.exceptions import AccessDeniedError
 from shared.logo_processing import (
@@ -142,6 +147,7 @@ async def application_to_public(
 ) -> ApplicationPublic:
     """Convert Application ORM to ApplicationPublic with role_ids."""
     role_ids = await repo.get_role_ids(application.id)
+    current_sdk = current_sdk_metadata()
     return ApplicationPublic(
         id=application.id,
         name=application.name,
@@ -176,6 +182,12 @@ async def application_to_public(
         ),
         is_solution_managed=application.solution_id is not None,
         solution_id=application.solution_id,
+        sdk_package_version=application.sdk_package_version,
+        sdk_fingerprint=application.sdk_fingerprint,
+        sdk_contract_version=application.sdk_contract_version,
+        sdk_built_at=application.sdk_built_at,
+        sdk_status=application_sdk_status(application, current_sdk),
+        sdk_source_available=sdk_source_available(application),
     )
 
 

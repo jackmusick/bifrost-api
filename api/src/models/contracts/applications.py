@@ -17,6 +17,13 @@ import re
 from typing import Literal
 
 EmbedHmacScheme = Literal["shopify", "halopsa"]
+ApplicationSdkStatus = Literal[
+    "not_applicable",
+    "unknown",
+    "current",
+    "update_available",
+    "update_required",
+]
 
 
 # ==================== APPLICATION MODELS ====================
@@ -172,8 +179,32 @@ class ApplicationPublic(ApplicationBase):
         description="Versioned presentation-logo URL, or null when no logo is set.",
     )
     logo_version: str | None = Field(default=None, description="Presentation-logo content hash.")
+    sdk_package_version: str | None = Field(
+        default=None,
+        description="Bifrost SDK package version used for the active app build.",
+    )
+    sdk_fingerprint: str | None = Field(
+        default=None,
+        description="Content fingerprint of the Bifrost SDK used for the active app build.",
+    )
+    sdk_contract_version: int | None = Field(
+        default=None,
+        description="SDK/server contract version used for the active app build.",
+    )
+    sdk_built_at: datetime | None = Field(
+        default=None,
+        description="When the active app build's SDK provenance was recorded.",
+    )
+    sdk_status: ApplicationSdkStatus = Field(
+        default="unknown",
+        description="Derived status of the active app SDK relative to this server.",
+    )
+    sdk_source_available: bool = Field(
+        default=False,
+        description="Cheap capability hint for whether source is expected to be recoverable.",
+    )
 
-    @field_serializer("created_at", "updated_at", "published_at")
+    @field_serializer("created_at", "updated_at", "published_at", "sdk_built_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
         return dt.isoformat() if dt else None
 

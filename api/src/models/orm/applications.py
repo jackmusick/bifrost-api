@@ -74,6 +74,12 @@ class Application(Base):
     deployed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None, nullable=True
     )
+    sdk_package_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sdk_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sdk_contract_version: Mapped[int | None] = mapped_column(nullable=True)
+    sdk_built_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Access control (follows same pattern as forms)
     access_level: Mapped[str] = mapped_column(
