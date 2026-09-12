@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBifrostTransport } from "./tables";
+import type { TableChangeMessage } from "./ws-client";
 import { buildWsUrl, subscribeToTable } from "./ws-client";
 
 type MockEvent = { data?: string; code?: number };
@@ -44,6 +45,24 @@ afterEach(() => {
 });
 
 describe("subscribeToTable", () => {
+  it("dispatches table invalidation frames to the subscriber", () => {
+    const events: TableChangeMessage[] = [];
+    const invalidation: TableChangeMessage = {
+      type: "table_invalidated",
+      table_id: "table-1",
+    };
+    const unsubscribe = subscribeToTable("table-1", null, (event) => {
+      events.push(event);
+    });
+
+    MockWebSocket.instances[0].emit("message", {
+      data: JSON.stringify(invalidation),
+    });
+
+    expect(events).toEqual([invalidation]);
+    unsubscribe();
+  });
+
   it("reconnects, resubscribes, and signals snapshot recovery after acknowledgement", () => {
     const events: Record<string, unknown>[] = [];
     const recovered = vi.fn();

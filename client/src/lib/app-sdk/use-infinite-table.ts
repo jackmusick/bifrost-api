@@ -101,6 +101,8 @@ export function useInfiniteTable(
     tableIdRef.current = null;
 
     let unsubscribe: (() => void) | null = null;
+    let refreshInFlight = false;
+    let refreshDirty = false;
 
     async function refreshLoadedSnapshot() {
       const targetCount = Math.max(offsetRef.current, pageSize);
@@ -137,6 +139,31 @@ export function useInfiniteTable(
       setError(null);
     }
 
+    function refreshAuthoritativeSnapshot() {
+      if (refreshInFlight) {
+        refreshDirty = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      void (async () => {
+        try {
+          do {
+            refreshDirty = false;
+            try {
+              await refreshLoadedSnapshot();
+            } catch (e) {
+              if (!cancelledRef.current) {
+                setError(e instanceof Error ? e : new Error(String(e)));
+              }
+            }
+          } while (refreshDirty && !cancelledRef.current);
+        } finally {
+          refreshInFlight = false;
+        }
+      })();
+    }
+
     async function init() {
       try {
         // Pre-compile the filter so we surface unsupported-operator errors
@@ -165,14 +192,14 @@ export function useInfiniteTable(
                 if (!cancelledRef.current) setError(new Error(evt.message));
                 return;
               }
+              if (evt.type === "table_invalidated") {
+                refreshAuthoritativeSnapshot();
+                return;
+              }
               applyEvent(evt, setRows);
             },
             () => {
-              void refreshLoadedSnapshot().catch((e) => {
-                if (!cancelledRef.current) {
-                  setError(e instanceof Error ? e : new Error(String(e)));
-                }
-              });
+              refreshAuthoritativeSnapshot();
             },
           );
         }

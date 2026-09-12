@@ -280,6 +280,8 @@ export function useTable(
   useEffect(() => {
     let cancelled = false;
     let unsubscribe: (() => void) | null = null;
+    let refreshInFlight = false;
+    let refreshDirty = false;
     // Compute the offset/limit for this page. Server validates limit ≤ 1000;
     // a caller passing pageSize > 1000 will get the 422 surfaced via `error`.
     const offset = Math.max(0, (page - 1) * pageSize);
@@ -297,6 +299,31 @@ export function useTable(
       setError(null);
       setLoading(false);
       return snap;
+    }
+
+    function refreshAuthoritativeSnapshot() {
+      if (refreshInFlight) {
+        refreshDirty = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      void (async () => {
+        try {
+          do {
+            refreshDirty = false;
+            try {
+              await loadSnapshot();
+            } catch (e) {
+              if (!cancelled) {
+                setError(e instanceof Error ? e : new Error(String(e)));
+              }
+            }
+          } while (refreshDirty && !cancelled);
+        } finally {
+          refreshInFlight = false;
+        }
+      })();
     }
 
     async function init() {
@@ -331,17 +358,17 @@ export function useTable(
               if (!cancelled) setError(new Error(evt.message));
               return;
             }
+            if (evt.type === "table_invalidated") {
+              refreshAuthoritativeSnapshot();
+              return;
+            }
             applyPagedEvent(evt, pageSize, setRows, setTotal);
           },
           () => {
             // Events can be missed while the transport is down. Once the
             // server acknowledges the replacement subscription, replace the
             // visible window with a fresh authoritative snapshot.
-            void loadSnapshot().catch((e) => {
-              if (!cancelled) {
-                setError(e instanceof Error ? e : new Error(String(e)));
-              }
-            });
+            refreshAuthoritativeSnapshot();
           },
         );
       } catch (e) {
