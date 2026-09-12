@@ -120,7 +120,7 @@ class DocumentBatchCreate(BaseModel):
     def validate_write_mode(self) -> "DocumentBatchCreate":
         if self.write_mode is not None and self.upsert and self.write_mode != "merge_upsert":
             raise ValueError("upsert and write_mode are contradictory")
-        if self.effective_write_mode != "insert" and any(
+        if self.write_mode in {"merge_upsert", "replace_upsert"} and any(
             item.id is None for item in self.documents
         ):
             raise ValueError("upsert batch documents require an explicit id")

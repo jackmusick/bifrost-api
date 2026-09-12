@@ -32,8 +32,10 @@ continue to work without sending any new fields.
 Released behavior that remains stable:
 
 - `upsert=false` inserts documents and permits omitted IDs;
-- `upsert=true` requires explicit IDs from the SDK and merges submitted
-  top-level JSON keys into an existing document;
+- `upsert=true` merges submitted top-level JSON keys into an existing document
+  when an ID is present and continues to generate an ID and insert when a raw
+  REST request omits it; the released SDK already requires IDs for
+  `upsert_batch()`;
 - table auto-creation remains an SDK concern after a 404;
 - policy denials reject the complete request and report every denied row;
 - successful results are returned in submission order, including generated
@@ -68,8 +70,9 @@ Sending `upsert=true` with an explicit `write_mode` other than
 `merge_upsert` is rejected as contradictory. The old field remains only as the
 backward-compatible wire spelling; new SDK code sends `write_mode`.
 
-`merge_upsert` and `replace_upsert` require a non-empty explicit ID for every
-document. `insert` continues to generate UUID IDs when omitted.
+Explicit `write_mode="merge_upsert"` and `write_mode="replace_upsert"` require
+a non-empty explicit ID for every document. The backward-compatible
+`upsert=true` spelling and `insert` continue to generate UUID IDs when omitted.
 
 `return_documents=false` suppresses document bodies in the response but does
 not suppress policy checks, validation, attribution, or notifications. The
