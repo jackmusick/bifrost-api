@@ -240,7 +240,7 @@ function PolicyEditorSession({
 							<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 								<LockKeyhole className="size-4" />
 								<h3>Inherited Access</h3>
-								<span className="ml-auto">Read-only here</span>
+								<span className="ml-auto">Read-Only</span>
 							</div>
 							{onOpenSource ? (
 								<Button

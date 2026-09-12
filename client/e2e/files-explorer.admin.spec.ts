@@ -122,12 +122,15 @@ test.describe("Files Explorer (desktop)", () => {
 			.getByRole("button", { name: "hello.txt", exact: true })
 			.click();
 
-		// Open Test Access from the effective-access panel.
+		// Access edits the selected path directly; Test has its own tab.
 		await page.getByRole("tab", { name: "Access", exact: true }).click();
-		await page
-			.getByRole("button", { name: /test access/i })
-			.first()
-			.click();
+		await expect(
+			inspector.getByRole("heading", {
+				name: "Manage Policy",
+				exact: true,
+			}),
+		).toBeVisible();
+		await page.getByRole("tab", { name: "Test", exact: true }).click();
 		await expect(
 			inspector.getByRole("heading", {
 				name: "Test Access",
@@ -141,7 +144,7 @@ test.describe("Files Explorer (desktop)", () => {
 		await page.getByRole("option").first().click();
 		await expect(inspector.getByText(/^(Allowed|Denied)$/)).toHaveCount(4);
 		await inspector
-			.getByRole("button", { name: "Back to Access", exact: true })
+			.getByRole("tab", { name: "Access", exact: true })
 			.click();
 		await expect(
 			inspector.getByRole("tab", { name: "Access", exact: true }),

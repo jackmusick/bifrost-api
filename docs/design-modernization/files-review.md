@@ -194,3 +194,16 @@ access tester, access summary, and Files workspace. Desktop (1440px) and mobile
 (390px) browser checks exercised inherited/source navigation, library controls,
 search filtering, and overflow. No live policy was saved during visual review.
 TypeScript and scoped ESLint passed. The full E2E suite was not rerun for this pass.
+
+### Direct Access and Test tabs
+
+Access now opens the selected path's policy editor directly. Testing lives in a
+sibling Test tab, including policy/test tools opened from context actions. Source
+policy navigation still returns to the original file's Access tab. Inherited
+permissions use the label “Read-Only”; solution-managed files retain their
+read-only access summary. Mutation-in-progress guards also cover tab navigation.
+
+Verification: 27 scoped tests in FilesExplorer.test.tsx and
+PolicyEditorModal.test.tsx; the Files explorer desktop/mobile Playwright spec;
+live debug desktop/mobile navigation and visual inspection; TypeScript and scoped
+ESLint. Full test suites and the pre-PR gate were not rerun for this refinement.

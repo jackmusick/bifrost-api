@@ -98,7 +98,9 @@ vi.mock("./EffectiveAccessPanel", () => ({
 		return <div />;
 	},
 }));
-vi.mock("./TestAccessModal", () => ({ TestAccessPanel: () => <div /> }));
+vi.mock("./TestAccessModal", () => ({
+	TestAccessPanel: () => <section aria-label="Access tester" />,
+}));
 vi.mock("./PolicyEditorModal", () => ({
 	PolicyEditorPanel: ({ exactPath }: { exactPath?: string }) => (
 		<section aria-label="Policy editor">{exactPath}</section>
@@ -190,6 +192,31 @@ describe("FilesExplorer", () => {
 			"aria-selected",
 			"true",
 		);
+	});
+
+	it("opens the policy editor directly on Access and testing on Test", async () => {
+		const user = userEvent.setup();
+		vi.mocked(useMediaQuery).mockReturnValue(true);
+		render(<FilesExplorer />);
+		await user.click(
+			screen.getByRole("button", { name: "Open gallery share" }),
+		);
+		await user.click(screen.getByRole("button", { name: "Open notes" }));
+		await user.click(
+			screen.getByRole("tab", { name: "Access" }),
+		);
+		expect(
+			screen.getByRole("region", { name: "Policy editor" }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Manage Policy" }),
+		).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("tab", { name: "Test" }),
+		);
+		expect(
+			screen.getByRole("region", { name: "Access tester" }),
+		).toBeInTheDocument();
 	});
 
 	it("keeps the scope selector and breadcrumb in a shrinkable header region", () => {

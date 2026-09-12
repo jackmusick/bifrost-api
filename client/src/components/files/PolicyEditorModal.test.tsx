@@ -289,7 +289,7 @@ describe("PolicyEditorModal", () => {
 			/>,
 		);
 		await screen.findByRole("region", { name: "Inherited Access" });
-		expect(screen.getByText("Read-only here")).toBeInTheDocument();
+		expect(screen.getByText("Read-Only")).toBeInTheDocument();
 		fireEvent.click(
 			screen.getByRole("button", { name: "gallery / Share root" }),
 		);

@@ -292,7 +292,7 @@ export function FilesExplorer({
 			path={selectedFile}
 		/>
 	);
-	const access = (
+	const access = readOnly ? (
 		<EffectiveAccessPanel
 			key={refreshKey}
 			location={location ?? ""}
@@ -316,12 +316,29 @@ export function FilesExplorer({
 				)
 			}
 		/>
+	) : (
+		<PolicyEditorPanel
+			key={refreshKey}
+			location={location ?? ""}
+			scope={scope}
+			path={
+				selectedFile ?? (prefix ? `${prefix.replace(/\/+$/, "")}/` : "")
+			}
+			onSaved={refreshFiles}
+			onOpenSource={(policy) =>
+				openPolicy(policy.location, policy.path, true)
+			}
+			onBusyChange={setInspectorBusy}
+		/>
 	);
+
 	const detail = (
 		<Tabs
 			key={selectedFile ?? "access"}
 			value={detailTab}
-			onValueChange={setDetailTab}
+			onValueChange={(tab) => {
+				if (!inspectorBusy) setDetailTab(tab);
+			}}
 			className="flex min-h-0 flex-1 flex-col gap-0"
 			data-testid="detail-pane"
 		>
@@ -329,6 +346,7 @@ export function FilesExplorer({
 				variant="line"
 				aria-label="File details"
 				className="mx-4 mt-2 shrink-0"
+				inert={inspectorBusy || undefined}
 			>
 				{selectedFile && (
 					<TabsTrigger value="preview" className="min-h-11">
@@ -337,6 +355,9 @@ export function FilesExplorer({
 				)}
 				<TabsTrigger value="access" className="min-h-11">
 					Access
+				</TabsTrigger>
+				<TabsTrigger value="test" className="min-h-11">
+					Test
 				</TabsTrigger>
 			</TabsList>
 			<TabsContent
@@ -351,6 +372,17 @@ export function FilesExplorer({
 			>
 				{access}
 			</TabsContent>
+			<TabsContent
+				value="test"
+				className="min-h-0 flex-1 overflow-hidden"
+			>
+				<TestAccessPanel
+					scopeLabel={scopeLabel}
+					location={location ?? ""}
+					scope={scope}
+					path={selectedFile ?? prefix}
+				/>
+			</TabsContent>
 		</Tabs>
 	);
 	const solutionTitle = installName ?? "Solution";
@@ -358,7 +390,8 @@ export function FilesExplorer({
 		isWide &&
 		(!detailOpen ||
 			(isThreePane &&
-				((!policyOpen && !testOpen) || isWideToolWorkspace)));
+				((!policyOpen && !testOpen && detailTab === "preview") ||
+					isWideToolWorkspace)));
 	const toolOpen = testOpen || policyOpen;
 	function closeTool() {
 		setInspectorBusy(false);
@@ -381,7 +414,7 @@ export function FilesExplorer({
 	const inspectorPath = toolOpen
 		? `${modalTarget.location}/${modalTarget.path}`
 		: `${location ?? ""}/${selectedFile ?? prefix}`;
-	const inspectorContent = policyOpen ? (
+	const toolContent = policyOpen ? (
 		<PolicyEditorPanel
 			location={modalTarget.location}
 			scope={scope}
@@ -400,8 +433,45 @@ export function FilesExplorer({
 			location={modalTarget.location}
 			scope={scope}
 			path={modalTarget.path}
-			onOpenChange={closeTool}
 		/>
+	) : (
+		detail
+	);
+
+	const inspectorContent = toolOpen ? (
+		<Tabs
+			value={policyOpen ? "access" : "test"}
+			onValueChange={(tab) => {
+				if (inspectorBusy) return;
+				setPolicyOpen(tab === "access");
+				setTestOpen(tab === "test");
+			}}
+			className="flex min-h-0 flex-1 flex-col gap-0"
+		>
+			<TabsList
+				variant="line"
+				aria-label="File details"
+				className="mx-4 mt-2 shrink-0"
+				inert={inspectorBusy || undefined}
+			>
+				<TabsTrigger
+					value="access"
+					disabled={readOnly}
+					className="min-h-11"
+				>
+					Access
+				</TabsTrigger>
+				<TabsTrigger value="test" className="min-h-11">
+					Test
+				</TabsTrigger>
+			</TabsList>
+			<TabsContent
+				value={policyOpen ? "access" : "test"}
+				className="flex min-h-0 flex-1 flex-col overflow-hidden"
+			>
+				{toolContent}
+			</TabsContent>
+		</Tabs>
 	) : (
 		detail
 	);
@@ -698,7 +768,12 @@ export function FilesExplorer({
 									isFile={Boolean(selectedFile)}
 									onClose={closeDetails}
 									busy={inspectorBusy}
-									width={toolOpen && isThreePane ? 480 : 384}
+									width={
+										(toolOpen || detailTab !== "preview") &&
+										isThreePane
+											? 480
+											: 384
+									}
 								>
 									{inspectorContent}
 								</FilesInspector>
@@ -717,7 +792,12 @@ export function FilesExplorer({
 								isFile={Boolean(selectedFile)}
 								onClose={closeDetails}
 								busy={inspectorBusy}
-								width={toolOpen && isThreePane ? 480 : 384}
+								width={
+									(toolOpen || detailTab !== "preview") &&
+									isThreePane
+										? 480
+										: 384
+								}
 							>
 								{inspectorContent}
 							</FilesInspector>
