@@ -396,11 +396,20 @@ class TestSolutionAppDeploy:
         ids = [uuid.uuid4(), uuid.uuid4()]
         app_ids = [solution_entity_id(sol.id, mid) for mid in ids]
         attempts = {"n": 0}
+        uploaded: list[tuple[uuid.UUID, uuid.UUID]] = []
+        deleted: list[tuple[uuid.UUID, uuid.UUID]] = []
 
-        async def _upload_then_fail(self, *args, **kwargs):
+        async def _upload_then_fail(self, uploaded_app_id, deployment_id, dist):
             attempts["n"] += 1
             if attempts["n"] >= 2:
                 raise RuntimeError("second app failed")
+            uploaded.append((uploaded_app_id, deployment_id))
+
+        async def _record_delete(self, deleted_app_id, deployment_id):
+            deleted.append((deleted_app_id, deployment_id))
+
+        def _activation_context():
+            raise AssertionError("activation must not run after partial upload failure")
 
         monkeypatch.setattr(
             app_build.SolutionAppBuilder,
@@ -408,6 +417,17 @@ class TestSolutionAppDeploy:
             _upload_then_fail,
             raising=False,
         )
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "delete_deployment",
+            _record_delete,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.services.solutions.deploy._solution_app_activation_db_context",
+            _activation_context,
+        )
+        monkeypatch.setattr("src.services.solutions.deploy._FINALIZE_RETRIES", 1)
         monkeypatch.setattr("src.services.solutions.deploy._FINALIZE_BACKOFF_S", 0)
 
         result = await SolutionDeployer(db).deploy(
@@ -426,6 +446,7 @@ class TestSolutionAppDeploy:
         for app_id in app_ids:
             app = await db.get(Application, app_id)
             assert app.active_deployment_id is None
+        assert deleted == uploaded
 
     async def test_stale_active_pointer_blocks_activation(self, db_session, monkeypatch):
         from src.services.solutions import app_build

@@ -1310,10 +1310,25 @@ class SolutionDeployer:
         if not compiled:
             return
         builder = SolutionAppBuilder()
-        for item in compiled:
-            await builder.upload_deployment(
-                item.app_id, item.deployment_id, item.dist
-            )
+        uploaded: list[CompiledSolutionAppDeployment] = []
+        try:
+            for item in compiled:
+                await builder.upload_deployment(
+                    item.app_id, item.deployment_id, item.dist
+                )
+                uploaded.append(item)
+        except Exception:
+            for item in uploaded:
+                try:
+                    await builder.delete_deployment(item.app_id, item.deployment_id)
+                except Exception:  # noqa: BLE001 - best-effort cleanup before retry
+                    logger.warning(
+                        "failed to delete partially uploaded app deployment %s for app %s",
+                        item.deployment_id,
+                        item.app_id,
+                        exc_info=True,
+                    )
+            raise
         try:
             await self._activate_compiled_dists(compiled)
         except Exception:
