@@ -166,7 +166,7 @@ async def test_document_cursor_only_statement_keeps_default_id_order(
 async def test_document_id_keyset_query_uses_composite_index_without_sort(
     db_session: AsyncSession,
 ) -> None:
-    """A production-shaped tenant page seeks through ``documents_pkey``."""
+    """A production-shaped tenant page seeks through the C-collated index."""
     org = Organization(
         id=uuid4(),
         name=f"Document ID plan {uuid4().hex[:8]}",
@@ -234,7 +234,7 @@ async def test_document_id_keyset_query_uses_composite_index_without_sort(
     assert all(node["Node Type"] != "Sort" for node in nodes)
     assert any(
         node["Node Type"] in {"Index Scan", "Index Only Scan"}
-        and node.get("Index Name") == "documents_pkey"
+        and node.get("Index Name") == "ix_documents_table_id_id_c"
         for node in nodes
     )
 
