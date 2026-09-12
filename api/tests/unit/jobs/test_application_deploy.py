@@ -208,17 +208,17 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
         "src.jobs.platform.application_deploy.ApplicationDeployStorage", Storage
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.SolutionAppBuilder", Builder
+        "src.services.application_build.SolutionAppBuilder", Builder
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.ApplicationSourceArtifactStorage",
+        "src.services.application_build.ApplicationSourceArtifactStorage",
         SourceArtifacts,
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.get_db_context", db_context
+        "src.services.application_build.get_db_context", db_context
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.current_sdk_metadata",
+        "src.services.application_build.current_sdk_metadata",
         lambda: SimpleNamespace(
             package_version="1.2.3",
             fingerprint="current-fp",
@@ -226,7 +226,7 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
         ),
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.asyncio.to_thread", tracked_to_thread
+        "src.services.application_build.asyncio.to_thread", tracked_to_thread
     )
 
     result = await run_application_deploy(
@@ -307,10 +307,10 @@ async def test_failed_build_keeps_active_artifact_and_cleans_transient_state(
         "src.jobs.platform.application_deploy.ApplicationDeployStorage", Storage
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.SolutionAppBuilder", Builder
+        "src.services.application_build.SolutionAppBuilder", Builder
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.ApplicationSourceArtifactStorage",
+        "src.services.application_build.ApplicationSourceArtifactStorage",
         SourceArtifacts,
     )
 
@@ -326,9 +326,9 @@ async def test_failed_build_keeps_active_artifact_and_cleans_transient_state(
 
     assert app.active_deployment_id == old_id
     assert deleted == [
-        ("source", None),
         ("retained_source", (app_id, new_id)),
         ("artifact", (app_id, new_id)),
+        ("source", None),
     ]
 
 
@@ -393,10 +393,10 @@ async def test_retained_source_failure_preserves_old_pointer_and_provenance_and_
         "src.jobs.platform.application_deploy.ApplicationDeployStorage", Storage
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.SolutionAppBuilder", Builder
+        "src.services.application_build.SolutionAppBuilder", Builder
     )
     monkeypatch.setattr(
-        "src.jobs.platform.application_deploy.ApplicationSourceArtifactStorage",
+        "src.services.application_build.ApplicationSourceArtifactStorage",
         SourceArtifacts,
     )
 
@@ -418,7 +418,7 @@ async def test_retained_source_failure_preserves_old_pointer_and_provenance_and_
     assert events == [
         ("upload", (app_id, new_id, {"index.html": b"built"})),
         ("retain_source", (app_id, new_id)),
-        ("delete_source", None),
         ("delete_retained_source", (app_id, new_id)),
         ("delete_artifact", (app_id, new_id)),
+        ("delete_source", None),
     ]
