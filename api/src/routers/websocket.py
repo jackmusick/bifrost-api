@@ -329,6 +329,13 @@ async def _handle_table_message(
         await _re_evaluate_subscription(websocket, user, table_id)
         return
 
+    if msg_type == "table_invalidated":
+        await websocket.send_json({
+            "type": "table_invalidated",
+            "table_id": table_id,
+        })
+        return
+
     if msg_type != "document_change":
         return
 
