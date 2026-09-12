@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
-import type { ReactNode } from "react";
 
 // Monaco can't run in the test DOM — stub it to a textarea labelled by `path`.
 vi.mock("@monaco-editor/react", () => ({
@@ -24,90 +23,94 @@ vi.mock("@/contexts/ThemeContext", () => ({
 	useTheme: () => ({ theme: "light" }),
 }));
 
-// Same Select mock as PolicyEditor.test.tsx — Radix Select uses pointer events
-// that jsdom doesn't fully implement. SelectTrigger forwards its aria-label.
-vi.mock("@/components/ui/select", async () => {
+// The shared Combobox uses Radix Popover + cmdk, which is noisy in jsdom.
+// This mock keeps the public contract we care about here: searchable labels,
+// descriptions, empty text, and exact value selection.
+vi.mock("@/components/ui/combobox", async () => {
 	const React = await import("react");
-	type Item = { value: string; label: string };
-	const Ctx = React.createContext<{
-		register: (it: Item) => void;
-		setLabel: (label: string) => void;
-	} | null>(null);
 
-	function Select({
+	function Combobox({
 		value,
 		onValueChange,
-		children,
+		options,
+		placeholder,
+		searchPlaceholder,
+		emptyText,
+		disabled,
+		"aria-label": ariaLabel,
 	}: {
 		value?: string;
 		onValueChange?: (v: string) => void;
-		children: ReactNode;
+		options: { value: string; label: string; description?: string }[];
+		placeholder?: string;
+		searchPlaceholder?: string;
+		emptyText?: string;
+		disabled?: boolean;
+		"aria-label"?: string;
 	}) {
-		const [items, setItems] = React.useState<Item[]>([]);
-		const [label, setLabel] = React.useState("Select");
-		const register = React.useCallback((it: Item) => {
-			setItems((prev) =>
-				prev.some((p) => p.value === it.value) ? prev : [...prev, it],
-			);
-		}, []);
+		const [query, setQuery] = React.useState("");
+		const [open, setOpen] = React.useState(false);
+		const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+		const visible = options.filter((option) => {
+			const searchable = [
+				option.value,
+				option.label,
+				option.description ?? "",
+			]
+				.join(" ")
+				.toLowerCase();
+			return terms.every((term) => searchable.includes(term));
+		});
 		return (
-			<Ctx.Provider value={{ register, setLabel }}>
-				<select
-					aria-label={label}
-					value={value ?? ""}
-					onChange={(e) => onValueChange?.(e.target.value)}
+			<div>
+				<button
+					type="button"
+					aria-label={ariaLabel}
+					role="combobox"
+					disabled={disabled}
+					aria-expanded={open}
+					onClick={() => setOpen((current) => !current)}
 				>
-					<option value="">{label}...</option>
-					{items.map((it) => (
-						<option key={it.value} value={it.value}>
-							{it.label}
-						</option>
-					))}
-				</select>
-				<div style={{ display: "none" }}>{children}</div>
-			</Ctx.Provider>
+					{options.find((option) => option.value === value)?.label ??
+						placeholder}
+				</button>
+				{open && (
+					<>
+						<input
+							aria-label={searchPlaceholder}
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+						/>
+						<ul aria-label={`${ariaLabel} options`}>
+							{visible.length === 0 ? (
+								<li>{emptyText}</li>
+							) : (
+								visible.map((option) => (
+									<li key={option.value}>
+										<button
+											type="button"
+											onClick={() => {
+												onValueChange?.(option.value);
+												setOpen(false);
+											}}
+										>
+											<span>{option.label}</span>
+											{option.description && (
+												<span>
+													{option.description}
+												</span>
+											)}
+										</button>
+									</li>
+								))
+							)}
+						</ul>
+					</>
+				)}
+			</div>
 		);
 	}
-	const Pass = ({ children }: { children: ReactNode }) => <>{children}</>;
-	function SelectTrigger({
-		children,
-		"aria-label": ariaLabel,
-	}: {
-		children?: ReactNode;
-		"aria-label"?: string;
-		[key: string]: unknown;
-	}) {
-		const ctx = React.useContext(Ctx);
-		React.useEffect(() => {
-			if (ariaLabel) ctx?.setLabel(ariaLabel);
-		}, [ctx, ariaLabel]);
-		return <>{children}</>;
-	}
-	function SelectItem({
-		value,
-		children,
-	}: {
-		value: string;
-		children: ReactNode;
-	}) {
-		const ctx = React.useContext(Ctx);
-		React.useEffect(() => {
-			ctx?.register({ value, label: String(children) });
-		}, [ctx, value, children]);
-		return null;
-	}
-	return {
-		Select,
-		SelectContent: Pass,
-		SelectGroup: Pass,
-		SelectItem,
-		SelectLabel: Pass,
-		SelectScrollDownButton: () => null,
-		SelectScrollUpButton: () => null,
-		SelectSeparator: () => null,
-		SelectTrigger,
-		SelectValue: () => null,
-	};
+	return { Combobox };
 });
 
 vi.mock("@/services/policyRules", () => ({
@@ -247,7 +250,7 @@ describe("FilePolicyEditor", () => {
 		expect(
 			screen.queryByLabelText("file-policies.yaml"),
 		).not.toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: /^advanced$/i }));
+		fireEvent.click(screen.getByRole("switch", { name: /^advanced$/i }));
 		expect(
 			(
 				(await screen.findByLabelText(
@@ -408,6 +411,111 @@ describe("FilePolicyEditor — reference mode", () => {
 		);
 	});
 
+	it("filters template options by human labels and descriptions", () => {
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+			/>,
+		);
+		fireEvent.click(screen.getByLabelText(/add template/i));
+		expect(screen.getByText("Own Files")).toBeInTheDocument();
+		expect(
+			screen.getByText("The uploader can read/write/delete their own files."),
+		).toBeInTheDocument();
+		fireEvent.change(screen.getByLabelText("Search templates..."), {
+			target: { value: "specific role" },
+		});
+		expect(screen.getByText("Role Gated Read")).toBeInTheDocument();
+		expect(screen.queryByText("Own Files")).not.toBeInTheDocument();
+	});
+
+	it("filters shared-rule options by human labels and descriptions", async () => {
+		mockListRules.mockResolvedValue([
+			{
+				...RULE,
+				name: "support_triage",
+				description: "Help desk can inspect uploaded evidence.",
+			},
+			{
+				...RULE,
+				name: "finance_download",
+				description: "Finance team can list monthly exports.",
+			},
+		]);
+		renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+			/>,
+		);
+		fireEvent.click(await screen.findByLabelText(/add shared rule/i));
+		await screen.findByText("Support Triage");
+		fireEvent.change(screen.getByLabelText("Search shared rules..."), {
+			target: { value: "monthly exports" },
+		});
+		expect(screen.getByText("Finance Download")).toBeInTheDocument();
+		expect(screen.queryByText("Support Triage")).not.toBeInTheDocument();
+	});
+
+	it("refreshes shared rules when the picker is focused and when rulesRefreshKey changes", async () => {
+		mockListRules
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([
+				{
+					...RULE,
+					name: "support_triage",
+					description: "Help desk can inspect uploaded evidence.",
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					...RULE,
+					name: "auditor_read",
+					description: "Auditors can inspect files.",
+				},
+			])
+			.mockResolvedValue([
+				{
+					...RULE,
+					name: "auditor_read",
+					description: "Auditors can inspect files.",
+				},
+			]);
+		const { rerender } = renderWithProviders(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+				compact
+			/>,
+		);
+		const picker = screen.getByLabelText(/add shared rule/i);
+		fireEvent.focus(picker);
+		fireEvent.click(picker);
+		await waitFor(() =>
+			expect(screen.getByText("Support Triage")).toBeInTheDocument(),
+		);
+		rerender(
+			<FilePolicyEditor
+				path="reports/"
+				value={BASE}
+				onSave={vi.fn()}
+				onDelete={vi.fn()}
+				compact
+				rulesRefreshKey={1}
+			/>,
+		);
+		await waitFor(() =>
+			expect(mockListRules).toHaveBeenCalledTimes(3),
+		);
+	});
+
 	it("offers a retry when rule loading fails", async () => {
 		mockListRules
 			.mockRejectedValueOnce(new Error("network down"))
@@ -436,7 +544,7 @@ describe("FilePolicyEditor — reference mode", () => {
 	});
 
 	it("inserts a {$ref} entry into the policy doc when a rule is picked", async () => {
-		mockListRules.mockResolvedValue([RULE]);
+		mockListRules.mockResolvedValue([{ ...RULE, name: "shared_admin" }]);
 		const onSave = vi.fn();
 		renderWithProviders(
 			<FilePolicyEditor
@@ -446,17 +554,17 @@ describe("FilePolicyEditor — reference mode", () => {
 				onDelete={vi.fn()}
 			/>,
 		);
-		// Wait for the dropdown to appear (rules loaded).
-		const refSelect = await screen.findByLabelText(/add shared rule/i);
-		// Simulate picking "admin_bypass" from the select.
-		fireEvent.change(refSelect, { target: { value: "admin_bypass" } });
+		fireEvent.click(await screen.findByLabelText(/add shared rule/i));
+		fireEvent.click(
+			screen.getByRole("button", { name: /shared admin/i }),
+		);
 		// Save and check the inserted entry.
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		expect(onSave).toHaveBeenCalledTimes(1);
 		const saved = onSave.mock.calls[0][0];
-		// The inserted entry should be { $ref: "admin_bypass" }.
+		// The inserted entry preserves the exact shared-rule ref value.
 		expect(saved.policies.policies).toHaveLength(1);
-		expect(saved.policies.policies[0]).toEqual({ $ref: "admin_bypass" });
+		expect(saved.policies.policies[0]).toEqual({ $ref: "shared_admin" });
 	});
 
 	it("surfaces structured 422 save errors inline", async () => {

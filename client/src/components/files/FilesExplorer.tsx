@@ -207,7 +207,7 @@ export function FilesExplorer({
 
 	function openPolicy(loc: string, path: string, exact = false) {
 		if (solutionReadOnly) return;
-		returnToDetails.current = detailOpen && !testOpen && !policyOpen;
+		if (!policyOpen) returnToDetails.current = detailOpen && !testOpen;
 		setTestOpen(false);
 		openDetails();
 		setModalTarget({
@@ -308,7 +308,12 @@ export function FilesExplorer({
 					: (policy) => openPolicy(policy.location, policy.path, true)
 			}
 			onManagePolicy={() =>
-				openPolicy(location ?? "", selectedFile ?? prefix)
+				openPolicy(
+					location ?? "",
+					selectedFile ??
+						(prefix ? `${prefix.replace(/\/+$/, "")}/` : ""),
+					true,
+				)
 			}
 		/>
 	);
@@ -384,6 +389,9 @@ export function FilesExplorer({
 			exactPath={modalTarget.exactPath}
 			onOpenChange={closeTool}
 			onSaved={refreshFiles}
+			onOpenSource={(policy) =>
+				openPolicy(policy.location, policy.path, true)
+			}
 			onBusyChange={setInspectorBusy}
 		/>
 	) : testOpen ? (

@@ -101,25 +101,21 @@ function TestAccessSession({
 	return (
 		<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
 			<div className="shrink-0 space-y-2 border-b border-border/70 p-4">
-				<div className="flex items-start gap-3">
-					<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30">
-						<FlaskConical className="h-4 w-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<h2 className="text-sm font-semibold">Test Access</h2>
-					</div>
-					{onOpenChange && (
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							className="min-h-11 shrink-0"
-							onClick={() => onOpenChange(false)}
-						>
-							<ArrowLeft className="h-4 w-4" />
-							Back to Access
-						</Button>
-					)}
+				{onOpenChange && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="-ml-2 min-h-11 justify-start px-2 text-xs text-muted-foreground"
+						onClick={() => onOpenChange(false)}
+					>
+						<ArrowLeft className="size-4" />
+						Back to Access
+					</Button>
+				)}
+				<div className="flex min-h-6 items-center gap-2">
+					<FlaskConical className="size-4 shrink-0 text-primary" />
+					<h2 className="text-sm font-semibold">Test Access</h2>
 				</div>
 				<p className="text-sm text-muted-foreground">
 					Choose a user to see the policy decision for each file

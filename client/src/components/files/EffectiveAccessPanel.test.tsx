@@ -92,7 +92,7 @@ describe("EffectiveAccessPanel", () => {
 			expect(screen.getByText("Administrator Access")).toBeInTheDocument(),
 		);
 		expect(screen.getByText("Root Rule")).toBeInTheDocument();
-		expect(screen.getByText("Governing Policy")).toBeInTheDocument();
+		expect(screen.getByText("Inherited Access")).toBeInTheDocument();
 		expect(screen.getByText("From share root")).toBeInTheDocument();
 		expect(screen.getByText("Named rule")).toBeInTheDocument();
 		expect(await screen.findByText("Write")).toBeInTheDocument();

@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import {
+	ArrowLeft,
+	ShieldCheck,
+	Library,
+	X,
+	LockKeyhole,
+	ArrowUpRight,
+} from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import {
@@ -10,6 +17,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { PolicySummary } from "./EffectiveAccessPanel";
+import { listPolicyRules } from "@/services/policyRules";
 import { FilePolicyEditor } from "@/components/files/FilePolicyEditor";
 import { PolicyRulesManager } from "@/components/policy-rules/PolicyRulesManager";
 import {
@@ -26,6 +35,7 @@ export interface PolicyEditorPanelProps {
 	path: string;
 	exactPath?: string;
 	onSaved?: () => void;
+	onOpenSource?: (policy: FilePolicy) => void;
 	onBusyChange?: (busy: boolean) => void;
 	onOpenChange?: (open: boolean) => void;
 }
@@ -79,6 +89,7 @@ function PolicyEditorSession({
 	path,
 	exactPath,
 	onSaved,
+	onOpenSource,
 	onBusyChange,
 }: PolicyEditorSessionProps) {
 	const [showRulesManager, setShowRulesManager] = useState(false);
@@ -88,34 +99,61 @@ function PolicyEditorSession({
 		onBusyChange?.(next);
 	}
 	const policyQuery = useQuery({
-		queryKey: ["file-policy-editor", location, scope, path, exactPath],
+		queryKey: [
+			"file-policy-editor",
+			location,
+			scope,
+			path,
+			exactPath,
+			open === undefined,
+		],
 		queryFn: async () => {
 			const result = await listFilePolicies({
 				location,
 				scope: scope ?? undefined,
 			});
-			if (exactPath !== undefined) {
-				return (
-					(result.policies ?? []).find(
-						(policy) =>
-							policy.location === location &&
-							policy.path === exactPath,
-					) ?? {
-						...makeDefaultPolicy(path, location, scope),
-						path: exactPath,
-					}
-				);
-			}
-			return (
-				bestPolicyForPath(result.policies ?? [], path, location) ??
-				makeDefaultPolicy(path, location, scope)
+			const policies = result.policies ?? [];
+			const target = exactPath ?? path;
+			const attached = policies.find(
+				(policy) =>
+					policy.location === location && policy.path === target,
 			);
+			const inherited = bestPolicyForPath(
+				policies.filter((policy) => policy.path !== target),
+				target,
+				location,
+			);
+			const draft =
+				exactPath !== undefined || open === undefined
+					? (attached ?? {
+							...makeDefaultPolicy(target, location, scope),
+							path: target,
+						})
+					: (bestPolicyForPath(policies, path, location) ??
+						makeDefaultPolicy(path, location, scope));
+			return {
+				draft,
+				inherited:
+					!attached && inherited?.path !== draft.path
+						? inherited
+						: null,
+			};
 		},
 		retry: false,
 		staleTime: Infinity,
 		gcTime: 0,
 	});
-	const draft = policyQuery.data;
+	const draft = policyQuery.data?.draft;
+	const inherited = policyQuery.data?.inherited;
+	const ruleQuery = useQuery({
+		queryKey: ["policy-rules", "file"],
+		queryFn: () => listPolicyRules("file"),
+		enabled: Boolean(inherited),
+		retry: false,
+	});
+	const namedRules = new Map(
+		(ruleQuery.data ?? []).map((rule) => [rule.name, rule]),
+	);
 
 	async function handleSave(policy: FilePolicy) {
 		await saveFilePolicy(policy);
@@ -136,53 +174,31 @@ function PolicyEditorSession({
 	const panel = (
 		<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
 			<div className="shrink-0 space-y-3 border-b border-border/70 p-3">
-				<div className="flex items-start gap-3">
-					<div className="flex min-w-0 flex-1 items-start gap-3">
-						<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30">
-							<ShieldCheck className="h-4 w-4" />
-						</div>
-						<div className="min-w-0">
-							<h2 className="text-sm font-semibold">
-								Manage Policy
-							</h2>
-						</div>
-					</div>
-					{onOpenChange && (
-						<Button
-							type="button"
-							size="sm"
-							variant="ghost"
-							className="min-h-11 shrink-0 text-xs"
-							disabled={busy}
-							onClick={() => onOpenChange(false)}
-						>
-							<ArrowLeft className="h-4 w-4" />
-							Back to Access
-						</Button>
-					)}
+				{onOpenChange && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="-ml-2 min-h-11 justify-start px-2 text-xs text-muted-foreground"
+						disabled={busy}
+						onClick={() => onOpenChange(false)}
+					>
+						<ArrowLeft className="size-4" />
+						Back to Access
+					</Button>
+				)}
+				<div className="flex min-h-6 items-center gap-2">
+					<ShieldCheck className="size-4 shrink-0 text-primary" />
+					<h2 className="text-sm font-semibold">Manage Policy</h2>
 				</div>
-				<p className="text-sm text-muted-foreground">
-					Review rules first, then use advanced code for custom
-					predicates.
+				<p className="text-xs leading-5 text-muted-foreground">
+					Choose the rules that grant access to these files.
 				</p>
-				<Button
-					type="button"
-					size="sm"
-					variant="ghost"
-					className="min-h-11 w-full justify-start text-xs sm:w-auto"
-					disabled={busy}
-					onClick={() => setShowRulesManager((next) => !next)}
-					data-testid="manage-rules-btn"
-				>
-					{showRulesManager
-						? "Hide Shared Rules"
-						: "Advanced Shared Rules…"}
-				</Button>
 				{draft && (
 					<PolicySourceContext
 						selectedPath={path}
 						policyPath={draft.path}
-						exactPath={exactPath}
+						exists={Boolean(draft.id)}
 						location={location}
 					/>
 				)}
@@ -216,19 +232,104 @@ function PolicyEditorSession({
 							</AlertDescription>
 						</Alert>
 					)}
-					{showRulesManager && (
-						<section className="shrink-0 rounded-[var(--bf-radius-surface)] border border-border/70 p-3">
-							<h3 className="mb-2 text-sm font-medium">
-								Advanced Shared Rules
-							</h3>
-							<p className="mb-3 text-xs text-muted-foreground">
-								Shared rule editing keeps its existing
-								confirmation dialogs for create, edit, and
-								delete operations.
-							</p>
-							<PolicyRulesManager domain="file" />
+					{inherited && (
+						<section
+							aria-label="Inherited Access"
+							className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3 text-sm"
+						>
+							<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+								<LockKeyhole className="size-4" />
+								<h3>Inherited Access</h3>
+								<span className="ml-auto">Read-only here</span>
+							</div>
+							{onOpenSource ? (
+								<Button
+									type="button"
+									variant="link"
+									className="h-auto min-h-11 max-w-full justify-start whitespace-normal px-0 text-left"
+									disabled={busy}
+									onClick={() => onOpenSource(inherited)}
+								>
+									{inherited.location} /{" "}
+									{inherited.path || "Share root"}
+									<ArrowUpRight className="size-4 shrink-0" />
+								</Button>
+							) : (
+								<p className="mt-2 text-xs text-muted-foreground">
+									{inherited.location} /{" "}
+									{inherited.path || "Share root"}
+								</p>
+							)}
+							<PolicySummary
+								policy={inherited}
+								namedRules={namedRules}
+								rulesLoading={ruleQuery.isFetching}
+							/>
 						</section>
 					)}
+					<section
+						aria-label="Shared Rule Library"
+						className="shrink-0 rounded-[var(--bf-radius-surface)] border border-[var(--bf-info)]/30 bg-[var(--bf-info-soft)] p-3"
+					>
+						<div className="flex items-center gap-2">
+							<Library className="size-4 shrink-0 text-[var(--bf-info)]" />
+							<h3 className="min-w-0 flex-1 text-sm font-medium text-[var(--bf-info)]">
+								Shared Rule Library
+							</h3>
+							{showRulesManager ? (
+								<Button
+									type="button"
+									size="icon"
+									variant="ghost"
+									aria-label="Close Shared Rule Library"
+									disabled={busy}
+									onClick={() => setShowRulesManager(false)}
+								>
+									<X className="size-4" />
+								</Button>
+							) : (
+								<Button
+									type="button"
+									size="sm"
+									variant="outline"
+									className="min-h-11"
+									disabled={busy}
+									onClick={() => setShowRulesManager(true)}
+									data-testid="manage-rules-btn"
+								>
+									Open Library
+								</Button>
+							)}
+						</div>
+						<p className="mt-2 text-xs leading-5 text-muted-foreground">
+							Reusable rules shared across policies. Create or
+							edit a rule here, then add it to this policy below.
+						</p>
+						{showRulesManager && (
+							<div className="mt-3 border-t border-[var(--bf-info)]/30 pt-3">
+								<p className="mb-3 text-xs text-muted-foreground">
+									Editing a shared rule updates every policy
+									that uses it.
+								</p>
+								<PolicyRulesManager domain="file" />
+							</div>
+						)}
+					</section>
+					{draft && (
+						<div className="space-y-1">
+							<h3 className="text-sm font-semibold">
+								Rules on This Path
+							</h3>
+							{inherited && (
+								<p className="text-xs leading-5 text-muted-foreground">
+									Saving rules here replaces the inherited
+									policy for this path. It does not change the
+									source policy.
+								</p>
+							)}
+						</div>
+					)}
+
 					{draft && (
 						<FilePolicyEditor
 							key={`${draft.id ?? "draft"}:${draft.location}:${draft.organizationId ?? "global"}:${draft.path}`}
@@ -237,6 +338,7 @@ function PolicyEditorSession({
 							onSave={handleSave}
 							onDelete={handleDelete}
 							onBusyChange={handleBusyChange}
+							rulesRefreshKey={String(showRulesManager)}
 							compact
 						/>
 					)}
@@ -274,34 +376,24 @@ function PolicyEditorSession({
 }
 
 function PolicySourceContext({
-	selectedPath,
 	policyPath,
-	exactPath,
 	location,
+	exists,
 }: {
 	selectedPath: string;
 	policyPath: string;
-	exactPath?: string;
 	location: string;
+	exists: boolean;
 }) {
-	const selectedLabel = selectedPath || "Share root";
-	const policyLabel = policyPath || "Share root";
-	const inherited = exactPath === undefined && policyPath !== selectedPath;
-	const exact = exactPath !== undefined;
-	const samePath = selectedLabel === policyLabel;
 	return (
-		<div className="space-y-1 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3 text-xs">
+		<div className="space-y-1 text-xs">
 			<p className="font-medium text-foreground [overflow-wrap:anywhere]">
-				{location} / {policyLabel}
+				{location} / {policyPath || "Share root"}
 			</p>
-			<p className="text-muted-foreground [overflow-wrap:anywhere]">
-				{exact && samePath
-					? `This policy is attached here. Changes affect matching children under ${policyLabel}.`
-					: exact
-						? `This policy is attached to ${policyLabel}. The selected path is ${selectedLabel}.`
-						: inherited
-							? `This policy is inherited by ${selectedLabel}. Changes also affect matching children under ${policyLabel}.`
-							: `This policy is attached to ${selectedLabel}. Changes affect matching children under this path.`}
+			<p className="text-muted-foreground">
+				{exists
+					? "Editing the policy attached to this path."
+					: "No policy is set on this path yet."}
 			</p>
 		</div>
 	);

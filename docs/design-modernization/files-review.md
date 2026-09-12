@@ -154,3 +154,43 @@ checks ran against the live debug build, with targeted component tests above.
 Folder New Policy explicitly targets the selected folder with a trailing path
 boundary, not its parent; `./test.sh client unit -- FilesExplorer.test.tsx` covers
 that target selection.
+
+## Policy inspector hierarchy refinement (2026-09-11)
+
+Moved Back to Access to a left-aligned navigation row in both access tools; aligned
+plain, accent-colored title icons with their titles. Replaced the Rules/Advanced
+button pair with a labeled Advanced switch. Add Template and Add Shared Rule now
+share an equal-width row at desktop and phone widths. Rule actions and shared-rule
+markers have accent color; supporting descriptions remain muted.
+
+Manage Shared Rules now identifies a reusable rule library and explains how to
+add its rules to the current policy. Removed implementation commentary about
+confirmation dialogs. The shared-rule picker refreshes when opened, including
+when the library was initially empty, so newly created rules can be selected.
+Advanced editing and existing save/delete/retry behavior remain available.
+
+Checked rendered desktop/mobile alignment, equal-row selectors, Advanced switching,
+policy/source navigation, and access tests against debug fixtures. Targeted tests:
+`./test.sh client unit -- FilePolicyEditor.test.tsx PolicyEditorModal.test.tsx TestAccessModal.test.tsx`.
+This polish used scoped component and live-browser checks; the full E2E suite was
+not rerun. TypeScript and scoped lint checked separately.
+
+### Inherited access and shared library
+
+The Files inspector edits the selected file/folder explicitly. If it has no local
+policy, inherited access is a separate read-only summary with a source link.
+Opening that link deliberately edits the source; saving a local policy replaces
+the inherited policy for that path without changing its ancestor. Root policies
+are never described as inheriting themselves. Legacy modal callers retain their
+existing governing-policy selection behavior.
+
+The Shared Rule Library has an independent blue background/border, a real heading,
+and a separate icon close control. Both add pickers use the shared searchable
+Combobox with readable labels and descriptions, preserving exact reference names.
+Shared rules refresh on interaction and library visibility changes.
+
+Validation: 54 scoped component tests passed across the editor, policy panel,
+access tester, access summary, and Files workspace. Desktop (1440px) and mobile
+(390px) browser checks exercised inherited/source navigation, library controls,
+search filtering, and overflow. No live policy was saved during visual review.
+TypeScript and scoped ESLint passed. The full E2E suite was not rerun for this pass.

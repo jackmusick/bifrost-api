@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Code2, ListChecks, Save, Trash2 } from "lucide-react";
+import { ListChecks, Save, Trash2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { JsonYamlEditor } from "@/components/shared/JsonYamlEditor";
 import type { FilePolicy, FilePolicies } from "@/services/filePolicies";
 import {
@@ -26,6 +21,7 @@ interface FilePolicyEditorProps {
 	onDelete: (policy: FilePolicy) => void | Promise<void>;
 	onBusyChange?: (busy: boolean) => void;
 	compact?: boolean;
+	rulesRefreshKey?: string | number;
 }
 
 const POLICY_SEED: FilePolicies = { policies: [] };
@@ -74,6 +70,7 @@ export function FilePolicyEditor({
 	onDelete,
 	onBusyChange,
 	compact = false,
+	rulesRefreshKey,
 }: FilePolicyEditorProps) {
 	// The editor mutates only the inner policy document; the location/path/org
 	// wrapper is fixed by the selection and reattached on save.
@@ -101,22 +98,21 @@ export function FilePolicyEditor({
 		}
 	}, [saveErrors, mutationError]);
 
-	const loadRules = useCallback(async () => {
-		setRulesError(null);
-		try {
-			const next = await listPolicyRules("file");
-			setRules(next);
-		} catch {
-			setRules([]);
-			setRulesError("Unable to load file policy rules.");
-		}
+	const loadRules = useCallback(() => {
+		return listPolicyRules("file")
+			.then((next) => {
+				setRulesError(null);
+				setRules(next);
+			})
+			.catch(() => {
+				setRules([]);
+				setRulesError("Unable to load file policy rules.");
+			});
 	}, []);
 
 	useEffect(() => {
-		void (async () => {
-			await loadRules();
-		})();
-	}, [loadRules]);
+		void loadRules();
+	}, [loadRules, rulesRefreshKey]);
 
 	useEffect(() => {
 		onBusyChange?.(saving || deleting);
@@ -209,6 +205,25 @@ export function FilePolicyEditor({
 	const mutationsDisabled = parseError !== null || saving || deleting;
 	const busy = saving || deleting;
 	const effectivePath = path || value.path;
+	const templateOptions = useMemo<ComboboxOption[]>(
+		() =>
+			Object.entries(FILE_POLICY_TEMPLATES).map(([key, template]) => ({
+				value: key,
+				label: readableRuleName(key),
+				description: template.description ?? undefined,
+			})),
+		[],
+	);
+	const ruleOptions = useMemo<ComboboxOption[]>(
+		() =>
+			rules.map((rule) => ({
+				value: rule.name,
+				label: readableRuleName(rule.name),
+				description:
+					rule.description ?? "Shared rule from the Shared Rule Library",
+			})),
+		[rules],
+	);
 	const editorClassName = compact
 		? "flex min-h-0 flex-1 flex-col gap-3"
 		: "flex min-h-0 flex-1 flex-col gap-3";
@@ -234,95 +249,92 @@ export function FilePolicyEditor({
 					</div>
 				)}
 
-				<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-					{compact && (
-						<div className="grid grid-cols-2 rounded-[var(--bf-radius-surface)] border border-border/70 p-1 sm:w-auto">
-							<Button
-								type="button"
-								variant={
-									compactMode === "rules"
-										? "secondary"
-										: "ghost"
-								}
-								size="sm"
-								className="h-9 justify-center"
-								disabled={mutationsDisabled}
-								aria-pressed={compactMode === "rules"}
-								onClick={() => setCompactMode("rules")}
-							>
-								<ListChecks className="h-4 w-4" />
-								Rules
-							</Button>
-							<Button
-								type="button"
-								variant={
-									compactMode === "code"
-										? "secondary"
-										: "ghost"
-								}
-								size="sm"
-								className="h-9 justify-center"
-								disabled={mutationsDisabled}
-								aria-pressed={compactMode === "code"}
-								onClick={() => setCompactMode("code")}
-							>
-								<Code2 className="h-4 w-4" />
-								Advanced
-							</Button>
+				{compact && (
+					<div className="flex min-h-11 items-center justify-between gap-3">
+						<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+							<ListChecks className="size-4 text-primary" />
+							Access Rules
 						</div>
-					)}
-					<Select
+						<label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+							Advanced
+							<Switch
+								aria-label="Advanced"
+								checked={compactMode === "code"}
+								disabled={mutationsDisabled}
+								onCheckedChange={(checked) =>
+									setCompactMode(checked ? "code" : "rules")
+								}
+							/>
+						</label>
+					</div>
+				)}
+				<div
+					className={
+						compact
+							? "grid grid-cols-2 gap-2"
+							: "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+					}
+				>
+					<Combobox
 						value={templateKey}
 						onValueChange={handleTemplate}
+						options={templateOptions}
+						placeholder="Add Template..."
+						searchPlaceholder="Search templates..."
+						emptyText="No templates found."
 						disabled={mutationsDisabled}
-					>
-						<SelectTrigger
-							className="h-11 w-full min-w-0 sm:w-[200px]"
-							aria-label="Add Template"
+						className={
+							compact
+								? "h-11 min-h-11 w-full min-w-0 px-2 text-xs sm:min-h-11"
+								: "h-11 min-h-11 w-full min-w-0 sm:w-[200px] sm:min-h-11"
+						}
+						aria-label="Add Template"
+					/>
+					{(compact || rules.length > 0) && (
+						<div
+							className="min-w-0"
+							onFocusCapture={() => {
+								void loadRules();
+							}}
+							onPointerDownCapture={() => {
+								void loadRules();
+							}}
 						>
-							<SelectValue placeholder="Add Template…" />
-						</SelectTrigger>
-						<SelectContent>
-							{Object.keys(FILE_POLICY_TEMPLATES).map((k) => (
-								<SelectItem key={k} value={k}>
-									{k}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					{rules.length > 0 && (
-						<Select
-							value={refKey}
-							onValueChange={handleRef}
-							disabled={mutationsDisabled}
-						>
-							<SelectTrigger
-								className="h-11 w-full min-w-0 sm:w-[200px]"
+							<Combobox
+								value={refKey}
+								onValueChange={handleRef}
+								options={ruleOptions}
+								placeholder="Add Shared Rule..."
+								searchPlaceholder="Search shared rules..."
+								emptyText="No matching shared rules. Create one in the Shared Rule Library."
+								disabled={mutationsDisabled}
+								className={
+									compact
+										? "h-11 min-h-11 w-full min-w-0 px-2 text-xs sm:min-h-11"
+										: "h-11 min-h-11 w-full min-w-0 sm:w-[200px] sm:min-h-11"
+								}
 								aria-label="Add Shared Rule"
-							>
-								<SelectValue placeholder="Add Shared Rule…" />
-							</SelectTrigger>
-							<SelectContent>
-								{rules.map((r) => (
-									<SelectItem key={r.name} value={r.name}>
-										{r.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
+							/>
+						</div>
 					)}
-					<div className="shrink-0 sm:ml-auto">
-						<FilePolicyReferencePanel />
-					</div>
+					{!compact && (
+						<div className="shrink-0 sm:ml-auto">
+							<FilePolicyReferencePanel />
+						</div>
+					)}
 				</div>
 
 				{!compact || compactMode === "code" ? (
 					<div className={compact ? "space-y-2" : undefined}>
 						{compact && (
 							<p className="text-xs text-muted-foreground">
-								Advanced mode preserves custom predicates and
-								unknown conditions exactly as written.
+								Edit rule conditions in YAML or JSON.
 							</p>
+						)}
+						{compact && (
+							<div className="flex justify-end">
+								<FilePolicyReferencePanel />
+							</div>
 						)}
 						<JsonYamlEditor<FilePolicies>
 							value={doc}
@@ -571,7 +583,12 @@ function ReadablePolicyRules({
 								{displayName}
 							</p>
 							{isPolicyRef(rule) && (
-								<Badge variant="outline">Shared</Badge>
+								<Badge
+									variant="outline"
+									className="border-primary/20 text-primary"
+								>
+									Shared
+								</Badge>
 							)}
 							<Button
 								type="button"
@@ -595,7 +612,11 @@ function ReadablePolicyRules({
 								<Badge variant="outline">shared rule</Badge>
 							) : actions.length > 0 ? (
 								actions.map((action) => (
-									<Badge key={action} variant="secondary">
+									<Badge
+										key={action}
+										variant="secondary"
+										className="bg-primary/10 text-primary"
+									>
 										{action}
 									</Badge>
 								))

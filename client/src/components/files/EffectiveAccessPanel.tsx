@@ -169,7 +169,12 @@ export function EffectiveAccessPanel({
 							<div className="min-w-0 space-y-1">
 								<div className="flex flex-wrap items-center gap-2">
 									<Badge variant="secondary">
-										Governing Policy
+										{governingPolicy.path.replace(
+											/\/$/,
+											"",
+										) !== (path ?? "").replace(/\/$/, "")
+											? "Inherited Access"
+											: "Policy on This Path"}
 									</Badge>
 									<Badge variant="outline">
 										{sourceLabel(governingPolicy.path)}
@@ -239,7 +244,7 @@ export function EffectiveAccessPanel({
 	);
 }
 
-function PolicySummary({
+export function PolicySummary({
 	policy,
 	namedRules,
 	rulesLoading,

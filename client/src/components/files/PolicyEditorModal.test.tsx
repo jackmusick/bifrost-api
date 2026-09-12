@@ -175,8 +175,8 @@ describe("PolicyEditorModal", () => {
 				path="reports/"
 			/>,
 		);
-		await screen.findByRole("button", { name: /^advanced$/i });
-		fireEvent.click(screen.getByRole("button", { name: /^advanced$/i }));
+		await screen.findByRole("switch", { name: /^advanced$/i });
+		fireEvent.click(screen.getByRole("switch", { name: /^advanced$/i }));
 		const editor = await screen.findByLabelText("file-policies.yaml");
 		const initialDraft = (editor as HTMLTextAreaElement).value;
 		fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
@@ -222,9 +222,7 @@ describe("PolicyEditorModal", () => {
 				exactPath="reports/"
 			/>,
 		);
-		await screen.findByText(
-			"This policy is attached to reports/. The selected path is reports/june.txt.",
-		);
+		await screen.findByText("Editing the policy attached to this path.");
 		fireEvent.click(screen.getByRole("button", { name: /save policy/i }));
 		await waitFor(() => expect(saveFilePolicy).toHaveBeenCalled());
 		expect(vi.mocked(saveFilePolicy).mock.calls[0][0].id).toBe("folder");
@@ -270,5 +268,58 @@ describe("PolicyEditorModal", () => {
 		expect(events.indexOf("busy:false")).toBeLessThan(
 			events.indexOf("open:false"),
 		);
+	});
+	it("keeps inherited access read-only and saves a new policy on the selected file", async () => {
+		const root = {
+			id: "root",
+			location: "gallery",
+			path: "",
+			organizationId: null,
+			policies: { policies: [] },
+		};
+		vi.mocked(listFilePolicies).mockResolvedValue({ policies: [root] });
+		vi.mocked(saveFilePolicy).mockImplementation(async (policy) => policy);
+		const onOpenSource = vi.fn();
+		render(
+			<PolicyEditorPanel
+				location="gallery"
+				scope={null}
+				path="onboarding/customer.json"
+				onOpenSource={onOpenSource}
+			/>,
+		);
+		await screen.findByRole("region", { name: "Inherited Access" });
+		expect(screen.getByText("Read-only here")).toBeInTheDocument();
+		fireEvent.click(
+			screen.getByRole("button", { name: "gallery / Share root" }),
+		);
+		expect(onOpenSource).toHaveBeenCalledWith(root);
+		expect(saveFilePolicy).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "Save Policy" }));
+		await waitFor(() => expect(saveFilePolicy).toHaveBeenCalled());
+		expect(vi.mocked(saveFilePolicy).mock.calls[0][0]).toMatchObject({
+			path: "onboarding/customer.json",
+			location: "gallery",
+			organizationId: null,
+		});
+		expect(vi.mocked(saveFilePolicy).mock.calls[0][0].id).toBeUndefined();
+	});
+	it("does not describe the share root as inheriting itself", async () => {
+		vi.mocked(listFilePolicies).mockResolvedValue({
+			policies: [
+				{
+					id: "root",
+					location: "gallery",
+					path: "",
+					organizationId: null,
+					policies: { policies: [] },
+				},
+			],
+		});
+		render(<PolicyEditorPanel location="gallery" scope={null} path="" />);
+		await screen.findByRole("button", { name: "Save Policy" });
+		expect(
+			screen.queryByRole("region", { name: "Inherited Access" }),
+		).not.toBeInTheDocument();
 	});
 });
