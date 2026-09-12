@@ -569,14 +569,14 @@ describe("SolutionDetail", () => {
 		).toBeInTheDocument();
 	});
 
-	it("uses the workflow list execute action instead of making the card open execution", async () => {
+	it("opens workflow execution from the shared card and preserves the Solution return route", async () => {
 		const { user } = await renderPage();
 		await screen.findByTestId("solution-detail");
 
 		await user.click(screen.getByTestId("tab-contents"));
 		await user.click(screen.getByTestId("chip-workflows"));
 		const execute = screen.getByRole("button", {
-			name: /execute workflow/i,
+			name: "Sync Tickets", exact: true,
 		});
 		await user.click(execute);
 
@@ -585,7 +585,7 @@ describe("SolutionDetail", () => {
 		);
 	});
 
-	it("uses the forms list launch action without exposing edit controls", async () => {
+	it("opens the shared form card without exposing edit controls", async () => {
 		const { user } = await renderPage();
 		await screen.findByTestId("solution-detail");
 
@@ -596,7 +596,7 @@ describe("SolutionDetail", () => {
 			screen.queryByRole("button", { name: /edit form/i }),
 		).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: /launch/i }));
+		await user.click(screen.getByRole("button", { name: "Ticket Intake", exact: true }));
 		expect(mockNavigate).toHaveBeenCalledWith(
 			"/execute/form-1?from=solution:sol-1",
 		);
@@ -636,7 +636,7 @@ describe("SolutionDetail", () => {
 			"src",
 			APP_LOGO_DATA_URL,
 		);
-		await user.click(screen.getByRole("button", { name: /solution app/i }));
+		await user.click(screen.getByRole("button", { name: "Solution App", exact: true }));
 
 		expect(mockNavigate).toHaveBeenCalledWith(
 			"/apps/solution-app?from=solution:sol-1",
