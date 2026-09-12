@@ -236,6 +236,88 @@ class TestSolutionAppDeploy:
         assert app.sdk_contract_version is None
         assert app.sdk_built_at is None
 
+    async def test_prebuilt_only_batch_does_not_load_current_sdk_metadata(
+        self, db_session, _stub_app_build, monkeypatch
+    ):
+        db = db_session
+        sol = await self._install(db)
+        manifest_id = uuid.uuid4()
+
+        def _boom():
+            raise AssertionError("prebuilt-only deploy must not load SDK metadata")
+
+        monkeypatch.setattr(
+            "src.services.application_sdk_status.current_sdk_metadata",
+            _boom,
+        )
+
+        result = await SolutionDeployer(db).deploy(
+            SolutionBundle(
+                solution=sol,
+                apps=[_app_entry(str(manifest_id), "prebuilt-lazy")],
+            )
+        )
+        await db.flush()
+        await result.finalize_s3()
+
+        app = await db.get(Application, solution_entity_id(sol.id, manifest_id))
+        assert app.active_deployment_id is not None
+        assert app.sdk_fingerprint is None
+
+    async def test_current_sdk_metadata_loaded_once_for_multiple_source_builds(
+        self, db_session, monkeypatch
+    ):
+        from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+        from src.services.solutions import app_build
+
+        db = db_session
+        sol = await self._install(db)
+        manifest_ids = [uuid.uuid4(), uuid.uuid4()]
+        calls = {"metadata": 0}
+
+        def _metadata():
+            calls["metadata"] += 1
+            return CurrentApplicationSdkMetadata(
+                package_version="9.9.9",
+                fingerprint="fp-current",
+                contract_version=42,
+            )
+
+        monkeypatch.setattr(
+            "src.services.application_sdk_status.current_sdk_metadata",
+            _metadata,
+        )
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "compile_dist",
+            lambda self, *args, **kwargs: {"index.html": b"<html>built</html>"},
+        )
+
+        result = await SolutionDeployer(db).deploy(
+            SolutionBundle(
+                solution=sol,
+                apps=[
+                    {
+                        **_app_entry(str(manifest_ids[0]), "source-a"),
+                        "src_files": {"src/main.tsx": "import 'bifrost';"},
+                        "dist_files": None,
+                    },
+                    {
+                        **_app_entry(str(manifest_ids[1]), "source-b"),
+                        "src_files": {"src/main.tsx": "import 'bifrost';"},
+                        "dist_files": None,
+                    },
+                ],
+            )
+        )
+        await db.flush()
+        await result.finalize_s3()
+
+        assert calls["metadata"] == 1
+        for manifest_id in manifest_ids:
+            app = await db.get(Application, solution_entity_id(sol.id, manifest_id))
+            assert app.sdk_fingerprint == "fp-current"
+
     async def test_upload_failure_preserves_old_pointer_and_provenance(
         self, db_session, monkeypatch
     ):

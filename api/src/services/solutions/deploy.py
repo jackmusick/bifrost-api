@@ -1248,7 +1248,7 @@ class SolutionDeployer:
         if not builds:
             return []
         builder = SolutionAppBuilder()
-        current_metadata = await asyncio.to_thread(current_sdk_metadata)
+        current_metadata = None
         out: list[CompiledSolutionAppDeployment] = []
         for b in builds:
             prebuilt = b["dist"]
@@ -1282,6 +1282,8 @@ class SolutionDeployer:
             )
             deployment_id = uuid4()
             expected_old = b["expected_old_deployment_id"]
+            if source_built and current_metadata is None:
+                current_metadata = await asyncio.to_thread(current_sdk_metadata)
             out.append(
                 CompiledSolutionAppDeployment(
                     app_id=b["app_id"],
