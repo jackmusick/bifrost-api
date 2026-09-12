@@ -62,20 +62,20 @@ export function StatCard({
 			}}
 			className={cn(
 				CARD_SURFACE,
-				"px-4 py-3.5 transition-colors",
-				alert && "ring-rose-500/40 dark:ring-rose-500/40",
+				"min-w-0 px-4 py-3.5 transition-colors motion-reduce:transition-none [overflow-wrap:anywhere]",
+				alert && "ring-[var(--bf-warning)]/40",
 				interactive &&
-					"cursor-pointer hover:ring-foreground/10 dark:hover:ring-foreground/15",
+					"min-h-11 cursor-pointer hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 				className,
 			)}
 			data-slot="stat-card"
 		>
 			<div
 				className={cn(
-					"flex items-center",
+					"flex items-start [&>svg]:shrink-0",
 					GAP_LABEL_VALUE,
 					TYPE_LABEL_UPPERCASE,
-					alert && "text-rose-500",
+					alert && "text-[var(--bf-warning)]",
 				)}
 			>
 				{icon}
@@ -85,7 +85,7 @@ export function StatCard({
 				className={cn(
 					"mt-1.5",
 					TYPE_STAT_VALUE,
-					alert && "text-rose-500",
+					alert && "text-[var(--bf-warning)]",
 				)}
 			>
 				{value}

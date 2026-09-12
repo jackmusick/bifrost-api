@@ -66,21 +66,25 @@ export function ChatRunActivity({
 	return (
 		<div className="px-4 py-2" aria-live={isActive ? "polite" : undefined}>
 			<button
-					type="button"
-					disabled={!hasDetails}
-					onClick={() => setIsExpanded((value) => !value)}
-					aria-expanded={hasDetails ? isExpanded : undefined}
+				type="button"
+				disabled={!hasDetails}
+				onClick={() => setIsExpanded((value) => !value)}
+				aria-expanded={hasDetails ? isExpanded : undefined}
 				className={cn(
-					"group flex min-h-11 items-center gap-2 rounded-md text-sm text-muted-foreground outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none sm:min-h-7",
-					hasDetails && "hover:text-foreground",
+					"group flex min-h-11 w-full items-start justify-between gap-3 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/30 px-3 py-3 text-left text-sm leading-6 text-muted-foreground outline-none transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+					hasDetails && "hover:border-border hover:text-foreground",
 				)}
 			>
-				{!isActive && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-				<span className={cn(isActive && "chat-activity-shimmer")}>{label}</span>
+				{!isActive && (
+					<Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+				)}
+				<span className={cn("min-w-0 flex-1 break-words", isActive && "chat-activity-shimmer")}>
+					{label}
+				</span>
 				{hasDetails && (
 					<ChevronDown
 						className={cn(
-							"h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none",
+							"mt-0.5 h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
 							isExpanded && "rotate-180",
 						)}
 						aria-hidden="true"
@@ -99,7 +103,9 @@ export function ChatRunActivity({
 					)}
 				>
 					<div className="min-h-0 overflow-hidden">
-						<div className="mt-1 w-full">{children}</div>
+						<div className="mt-2 w-full rounded-[var(--bf-radius-surface)] border border-border/70 bg-background/70 p-3 text-sm leading-6 text-foreground">
+							{children}
+						</div>
 					</div>
 				</div>
 			)}

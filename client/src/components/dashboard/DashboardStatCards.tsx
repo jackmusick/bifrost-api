@@ -31,8 +31,10 @@ interface DashboardStatCardsProps {
 	executionsError: boolean;
 	inventory: InventoryCounts;
 	inventoryLoading: boolean;
+	inventoryError?: boolean;
 	roi: RoiSnapshot | undefined;
 	roiLoading: boolean;
+	roiError?: boolean;
 }
 
 /** Format minutes saved as a human-readable duration. */
@@ -82,18 +84,20 @@ export function DashboardStatCards({
 	executionsError,
 	inventory,
 	inventoryLoading,
+	inventoryError = false,
 	roi,
 	roiLoading,
+	roiError = false,
 }: DashboardStatCardsProps) {
 	const executionsUnavailable = executionsError || executionsLoading;
 
 	return (
-		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+		<div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
 			{/* Success Rate — same window as the chart */}
-			<Link to="/history" className="block">
-				<Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
+			<Link to="/history" className="block min-w-0 rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+				<Card className="h-full cursor-pointer transition-colors duration-[var(--bf-motion-feedback)] hover:border-primary/50 motion-reduce:transition-none">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="flex min-h-10 items-center text-sm font-medium sm:min-h-0">
 							Success Rate
 						</CardTitle>
 						<TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -103,12 +107,12 @@ export function DashboardStatCards({
 							executionsLoading ? (
 								<Skeleton className="h-8 w-16" />
 							) : (
-								<div className="text-2xl font-bold text-muted-foreground">
+								<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] text-muted-foreground">
 									—
 								</div>
 							)
 						) : (
-							<div className="text-2xl font-bold">
+							<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
 								{outcomes.successRate === null
 									? "—"
 									: `${outcomes.successRate.toFixed(1)}%`}
@@ -122,10 +126,10 @@ export function DashboardStatCards({
 			</Link>
 
 			{/* Executions — count over the same window */}
-			<Link to="/history" className="block">
-				<Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
+			<Link to="/history" className="block min-w-0 rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+				<Card className="h-full cursor-pointer transition-colors duration-[var(--bf-motion-feedback)] hover:border-primary/50 motion-reduce:transition-none">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
+						<CardTitle className="flex min-h-10 items-center text-sm font-medium sm:min-h-0">
 							Executions
 						</CardTitle>
 						<Zap className="h-4 w-4 text-muted-foreground" />
@@ -135,12 +139,12 @@ export function DashboardStatCards({
 							executionsLoading ? (
 								<Skeleton className="h-8 w-16" />
 							) : (
-								<div className="text-2xl font-bold text-muted-foreground">
+								<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] text-muted-foreground">
 									—
 								</div>
 							)
 						) : (
-							<div className="text-2xl font-bold">
+							<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
 								{outcomes.total.toLocaleString()}
 							</div>
 						)}
@@ -152,7 +156,7 @@ export function DashboardStatCards({
 			</Link>
 
 			{/* Inventory — what's built on the platform */}
-			<Card className="h-full" data-testid="inventory-card">
+			<Card className="col-span-2 h-full md:col-span-1" data-testid="inventory-card">
 				<CardHeader className="pb-2">
 					<CardTitle className="text-sm font-medium">
 						Inventory
@@ -164,7 +168,7 @@ export function DashboardStatCards({
 							<Link
 								key={item.key}
 								to={item.to}
-								className="-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-muted/50"
+								className="-mx-1.5 flex min-h-11 min-w-0 items-center gap-2 rounded-[var(--bf-radius-control)] px-1.5 py-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none sm:min-h-8"
 							>
 								<span
 									className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.dotClass}`}
@@ -177,7 +181,7 @@ export function DashboardStatCards({
 									<Skeleton className="h-4 w-6" />
 								) : (
 									<span className="text-sm font-semibold tabular-nums">
-										{inventory[item.key].toLocaleString()}
+										{inventoryError ? "—" : inventory[item.key].toLocaleString()}
 									</span>
 								)}
 							</Link>
@@ -187,8 +191,8 @@ export function DashboardStatCards({
 			</Card>
 
 			{/* Value — time saved + value generated, last 24h */}
-			<Link to="/reports/roi" className="block">
-				<Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
+			<Link to="/reports/roi" className="col-span-2 md:col-span-1 block min-w-0 rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+				<Card className="h-full cursor-pointer transition-colors duration-[var(--bf-motion-feedback)] hover:border-primary/50 motion-reduce:transition-none">
 					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 						<CardTitle className="text-sm font-medium">
 							Value (24h)
@@ -199,10 +203,10 @@ export function DashboardStatCards({
 						{roiLoading ? (
 							<Skeleton className="h-8 w-24" />
 						) : (
-							<div className="flex items-baseline gap-4">
+							<div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
 								<div>
-									<div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-										{formatTimeSaved(
+									<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] text-[var(--bf-success)]">
+										{roiError ? "—" : formatTimeSaved(
 											roi?.timeSavedMinutes ?? 0,
 										)}
 									</div>
@@ -212,8 +216,8 @@ export function DashboardStatCards({
 									</p>
 								</div>
 								<div>
-									<div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-										{formatValue(roi?.value ?? 0)}
+									<div className="font-mono text-2xl font-semibold tracking-tight [overflow-wrap:anywhere] text-[var(--bf-success)]">
+										{roiError ? "—" : formatValue(roi?.value ?? 0)}
 									</div>
 									<p className="text-xs text-muted-foreground">
 										{roi?.valueUnit ?? "USD"}

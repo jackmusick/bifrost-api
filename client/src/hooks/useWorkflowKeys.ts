@@ -34,7 +34,7 @@ export function useWorkflowKeys(params?: {
 	});
 }
 
-export function useCreateWorkflowKey() {
+export function useCreateWorkflowKey(options: { errorToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
@@ -45,14 +45,14 @@ export function useCreateWorkflowKey() {
 			// Don't show generic success toast - component will handle showing the key
 		},
 		onError: (error: Error) => {
-			toast.error("Failed to create workflow key", {
+			if (options.errorToast !== false) toast.error("Failed to create workflow key", {
 				description: error.message,
 			});
 		},
 	});
 }
 
-export function useRevokeWorkflowKey() {
+export function useRevokeWorkflowKey(options: { errorToast?: boolean; successToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return useMutation({
@@ -60,13 +60,13 @@ export function useRevokeWorkflowKey() {
 			workflowKeysService.revokeWorkflowKey(keyId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["workflow-keys"] });
-			toast.success("Workflow key revoked", {
+			if (options.successToast !== false) toast.success("Workflow key revoked", {
 				description:
 					"The API key has been revoked and can no longer be used",
 			});
 		},
 		onError: (error: Error) => {
-			toast.error("Failed to revoke workflow key", {
+			if (options.errorToast !== false) toast.error("Failed to revoke workflow key", {
 				description: error.message,
 			});
 		},

@@ -15,7 +15,7 @@ export function RouteTransitionProgress() {
 		>
 			<div
 				data-state="loading"
-				className="route-transition-progress-fill h-full w-full transition-transform duration-200 ease-out"
+				className="route-transition-progress-fill h-full w-full motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-out"
 			/>
 		</div>
 	);

@@ -44,6 +44,9 @@ export interface UseChatStreamReturn {
 		attachments?: AttachmentPublic[],
 		modelProfileId?: ChatModelProfileId | null,
 	) => Promise<void>;
+	isRestoring: boolean;
+	restoreError: boolean;
+	retryRestore: () => void;
 	isConnected: boolean;
 	isStreaming: boolean;
 	stopStreaming: () => Promise<void>;
@@ -90,6 +93,9 @@ export function useChatStream({
 	onAgentSwitch,
 }: UseChatStreamOptions): UseChatStreamReturn {
 	const queryClient = useQueryClient();
+	const restoreGeneration = useRef(0);
+	const [restoreAttempt, setRestoreAttempt] = useState(0);
+	const [restoreState, setRestoreState] = useState<{ id: string; phase: "loading" | "error" | "ready" } | null>(null);
 	const [isConnected, setIsConnected] = useState(() =>
 		webSocketService.isConnected(),
 	);
@@ -350,22 +356,29 @@ export function useChatStream({
 		}
 
 		const setup = async () => {
+			const generation = ++restoreGeneration.current;
+			setRestoreState({ id: conversationId, phase: "loading" });
 			try {
 				await webSocketService.connectToChat(conversationId);
-				if (cancelled) return;
+				if (cancelled || generation !== restoreGeneration.current) return;
 				setIsConnected(true);
 			} catch (error) {
-				if (cancelled) return;
+				if (cancelled || generation !== restoreGeneration.current) return;
 				console.error("[useChatStream] Failed to connect:", error);
 				setIsConnected(false);
+				setRestoreState({ id: conversationId, phase: "error" });
 				return;
 			}
 
 			try {
 				const state = await getChatRunState(conversationId);
-				if (!cancelled) hydrateRunState(conversationId, state);
+				if (!cancelled && generation === restoreGeneration.current) {
+					hydrateRunState(conversationId, state);
+					setRestoreState({ id: conversationId, phase: "ready" });
+				}
 			} catch (error) {
-				if (!cancelled) {
+				if (!cancelled && generation === restoreGeneration.current) {
+					setRestoreState({ id: conversationId, phase: "error" });
 					console.error(
 						"[useChatStream] Failed to restore chat state:",
 						error,
@@ -379,6 +392,7 @@ export function useChatStream({
 		};
 	}, [
 		conversationId,
+		restoreAttempt,
 		hasPendingSubmission,
 		hydrateRunState,
 		subscribeToConversation,
@@ -398,14 +412,18 @@ export function useChatStream({
 				deriveActiveRun(currentProjection)?.status === "pending"
 			)
 				return;
+			const generation = ++restoreGeneration.current;
+			setRestoreState({ id: targetConversationId, phase: "loading" });
 			void getChatRunState(targetConversationId)
-				.then((state) => hydrateRunState(targetConversationId, state))
-				.catch((error) =>
-					console.error(
-						"[useChatStream] Failed to replay chat state:",
-						error,
-					),
-				);
+				.then((state) => {
+					if (generation !== restoreGeneration.current || currentConversationIdRef.current !== targetConversationId) return;
+					hydrateRunState(targetConversationId, state);
+					setRestoreState({ id: targetConversationId, phase: "ready" });
+				})
+				.catch(() => {
+					if (generation !== restoreGeneration.current || currentConversationIdRef.current !== targetConversationId) return;
+					setRestoreState({ id: targetConversationId, phase: "error" });
+				});
 		});
 	}, [hydrateRunState]);
 
@@ -509,6 +527,9 @@ export function useChatStream({
 
 	return {
 		sendMessage,
+		isRestoring: restoreState?.id === conversationId && restoreState?.phase === "loading",
+		restoreError: restoreState?.id === conversationId && restoreState?.phase === "error",
+		retryRestore: () => setRestoreAttempt((attempt) => attempt + 1),
 		isConnected,
 		isStreaming,
 		stopStreaming,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -56,11 +56,16 @@ function CreateSubscriptionDialogContent({
 	onOpenChange,
 	sourceId,
 	onSuccess,
-}: Omit<CreateSubscriptionDialogProps, "open">) {
-	const createMutation = useCreateSubscription();
+	createMutation,
+}: Omit<CreateSubscriptionDialogProps, "open"> & {
+	createMutation: ReturnType<typeof useCreateSubscription>;
+}) {
+	const formId = useId();
 
 	// Form state
-	const [targetType, setTargetType] = useState<"workflow" | "agent">("workflow");
+	const [targetType, setTargetType] = useState<"workflow" | "agent">(
+		"workflow",
+	);
 	const [workflowId, setWorkflowId] = useState("");
 	const [agentId, setAgentId] = useState("");
 	const [eventType, setEventType] = useState("");
@@ -105,7 +110,7 @@ function CreateSubscriptionDialogContent({
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!validateForm()) return;
+		if (isLoading || !validateForm()) return;
 
 		try {
 			const cleanedMapping = cleanInputMapping(inputMapping);
@@ -116,11 +121,13 @@ function CreateSubscriptionDialogContent({
 				},
 				body: {
 					target_type: targetType,
-					workflow_id: targetType === "workflow" ? workflowId : undefined,
+					workflow_id:
+						targetType === "workflow" ? workflowId : undefined,
 					agent_id: targetType === "agent" ? agentId : undefined,
 					event_type: eventType.trim() || undefined,
-					input_mapping: targetType === "workflow" ? cleanedMapping : undefined,
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					input_mapping:
+						targetType === "workflow" ? cleanedMapping : undefined,
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				} as any,
 			});
 
@@ -129,168 +136,209 @@ function CreateSubscriptionDialogContent({
 			onSuccess?.();
 		} catch (error) {
 			console.error("Failed to create subscription:", error);
+			setErrors([
+				"Could not add the subscription. Your entries are saved here; please retry.",
+			]);
 			toast.error("Failed to create subscription");
 		}
 	};
 
 	return (
 		<form onSubmit={handleSubmit}>
-			<DialogHeader>
-				<DialogTitle>Add Subscription</DialogTitle>
-				<DialogDescription>
-					Subscribe a workflow or agent to receive events from this source.
-				</DialogDescription>
-			</DialogHeader>
+			<fieldset disabled={isLoading} className="min-w-0">
+				<DialogHeader>
+					<DialogTitle>Add Subscription</DialogTitle>
+					<DialogDescription>
+						Subscribe a workflow or agent to receive events from
+						this source.
+					</DialogDescription>
+				</DialogHeader>
 
-			<div className="space-y-4 py-4">
-				{errors.length > 0 && (
-					<Alert variant="destructive">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							<ul className="list-disc list-inside">
-								{errors.map((error, i) => (
-									<li key={i}>{error}</li>
-								))}
-							</ul>
-						</AlertDescription>
-					</Alert>
-				)}
+				<div className="space-y-4 py-4">
+					{errors.length > 0 && (
+						<Alert variant="destructive">
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription>
+								<ul className="list-disc list-inside">
+									{errors.map((error, i) => (
+										<li key={i}>{error}</li>
+									))}
+								</ul>
+							</AlertDescription>
+						</Alert>
+					)}
 
-				{/* Target Type */}
-				<div className="space-y-2">
-					<Label>Target Type</Label>
-					<Select
-						value={targetType}
-						onValueChange={(v) => {
-							setTargetType(v as "workflow" | "agent");
-							setWorkflowId("");
-							setAgentId("");
-							setInputMapping({});
-						}}
-					>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="workflow">Workflow</SelectItem>
-							<SelectItem value="agent">Agent</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
-
-				{/* Workflow Selector */}
-				{targetType === "workflow" && (
+					{/* Target Type */}
 					<div className="space-y-2">
-						<Label>Workflow</Label>
-						<Button
-							type="button"
-							variant="outline"
-							className="w-full justify-start font-normal"
-							onClick={() => setWorkflowDialogOpen(true)}
+						<Label htmlFor={`${formId}-target`}>Target Type</Label>
+						<Select
+							disabled={isLoading}
+							value={targetType}
+							onValueChange={(v) => {
+								setTargetType(v as "workflow" | "agent");
+								setWorkflowId("");
+								setAgentId("");
+								setInputMapping({});
+							}}
 						>
-							{selectedWorkflow?.name || "Select a workflow..."}
-						</Button>
-						<WorkflowSelectorDialog
-							open={workflowDialogOpen}
-							onOpenChange={setWorkflowDialogOpen}
-							entityRoles={[]}
-							mode="single"
-							selectedWorkflowIds={workflowId ? [workflowId] : []}
-							onSelect={handleWorkflowSelect}
-							title="Select Workflow"
-							description="Choose a workflow to receive events from this source."
-						/>
-						<p className="text-xs text-muted-foreground">
-							The workflow will receive the event data as input
-							parameters.
-						</p>
+							<SelectTrigger
+								id={`${formId}-target`}
+								className="min-h-11 w-full"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="workflow">
+									Workflow
+								</SelectItem>
+								<SelectItem value="agent">Agent</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
-				)}
 
-				{/* Agent Selector */}
-				{targetType === "agent" && (
-					<div className="space-y-2">
-						<Label>Agent</Label>
-						<Button
-							type="button"
-							variant="outline"
-							className="w-full justify-start font-normal"
-							onClick={() => setAgentDialogOpen(true)}
-						>
-							{agents.find((a) => a.id === agentId)?.name ||
-								"Select an agent..."}
-						</Button>
-						<AgentSelectorDialog
-							open={agentDialogOpen}
-							onOpenChange={setAgentDialogOpen}
-							selectedAgentId={agentId || null}
-							onSelect={setAgentId}
-						/>
-						<p className="text-xs text-muted-foreground">
-							The agent will run autonomously with the event data as input.
-						</p>
-					</div>
-				)}
-
-				{/* Event Type Filter (optional) */}
-				<div className="space-y-2">
-					<Label htmlFor="event-type">
-						Event Type Filter (optional)
-					</Label>
-					<Input
-						id="event-type"
-						value={eventType}
-						onChange={(e) => setEventType(e.target.value)}
-						placeholder="e.g., ticket.created"
-					/>
-					<p className="text-xs text-muted-foreground">
-						Only trigger the workflow for events matching this type.
-						Leave empty to receive all events.
-					</p>
-				</div>
-
-				{/* Input Mapping (shown when workflow has parameters) */}
-				{targetType === "workflow" &&
-					selectedWorkflow?.parameters &&
-					selectedWorkflow.parameters.length > 0 && (
-						<div className="space-y-3">
-							<div className="border-t pt-3">
-								<Label className="text-sm font-medium">
-									Input Mapping (Optional)
-								</Label>
-								<p className="text-xs text-muted-foreground mt-1">
-									Map event data to workflow parameters
-									using static values or{" "}
-									<code className="bg-muted px-1 py-0.5 rounded text-xs">
-										{"{{ template }}"}
-									</code>{" "}
-									expressions.
-								</p>
-							</div>
-							<InputMappingForm
-								parameters={selectedWorkflow.parameters}
-								values={inputMapping}
-								onChange={setInputMapping}
+					{/* Workflow Selector */}
+					{targetType === "workflow" && (
+						<div className="space-y-2">
+							<Label htmlFor={`${formId}-workflow`}>
+								Workflow
+							</Label>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 h-auto w-full justify-start whitespace-normal text-left font-normal [overflow-wrap:anywhere]"
+								aria-label={
+									selectedWorkflow?.name
+										? `Workflow: ${selectedWorkflow.name}`
+										: "Select a workflow..."
+								}
+								id={`${formId}-workflow`}
+								aria-haspopup="dialog"
+								disabled={isLoading}
+								onClick={() => setWorkflowDialogOpen(true)}
+							>
+								{selectedWorkflow?.name ||
+									"Select a workflow..."}
+							</Button>
+							<WorkflowSelectorDialog
+								open={workflowDialogOpen}
+								onOpenChange={setWorkflowDialogOpen}
+								entityRoles={[]}
+								mode="single"
+								selectedWorkflowIds={
+									workflowId ? [workflowId] : []
+								}
+								onSelect={handleWorkflowSelect}
+								title="Select Workflow"
+								description="Choose a workflow to receive events from this source."
 							/>
+							<p className="text-sm text-muted-foreground">
+								The workflow will receive the event data as
+								input parameters.
+							</p>
 						</div>
 					)}
-			</div>
 
-			<DialogFooter>
-				<Button
-					type="button"
-					variant="outline"
-					onClick={() => onOpenChange(false)}
-				>
-					Cancel
-				</Button>
-				<Button type="submit" disabled={isLoading}>
-					{isLoading && (
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					{/* Agent Selector */}
+					{targetType === "agent" && (
+						<div className="space-y-2">
+							<Label htmlFor={`${formId}-agent`}>Agent</Label>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 h-auto w-full justify-start whitespace-normal text-left font-normal [overflow-wrap:anywhere]"
+								aria-label={
+									agents.find((a) => a.id === agentId)?.name
+										? `Agent: ${agents.find((a) => a.id === agentId)?.name}`
+										: "Select an agent..."
+								}
+								id={`${formId}-agent`}
+								aria-haspopup="dialog"
+								disabled={isLoading}
+								onClick={() => setAgentDialogOpen(true)}
+							>
+								{agents.find((a) => a.id === agentId)?.name ||
+									"Select an agent..."}
+							</Button>
+							<AgentSelectorDialog
+								open={agentDialogOpen}
+								onOpenChange={setAgentDialogOpen}
+								selectedAgentId={agentId || null}
+								onSelect={setAgentId}
+							/>
+							<p className="text-sm text-muted-foreground">
+								The agent will run autonomously with the event
+								data as input.
+							</p>
+						</div>
 					)}
-					Add Subscription
-				</Button>
-			</DialogFooter>
+
+					{/* Event Type Filter (optional) */}
+					<div className="space-y-2">
+						<Label htmlFor={`${formId}-event`}>
+							Event Type Filter (optional)
+						</Label>
+						<Input
+							id={`${formId}-event`}
+							className="min-h-11"
+							value={eventType}
+							onChange={(e) => setEventType(e.target.value)}
+							placeholder="e.g., ticket.created"
+						/>
+						<p className="text-sm text-muted-foreground">
+							Only trigger the selected target for events matching
+							this type. Leave empty to receive all events.
+						</p>
+					</div>
+
+					{/* Input Mapping (shown when workflow has parameters) */}
+					{targetType === "workflow" &&
+						selectedWorkflow?.parameters &&
+						selectedWorkflow.parameters.length > 0 && (
+							<div className="space-y-3">
+								<div className="border-t pt-3">
+									<Label className="text-sm font-medium">
+										Input Mapping (Optional)
+									</Label>
+									<p className="text-sm text-muted-foreground mt-1">
+										Map event data to workflow parameters
+										using static values or{" "}
+										<code className="bg-muted px-1 py-0.5 rounded text-sm">
+											{"{{ template }}"}
+										</code>{" "}
+										expressions.
+									</p>
+								</div>
+								<InputMappingForm
+									parameters={selectedWorkflow.parameters}
+									values={inputMapping}
+									onChange={setInputMapping}
+								/>
+							</div>
+						)}
+				</div>
+
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						className="min-h-11"
+						disabled={isLoading}
+						onClick={() => onOpenChange(false)}
+					>
+						Cancel
+					</Button>
+					<Button
+						type="submit"
+						className="min-h-11"
+						disabled={isLoading}
+					>
+						{isLoading && (
+							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
+						)}
+						Add Subscription
+					</Button>
+				</DialogFooter>
+			</fieldset>
 		</form>
 	);
 }
@@ -301,11 +349,18 @@ export function CreateSubscriptionDialog({
 	sourceId,
 	onSuccess,
 }: CreateSubscriptionDialogProps) {
+	const createMutation = useCreateSubscription();
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!createMutation.isPending) onOpenChange(nextOpen);
+			}}
+		>
 			<DialogContent className="sm:max-w-[450px]">
 				{open && (
 					<CreateSubscriptionDialogContent
+						createMutation={createMutation}
 						onOpenChange={onOpenChange}
 						sourceId={sourceId}
 						onSuccess={onSuccess}

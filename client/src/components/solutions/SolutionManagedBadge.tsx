@@ -23,12 +23,12 @@ export function SolutionManagedBadge({ solutionId }: SolutionManagedBadgeProps) 
 	return (
 		<Link
 			to={`/solutions/${solutionId}`}
-			className="flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+			className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[var(--bf-radius-control)] border border-border/70 bg-muted px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-colors motion-reduce:transition-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 			title="Managed by a Solution — read-only on the platform. Click to view the Solution."
 			data-testid="solution-managed-badge"
 			onClick={(e) => e.stopPropagation()}
 		>
-			<Lock className="h-3 w-3" />
+			<Lock className="h-3.5 w-3.5" />
 			Managed
 		</Link>
 	);

@@ -32,7 +32,7 @@ describe("ToolExecutionGroup", () => {
 		// Outer-most wrapper is two levels up (.flex.gap-2 > .relative.pl-6)
 		const outer = child.parentElement?.parentElement;
 		expect(outer?.className).toMatch(/relative/);
-		expect(outer?.className).toMatch(/pl-6/);
+		expect(outer?.className).toMatch(/pl-4/);
 		expect(outer?.className).toMatch(/extra-class/);
 	});
 });

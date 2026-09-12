@@ -10,6 +10,7 @@
  */
 
 import { $api, apiClient } from "@/lib/api-client";
+import { getErrorMessage } from "@/lib/api-error";
 import type { components } from "@/lib/v1";
 
 // Auto-generated types from OpenAPI spec
@@ -50,30 +51,29 @@ export async function getFormFieldOptions(
 	fieldName: string,
 	inputs?: Record<string, unknown>,
 ): Promise<DataProviderOption[]> {
-	try {
-		const { data, error } = await apiClient.POST(
-			"/api/forms/{form_id}/fields/{field_name}/options",
-			{
-				params: { path: { form_id: formId, field_name: fieldName } },
-				body: { inputs: inputs || {} },
-			},
+	const { data, error } = await apiClient.POST(
+		"/api/forms/{form_id}/fields/{field_name}/options",
+		{
+			params: { path: { form_id: formId, field_name: fieldName } },
+			body: { inputs: inputs || {} },
+		},
+	);
+
+	if (error || !data) {
+		throw new Error(
+			getErrorMessage(
+				error,
+				"Could not load available choices. Please try again.",
+			),
 		);
-
-		if (error || !data) {
-			console.error("Failed to invoke data provider:", error);
-			return [];
-		}
-
-		return data.options.map((opt) => ({
-			value: opt.value,
-			label: opt.label,
-			...(opt.description ? { description: opt.description } : {}),
-			...(opt.metadata ? { metadata: opt.metadata } : {}),
-		}));
-	} catch (error) {
-		console.error("Error invoking data provider:", error);
-		return [];
 	}
+
+	return data.options.map((opt) => ({
+		value: opt.value,
+		label: opt.label,
+		...(opt.description ? { description: opt.description } : {}),
+		...(opt.metadata ? { metadata: opt.metadata } : {}),
+	}));
 }
 
 /** Execute a provider directly for authenticated non-form administration. */
@@ -81,29 +81,27 @@ export async function getDataProviderOptions(
 	providerId: string,
 	inputs?: Record<string, unknown>,
 ): Promise<DataProviderOption[]> {
-	try {
-		const { data, error } = await apiClient.POST("/api/workflows/execute", {
-			body: {
-				workflow_id: providerId,
-				input_data: inputs || {},
-				transient: true,
-			},
-		});
-		if (error || !data || data.status !== "Success") return [];
-		const options = data.result as Array<{
-			value?: string;
-			label?: string;
-			description?: string;
-			metadata?: Record<string, unknown>;
-		}> | null;
-		if (!Array.isArray(options)) return [];
-		return options.map((option) => ({
-			value: String(option.value ?? ""),
-			label: String(option.label ?? option.value ?? ""),
-			...(option.description ? { description: option.description } : {}),
-			...(option.metadata ? { metadata: option.metadata } : {}),
-		}));
-	} catch {
-		return [];
-	}
+	const { data, error } = await apiClient.POST("/api/workflows/execute", {
+		body: {
+			workflow_id: providerId,
+			input_data: inputs || {},
+			transient: true,
+		},
+	});
+	if (error || !data || data.status !== "Success")
+		throw new Error("Unable to load integration entities");
+	const options = data.result as Array<{
+		value?: string;
+		label?: string;
+		description?: string;
+		metadata?: Record<string, unknown>;
+	}> | null;
+	if (!Array.isArray(options))
+		throw new Error("The provider returned an invalid options list");
+	return options.map((option) => ({
+		value: String(option.value ?? ""),
+		label: String(option.label ?? option.value ?? ""),
+		...(option.description ? { description: option.description } : {}),
+		...(option.metadata ? { metadata: option.metadata } : {}),
+	}));
 }

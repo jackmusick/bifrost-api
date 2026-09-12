@@ -1,3 +1,4 @@
+import { BundledAppShell } from "./BundledAppShell";
 /**
  * Component tests for BundledAppShell.
  *
@@ -117,13 +118,23 @@ afterEach(() => {
 		.forEach((el) => el.remove());
 });
 
-async function renderShell({ isPreview = true }: { isPreview?: boolean } = {}) {
-	const { BundledAppShell } = await import("./BundledAppShell");
+async function renderShell({
+	isPreview = true,
+	appName,
+	appLogo,
+}: {
+	isPreview?: boolean;
+	appName?: string | null;
+	appLogo?: string | null;
+} = {}) {
+
 	return renderWithProviders(
 		<BundledAppShell
 			appId="app-1"
 			appSlug="my-app"
 			isPreview={isPreview}
+			appName={appName}
+			appLogo={appLogo}
 		/>,
 	);
 }
@@ -142,9 +153,15 @@ describe("BundledAppShell — loading", () => {
 				}),
 		);
 
-		await renderShell();
+		await renderShell({
+			appName: "Dispatch Board",
+			appLogo: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+		});
 
-		expect(screen.getByText(/loading application/i)).toBeInTheDocument();
+		expect(screen.getByRole("status")).toHaveAccessibleName(
+			"Opening Dispatch Board…",
+		);
+		expect(screen.getByText("Dispatch Board")).toBeInTheDocument();
 
 		// Clean up the hanging promise so the test doesn't leak.
 		resolveFetch({
@@ -280,7 +297,7 @@ describe("BundledAppShell — app_model render branch", () => {
 	it("drops the v2 mount when navigating to an inline_v1 app in the same shell", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		localStorage.setItem("bifrost_access_token", "tok-xyz");
-		const { BundledAppShell } = await import("./BundledAppShell");
+
 
 		// First app: standalone_v2 → same-document container.
 		mockManifestOk({
@@ -308,7 +325,7 @@ describe("BundledAppShell — app_model render branch", () => {
 	it("does not render a v2 app with the new appId while the new manifest is still pending (Codex #10)", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		localStorage.setItem("bifrost_access_token", "tok-xyz");
-		const { BundledAppShell } = await import("./BundledAppShell");
+
 
 		// App A: standalone_v2, resolves immediately.
 		mockManifestOk({

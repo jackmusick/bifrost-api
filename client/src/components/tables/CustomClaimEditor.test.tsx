@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, renderWithProviders, screen } from "@/test-utils";
+import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 
 vi.mock("@monaco-editor/react", () => ({
 	default: ({
@@ -58,7 +58,10 @@ describe("CustomClaimEditor", () => {
 	it("disables Save when the query is invalid", () => {
 		renderWithProviders(
 			<CustomClaimEditor
-				value={{ ...claim, query: null as unknown as CustomClaim["query"] }}
+				value={{
+					...claim,
+					query: null as unknown as CustomClaim["query"],
+				}}
 				onChange={vi.fn()}
 				onSave={vi.fn()}
 				onCancel={vi.fn()}
@@ -82,5 +85,58 @@ describe("CustomClaimEditor", () => {
 		fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
 		expect(onSave).toHaveBeenCalledWith(claim);
+	});
+	it("blocks saving a broken or empty draft instead of the last valid query", () => {
+		const onSave = vi.fn();
+		renderWithProviders(
+			<CustomClaimEditor
+				value={claim}
+				onChange={vi.fn()}
+				onSave={onSave}
+				onCancel={vi.fn()}
+			/>,
+		);
+		const editor = screen.getByLabelText("claim-query.json");
+		const save = screen.getByRole("button", { name: /^save$/i });
+		fireEvent.change(editor, { target: { value: "{" } });
+		expect(save).toBeDisabled();
+		fireEvent.click(save);
+		expect(onSave).not.toHaveBeenCalled();
+		fireEvent.change(editor, {
+			target: { value: JSON.stringify(claim.query) },
+		});
+		expect(save).toBeEnabled();
+		fireEvent.change(editor, { target: { value: "" } });
+		expect(editor).toHaveValue("");
+		expect(save).toBeDisabled();
+	});
+	it("retains the claim after a failed save and focuses recovery", async () => {
+		let rejectSave!: (cause: Error) => void;
+		const onSave = vi
+			.fn()
+			.mockImplementationOnce(
+				() =>
+					new Promise<void>((_, reject) => {
+						rejectSave = reject;
+					}),
+			)
+			.mockResolvedValue(undefined);
+		const { user } = renderWithProviders(
+			<CustomClaimEditor
+				value={claim}
+				onChange={vi.fn()}
+				onSave={onSave}
+				onCancel={vi.fn()}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: /^save$/i }));
+		expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+		expect(screen.getByLabelText("Description")).toBeDisabled();
+		rejectSave(new Error("Synthetic save failure"));
+		await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+		expect(screen.getByDisplayValue(claim.name)).toBeVisible();
+		await user.click(screen.getByRole("button", { name: /^save$/i }));
+		expect(onSave).toHaveBeenCalledTimes(2);
+		expect(onSave.mock.calls[1][0]).toEqual(claim);
 	});
 });

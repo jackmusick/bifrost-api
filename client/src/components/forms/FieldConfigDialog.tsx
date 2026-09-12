@@ -1,3 +1,4 @@
+import { useBifrostMonacoTheme } from "@/hooks/useBifrostMonacoTheme";
 import { useState } from "react";
 import Editor from "@monaco-editor/react";
 import {
@@ -20,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Combobox } from "@/components/ui/combobox";
 import {
 	ExpressionEditor,
@@ -122,6 +123,7 @@ function FieldConfigDialogContent({
 	isLoadingDataProviders: boolean;
 	generateLabelFromName: (name: string) => string;
 }) {
+	const monacoAppearance = useBifrostMonacoTheme();
 	// Initialize state based on props - these won't trigger effect warnings
 	// because the component remounts when field?.name or workflowInputData?.name changes (via key prop)
 	const [name, setName] = useState(
@@ -366,12 +368,12 @@ function FieldConfigDialogContent({
 	};
 
 	return (
-		<DialogContent className="sm:max-w-[1200px] max-h-[90vh] overflow-hidden p-0">
-			<div className="flex h-full max-h-[90vh]">
+		<DialogContent className="w-[calc(100vw-1rem)] max-h-[90dvh] overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-[1200px]">
+			<div className="flex h-full max-h-[90dvh] flex-col lg:flex-row">
 				{/* Main content area */}
-				<div className="flex-1 overflow-y-auto p-6">
-					<DialogHeader>
-						<div className="flex items-center justify-between">
+				<div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6 [&_input]:min-h-11 [&_button:not([role=switch]):not([role=checkbox])]:min-h-11">
+					<DialogHeader className="shrink-0">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 							<div>
 								<DialogTitle>
 									{field ? "Edit Field" : "Add Field"}
@@ -385,7 +387,7 @@ function FieldConfigDialogContent({
 							<Button
 								variant="outline"
 								size="sm"
-								className="lg:hidden"
+								className="self-start lg:hidden"
 								onClick={() => setShowContextSidebar(true)}
 							>
 								<PanelRightOpen className="h-4 w-4 mr-2" />
@@ -405,8 +407,8 @@ function FieldConfigDialogContent({
 					)}
 
 					{/* Field configuration form */}
-					<div className="mt-6 space-y-4">
-						<div className="grid grid-cols-2 gap-4">
+					<div className="mt-4 min-h-0 overflow-y-auto space-y-4">
+						<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 							<div className="space-y-2">
 								<Label htmlFor="fieldName">
 									Field Name *
@@ -476,7 +478,7 @@ function FieldConfigDialogContent({
 						</div>
 
 						<div className="space-y-4">
-							<div className="grid grid-cols-2 gap-4">
+							<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 								<div className="space-y-2">
 									<Label htmlFor="fieldType">
 										Field Type
@@ -488,19 +490,33 @@ function FieldConfigDialogContent({
 											const prevType = type;
 											setType(newType);
 											// Reset default value when switching to/from checkbox
-											if (newType === "checkbox" && typeof defaultValue !== "boolean") {
+											if (
+												newType === "checkbox" &&
+												typeof defaultValue !==
+													"boolean"
+											) {
 												setDefaultValue(false);
-											} else if (newType !== "checkbox" && typeof defaultValue === "boolean") {
+											} else if (
+												newType !== "checkbox" &&
+												typeof defaultValue ===
+													"boolean"
+											) {
 												setDefaultValue("");
 											}
 											// Reset default value when switching into or out of
 											// multi_select (comma-separated list won't map
 											// cleanly to/from a single-value string).
 											if (
-												(newType === "multi_select" || prevType === "multi_select") &&
+												(newType === "multi_select" ||
+													prevType ===
+														"multi_select") &&
 												newType !== prevType
 											) {
-												setDefaultValue(newType === "checkbox" ? false : "");
+												setDefaultValue(
+													newType === "checkbox"
+														? false
+														: "",
+												);
 											}
 										}}
 									>
@@ -551,51 +567,31 @@ function FieldConfigDialogContent({
 								<div className="space-y-2">
 									<Label>Required</Label>
 									<div className="flex gap-2 pt-2">
-										<button
+										<Button
 											type="button"
+											variant="outline"
+											aria-pressed={required}
 											onClick={() => setRequired(true)}
-											className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-												required
-													? "border-primary bg-primary/5 text-primary"
-													: "border-border hover:bg-accent"
-											}`}
+											className="min-h-11 flex-1 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
 										>
-											<Badge
-												variant={
-													required
-														? "destructive"
-														: "outline"
-												}
-											>
-												Required
-											</Badge>
-										</button>
-										<button
+											Required
+										</Button>
+										<Button
 											type="button"
+											variant="outline"
+											aria-pressed={!required}
 											onClick={() => setRequired(false)}
-											className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-												!required
-													? "border-primary bg-primary/5 text-primary"
-													: "border-border hover:bg-accent"
-											}`}
+											className="min-h-11 flex-1 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
 										>
-											<Badge
-												variant={
-													!required
-														? "default"
-														: "outline"
-												}
-											>
-												Optional
-											</Badge>
-										</button>
+											Optional
+										</Button>
 									</div>
 								</div>
 							</div>
 
 							<div className="space-y-2">
-								<div className="flex items-center space-x-2">
-									<Checkbox
+								<div className="flex items-center gap-2">
+									<Switch
 										id="allowAsQueryParam"
 										checked={allowAsQueryParam}
 										onCheckedChange={(checked) =>
@@ -682,13 +678,11 @@ function FieldConfigDialogContent({
 										(p.id ?? p.name) === dataProvider,
 								) && (
 									<DataProviderInputsConfig
-										provider={
-											dataProviders.find(
-												(p: DataProvider) =>
-													(p.id ?? p.name) ===
-													dataProvider,
-											)!
-										}
+										provider={dataProviders.find(
+											(p: DataProvider) =>
+												(p.id ?? p.name) ===
+												dataProvider,
+										)!}
 										inputs={dataProviderInputs}
 										onChange={setDataProviderInputs}
 										availableFields={(
@@ -706,12 +700,14 @@ function FieldConfigDialogContent({
 										Default Value
 									</Label>
 									{type === "checkbox" ? (
-										<div className="flex items-center space-x-2 pt-1">
-											<Checkbox
+										<div className="flex items-center gap-2 pt-1">
+											<Switch
 												id="defaultValue"
 												checked={defaultValue === true}
 												onCheckedChange={(checked) =>
-													setDefaultValue(checked === true)
+													setDefaultValue(
+														checked === true,
+													)
 												}
 											/>
 											<Label
@@ -735,7 +731,7 @@ function FieldConfigDialogContent({
 									)}
 								</div>
 
-								<div className="grid grid-cols-2 gap-4">
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 									<div className="space-y-2">
 										<Label htmlFor="placeholder">
 											Placeholder
@@ -812,10 +808,11 @@ function FieldConfigDialogContent({
 											onChange={(value) =>
 												setContent(value || "")
 											}
-											theme="vs-dark"
+											{...monacoAppearance}
 											options={{
 												minimap: { enabled: false },
-												fontSize: 13,
+												...monacoAppearance.options,
+												ariaLabel: "HTML content",
 												lineNumbers: "on",
 												scrollBeyondLastLine: false,
 												wordWrap: "on",
@@ -873,7 +870,7 @@ function FieldConfigDialogContent({
 									</p>
 								</div>
 
-								<div className="grid grid-cols-2 gap-4">
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 									<div className="space-y-2">
 										<Label htmlFor="maxSizeMB">
 											Max File Size (MB)
@@ -893,32 +890,28 @@ function FieldConfigDialogContent({
 									<div className="space-y-2">
 										<Label>Multiple Files</Label>
 										<div className="flex gap-2 pt-2">
-											<button
+											<Button
 												type="button"
+												variant="outline"
+												aria-pressed={multiple}
 												onClick={() =>
 													setMultiple(true)
 												}
-												className={`flex-1 rounded-lg border px-4 py-2 text-sm transition-colors ${
-													multiple
-														? "border-primary bg-primary/5 text-primary"
-														: "border-border hover:bg-accent"
-												}`}
+												className="min-h-11 flex-1 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
 											>
 												Yes
-											</button>
-											<button
+											</Button>
+											<Button
 												type="button"
+												variant="outline"
+												aria-pressed={!multiple}
 												onClick={() =>
 													setMultiple(false)
 												}
-												className={`flex-1 rounded-lg border px-4 py-2 text-sm transition-colors ${
-													!multiple
-														? "border-primary bg-primary/5 text-primary"
-														: "border-border hover:bg-accent"
-												}`}
+												className="min-h-11 flex-1 aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
 											>
 												No
-											</button>
+											</Button>
 										</div>
 									</div>
 								</div>
@@ -926,7 +919,7 @@ function FieldConfigDialogContent({
 						)}
 					</div>
 
-					<DialogFooter className="mt-6">
+					<DialogFooter className="mt-4 shrink-0">
 						<Button
 							type="button"
 							variant="outline"
@@ -941,7 +934,7 @@ function FieldConfigDialogContent({
 				</div>
 
 				{/* Right sidebar: Context viewer - always visible on lg+ screens */}
-				<div className="hidden lg:flex lg:w-80 xl:w-96 border-l bg-muted/30 flex-col">
+				<div className="hidden lg:flex lg:w-80 xl:w-96 flex-col border-l bg-muted/30">
 					<div className="p-4 border-b bg-background">
 						<h3 className="text-sm font-semibold">
 							Context & Helpers
@@ -1059,7 +1052,7 @@ function FieldConfigDialogContent({
 							onClick={() => setShowContextSidebar(false)}
 						/>
 						{/* Slideout panel */}
-						<div className="lg:hidden fixed right-0 top-0 bottom-0 w-80 bg-background border-l z-50 flex flex-col shadow-xl">
+						<div className="lg:hidden fixed right-0 top-0 bottom-0 w-[calc(100vw-1rem)] max-w-80 bg-background border-l z-50 flex flex-col shadow-xl">
 							<div className="p-4 border-b flex items-center justify-between">
 								<div>
 									<h3 className="text-sm font-semibold">
@@ -1073,6 +1066,7 @@ function FieldConfigDialogContent({
 									variant="ghost"
 									size="sm"
 									onClick={() => setShowContextSidebar(false)}
+									aria-label="Close context panel"
 								>
 									<X className="h-4 w-4" />
 								</Button>

@@ -36,6 +36,7 @@ vi.mock("@/stores/executionStreamStore", () => ({
 }));
 
 // Framer-motion: static div.
+const mockUseReducedMotion = vi.hoisted(() => vi.fn(() => false));
 vi.mock("framer-motion", () => {
 	const passthrough = ({
 		children,
@@ -52,6 +53,7 @@ vi.mock("framer-motion", () => {
 		AnimatePresence: ({ children }: { children: React.ReactNode }) => (
 			<>{children}</>
 		),
+		useReducedMotion: () => mockUseReducedMotion(),
 	};
 });
 
@@ -79,6 +81,11 @@ function makeToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
 }
 
 describe("ToolExecutionCard — status transitions", () => {
+	it("exposes timeout details and names its input action", () => {
+		renderWithProviders(<ToolExecutionCard toolCall={makeToolCall()} isStreaming streamingState={{ status: "timeout", logs: [], error: "Timed out waiting for the service" }} />);
+		expect(screen.getByRole("alert")).toHaveTextContent("Timed out waiting for the service");
+		expect(screen.getByRole("button", { name: "Input parameters for run_task" })).toBeInTheDocument();
+	});
 	it("shows Pending when there's no execution data and no result yet", () => {
 		renderWithProviders(
 			<ToolExecutionCard toolCall={makeToolCall()} executionId={undefined} />,
@@ -166,5 +173,38 @@ describe("ToolExecutionCard — result expansion", () => {
 		// PrettyInputDisplay stub renders the JSON blob.
 		const pretty = await screen.findByTestId("pretty-input");
 		expect(pretty).toHaveTextContent(JSON.stringify({ value: 42 }));
+	});
+
+	it("scrolls running logs without smooth motion when reduced motion is enabled", () => {
+		mockUseExecution.mockReturnValue({
+			data: { status: "Running" },
+			isLoading: false,
+		});
+		mockUseReducedMotion.mockReturnValue(true);
+		const scrollTo = vi.fn();
+		const originalScrollTo = Element.prototype.scrollTo;
+		Object.defineProperty(Element.prototype, "scrollTo", {
+			configurable: true,
+			value: scrollTo,
+		});
+
+		renderWithProviders(
+			<ToolExecutionCard
+				toolCall={makeToolCall()}
+				executionId="exec-1"
+				isStreaming
+				streamingState={{
+					status: "running",
+					logs: [{ level: "info", message: "progress..." }],
+				}}
+			/>,
+		);
+
+		expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 0 });
+		mockUseReducedMotion.mockReturnValue(false);
+		Object.defineProperty(Element.prototype, "scrollTo", {
+			configurable: true,
+			value: originalScrollTo,
+		});
 	});
 });

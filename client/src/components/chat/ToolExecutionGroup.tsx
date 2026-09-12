@@ -22,11 +22,9 @@ export function ToolExecutionGroup({
 	className,
 }: ToolExecutionGroupProps) {
 	return (
-		<div className={cn("relative pl-6 ml-4", className)}>
-			{/* Vertical connecting line */}
-			<div className="absolute left-0 top-0 bottom-0 w-px bg-border" />
-			{/* Tool badges container */}
-			<div className="flex flex-wrap gap-2 py-2">{children}</div>
+		<div className={cn("relative pl-4 sm:pl-6 ml-2 sm:ml-4", className)}>
+			<div className="absolute left-1 top-0 bottom-0 w-px bg-border/70" />
+			<div className="flex min-w-0 flex-wrap gap-2 py-2">{children}</div>
 		</div>
 	);
 }

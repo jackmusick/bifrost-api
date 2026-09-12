@@ -1,5 +1,14 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
+import { downloadReportCSV } from "@/components/reports/report-csv";
+import { ReportRecordList } from "@/components/reports/ReportRecordList";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useReducedMotion } from "framer-motion";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { useState, useMemo } from "react";
-import { format, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import {
 	DollarSign,
@@ -25,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { ListLoadError } from "@/components/layout/ListLoadError";
 import {
 	DataTable,
 	DataTableBody,
@@ -57,7 +67,10 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
-import { formatChartDateLabel } from "@/components/reports/formatters";
+import {
+	formatChartDateLabel,
+	formatChartDateTick,
+} from "@/components/reports/formatters";
 
 // ============================================================================
 // Demo Data Generation
@@ -230,8 +243,8 @@ function generateDemoData(params: DemoDataParams): DemoDataResult {
 	// Step 6: Generate trends based on filtered workflows
 	// Distribute workflow metrics across days in the date range
 	const trendEntries: ROITrends["entries"] = [];
-	const start = new Date(startDate);
-	const end = new Date(endDate);
+	const start = parseISO(startDate);
+	const end = parseISO(endDate);
 	const dayCount = Math.max(
 		1,
 		Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) +
@@ -285,6 +298,8 @@ function generateDemoData(params: DemoDataParams): DemoDataResult {
 type SortConfig = { by: string; dir: "asc" | "desc" };
 
 export function ROIReports() {
+	const reducedMotion = useReducedMotion();
+	const wideChart = useMediaQuery("(min-width: 640px)");
 	const { isPlatformAdmin } = useAuth();
 
 	// Organization filter state (platform admins only)
@@ -348,24 +363,32 @@ export function ROIReports() {
 		data: realSummary,
 		isLoading: summaryLoading,
 		error: summaryError,
+		refetch: refetchSummary,
+		isFetching: summaryFetching,
 	} = useROISummary(startDate, endDate, filterOrgId);
 
 	const {
 		data: realByWorkflow,
 		isLoading: workflowLoading,
 		error: workflowError,
+		refetch: refetchWorkflow,
+		isFetching: workflowFetching,
 	} = useROIByWorkflow(startDate, endDate, filterOrgId);
 
 	const {
 		data: realByOrg,
 		isLoading: orgLoading,
 		error: orgError,
+		refetch: refetchOrg,
+		isFetching: orgFetching,
 	} = useROIByOrganization(startDate, endDate);
 
 	const {
 		data: realTrends,
 		isLoading: trendsLoading,
 		error: trendsError,
+		refetch: refetchTrends,
+		isFetching: trendsFetching,
 	} = useROITrends(startDate, endDate, "day", filterOrgId);
 
 	// Use demo or real data based on toggle
@@ -437,15 +460,33 @@ export function ROIReports() {
 		}));
 	};
 
-	// Loading states (instant when using demo data)
-	const isLoading = showDemoData
-		? false
-		: summaryLoading || workflowLoading || orgLoading || trendsLoading;
-
-	// Handle errors (no errors in demo mode)
-	const hasError = showDemoData
-		? false
-		: !!(summaryError || workflowError || orgError || trendsError);
+	const failedSections = showDemoData
+		? []
+		: [
+				summaryError && "summary",
+				workflowError && "workflow breakdown",
+				isGlobalScope && orgError && "organization breakdown",
+				trendsError && "trend chart",
+			].filter(Boolean);
+	const hasError = failedSections.length > 0;
+	const retrying =
+		summaryFetching ||
+		workflowFetching ||
+		(isGlobalScope && orgFetching) ||
+		trendsFetching;
+	const summaryUnavailable = !showDemoData && !!summaryError && !summary;
+	const retryFailedSections = () => {
+		if (summaryError) void refetchSummary();
+		if (workflowError) void refetchWorkflow();
+		if (isGlobalScope && orgError) void refetchOrg();
+		if (trendsError) void refetchTrends();
+	};
+	const workflowHasData = Boolean(byWorkflow?.workflows?.length);
+	const workflowHasReadError = !showDemoData && Boolean(workflowError);
+	const orgHasData = Boolean(byOrg?.organizations?.length);
+	const orgHasReadError = !showDemoData && isGlobalScope && Boolean(orgError);
+	const trendHasData = Boolean(trends?.entries?.length);
+	const trendHasReadError = !showDemoData && Boolean(trendsError);
 
 	// CSV Export handlers
 	const downloadWorkflowCSV = () => {
@@ -464,14 +505,11 @@ export function ROIReports() {
 			w.total_value.toFixed(2),
 		]);
 
-		const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
-		const blob = new Blob([csv], { type: "text/csv" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `roi-by-workflow-${startDate}-${endDate}${showDemoData ? "-demo" : ""}.csv`;
-		a.click();
-		URL.revokeObjectURL(url);
+		downloadReportCSV(
+			`roi-by-workflow-${startDate}-${endDate}${showDemoData ? "-demo" : ""}.csv`,
+			headers,
+			rows,
+		);
 	};
 
 	const downloadOrganizationCSV = () => {
@@ -490,85 +528,64 @@ export function ROIReports() {
 			o.total_value.toFixed(2),
 		]);
 
-		const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
-		const blob = new Blob([csv], { type: "text/csv" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `roi-by-organization-${startDate}-${endDate}${showDemoData ? "-demo" : ""}.csv`;
-		a.click();
-		URL.revokeObjectURL(url);
+		downloadReportCSV(
+			`roi-by-organization-${startDate}-${endDate}${showDemoData ? "-demo" : ""}.csv`,
+			headers,
+			rows,
+		);
 	};
 
 	return (
-		<div className="space-y-6">
-			{/* Header */}
-			<div className="flex items-start justify-between">
-				<div>
-					<div className="flex items-center gap-3">
-						<h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-							ROI Reports
-						</h1>
-						{showDemoData && (
-							<Badge
-								variant="outline"
-								className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
-							>
-								<Sparkles className="h-3 w-3 mr-1" />
-								Demo Mode
-							</Badge>
-						)}
-					</div>
-					<p className="leading-7 mt-2 text-muted-foreground">
-						Workflow automation value and time savings analytics
-					</p>
-				</div>
+		<PageWorkspace className="mx-auto w-full max-w-[1440px] min-w-0">
+			<div className="shrink-0 space-y-4">
+				<ListPageHeader
+					title="ROI Reports"
+					description="Workflow automation value and time savings analytics"
+					actions={
+						isPlatformAdmin && (
+							<div className="flex min-h-11 flex-wrap items-center gap-3">
+								{showDemoData && (
+									<Badge variant="outline">Demo Mode</Badge>
+								)}
+								<Switch
+									id="demo-mode"
+									checked={showDemoData}
+									onCheckedChange={setShowDemoData}
+								/>
+								<Label
+									htmlFor="demo-mode"
+									className="flex min-h-11 cursor-pointer items-center text-sm text-muted-foreground"
+								>
+									Show Demo Data
+								</Label>
+							</div>
+						)
+					}
+				/>
 
-				{/* Demo Data Toggle - Only visible to platform admins */}
-				{isPlatformAdmin && (
-					<div className="flex items-center space-x-2 pt-2">
-						<Switch
-							id="demo-mode"
-							checked={showDemoData}
-							onCheckedChange={setShowDemoData}
-						/>
-						<Label
-							htmlFor="demo-mode"
-							className="text-sm text-muted-foreground cursor-pointer"
-						>
-							Show Demo Data
-						</Label>
-					</div>
+				{/* Demo Mode Banner */}
+				{showDemoData && (
+					<Alert className="rounded-[var(--bf-radius-surface)] border-border bg-muted/40">
+						<Sparkles className="h-4 w-4 text-muted-foreground" />
+						<AlertDescription className="text-muted-foreground">
+							Displaying sample data for demonstration purposes.
+							Toggle off to view real ROI data.
+						</AlertDescription>
+					</Alert>
 				)}
-			</div>
 
-			{/* Demo Mode Banner */}
-			{showDemoData && (
-				<Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800">
-					<Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-					<AlertDescription className="text-amber-800 dark:text-amber-200">
-						Displaying sample data for demonstration purposes.
-						Toggle off to view real ROI data.
-					</AlertDescription>
-				</Alert>
-			)}
-
-			{/* Date Range Picker and Organization Filter */}
-			<Card>
-				<CardHeader>
-					<CardTitle>Report Period</CardTitle>
-					<CardDescription>
-						Select a date range for the ROI report
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="flex items-center gap-4">
+				{/* Date Range Picker and Organization Filter */}
+				<section
+					aria-label="Report filters"
+					className="flex min-w-0 flex-wrap items-center gap-3 border-b pb-4"
+				>
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
 						<DateRangePicker
 							dateRange={dateRange}
 							onDateRangeChange={setDateRange}
 						/>
 						{isPlatformAdmin && (
-							<div className="w-64 ml-auto">
+							<div className="w-full sm:ml-auto sm:w-56">
 								<OrganizationSelect
 									value={filterOrgId}
 									onChange={setFilterOrgId}
@@ -579,367 +596,368 @@ export function ROIReports() {
 							</div>
 						)}
 					</div>
-				</CardContent>
-			</Card>
+				</section>
+			</div>
 
 			{/* Error Alert */}
-			{hasError && (
-				<Alert variant="destructive">
-					<AlertCircle className="h-4 w-4" />
-					<AlertDescription>
-						Failed to load ROI data. Please try again later.
-					</AlertDescription>
-				</Alert>
-			)}
+			<PageScrollArea className="space-y-6">
+				{hasError && (
+					<Alert variant="destructive">
+						<AlertCircle className="h-4 w-4" />
+						<AlertDescription className="flex flex-col items-start gap-3">
+							<span>
+								Could not update the {failedSections.join(", ")}
+								. Available data remains visible; values
+								retained from an earlier load may be out of
+								date.
+							</span>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={retrying}
+								onClick={retryFailedSections}
+							>
+								{retrying
+									? "Retrying…"
+									: "Retry failed sections"}
+							</Button>
+						</AlertDescription>
+					</Alert>
+				)}
 
-			{/* Summary Cards */}
-			<div className="grid gap-4 md:grid-cols-3">
-				{/* Total Executions */}
+				{/* Summary Cards */}
+				<div className="grid gap-4 md:grid-cols-3">
+					{/* Total Executions */}
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">
+								Total Executions
+							</CardTitle>
+							<TrendingUp className="h-4 w-4 text-muted-foreground" />
+						</CardHeader>
+						<CardContent>
+							{!showDemoData && summaryLoading ? (
+								<Skeleton className="h-8 w-24" />
+							) : (
+								<div className="font-mono text-2xl font-semibold tabular-nums [overflow-wrap:anywhere]">
+									{summaryUnavailable ? (
+										<span aria-label="Summary unavailable">
+											—
+										</span>
+									) : (
+										<>
+											{(
+												summary?.total_executions ?? 0
+											).toLocaleString()}
+										</>
+									)}
+								</div>
+							)}
+							<p className="text-xs text-muted-foreground">
+								Workflow runs in period
+							</p>
+						</CardContent>
+					</Card>
+
+					{/* Total Time Saved */}
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">
+								Total Time Saved
+							</CardTitle>
+							<Clock className="h-4 w-4 text-muted-foreground" />
+						</CardHeader>
+						<CardContent>
+							{!showDemoData && summaryLoading ? (
+								<Skeleton className="h-8 w-24" />
+							) : (
+								<div className="font-mono text-2xl font-semibold tabular-nums [overflow-wrap:anywhere]">
+									{summaryUnavailable ? (
+										<span aria-label="Summary unavailable">
+											—
+										</span>
+									) : (
+										<>
+											{summary
+												? (
+														summary.total_time_saved /
+														60
+													).toFixed(1)
+												: "0.0"}{" "}
+											hrs
+										</>
+									)}
+								</div>
+							)}
+							<p className="text-xs text-muted-foreground">
+								{summary?.time_saved_unit ?? "minutes"} saved by
+								automation
+							</p>
+						</CardContent>
+					</Card>
+
+					{/* Total Value */}
+					<Card>
+						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle className="text-sm font-medium">
+								Total Value
+							</CardTitle>
+							<DollarSign className="h-4 w-4 text-muted-foreground" />
+						</CardHeader>
+						<CardContent>
+							{!showDemoData && summaryLoading ? (
+								<Skeleton className="h-8 w-24" />
+							) : (
+								<div className="font-mono text-2xl font-semibold tabular-nums [overflow-wrap:anywhere]">
+									{summaryUnavailable ? (
+										<span aria-label="Summary unavailable">
+											—
+										</span>
+									) : (
+										<>
+											{(
+												summary?.total_value ?? 0
+											).toLocaleString("en-US", {
+												style: "currency",
+												currency: "USD",
+											})}
+										</>
+									)}
+								</div>
+							)}
+							<p className="text-xs text-muted-foreground">
+								{summary?.value_unit ?? "USD"} value delivered
+							</p>
+						</CardContent>
+					</Card>
+				</div>
+
+				{/* Trends Chart */}
 				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Executions
-						</CardTitle>
-						<TrendingUp className="h-4 w-4 text-muted-foreground" />
+					<CardHeader>
+						<CardTitle>ROI Over Time</CardTitle>
+						<CardDescription>
+							Time savings and value trends during the selected
+							period
+						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{isLoading || (!showDemoData && summaryLoading) ? (
-							<Skeleton className="h-8 w-24" />
+						{!showDemoData && trendsLoading ? (
+							<Skeleton className="h-[300px] w-full" />
 						) : (
-							<div className="text-2xl font-bold">
-								{(
-									summary?.total_executions ?? 0
-								).toLocaleString()}
-							</div>
-						)}
-						<p className="text-xs text-muted-foreground">
-							Workflow runs in period
-						</p>
-					</CardContent>
-				</Card>
-
-				{/* Total Time Saved */}
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Time Saved
-						</CardTitle>
-						<Clock className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						{isLoading || (!showDemoData && summaryLoading) ? (
-							<Skeleton className="h-8 w-24" />
-						) : (
-							<div className="text-2xl font-bold">
-								{summary
-									? (summary.total_time_saved / 60).toFixed(1)
-									: "0.0"}{" "}
-								hrs
-							</div>
-						)}
-						<p className="text-xs text-muted-foreground">
-							{summary?.time_saved_unit ?? "minutes"} saved by
-							automation
-						</p>
-					</CardContent>
-				</Card>
-
-				{/* Total Value */}
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-						<CardTitle className="text-sm font-medium">
-							Total Value
-						</CardTitle>
-						<DollarSign className="h-4 w-4 text-muted-foreground" />
-					</CardHeader>
-					<CardContent>
-						{isLoading || (!showDemoData && summaryLoading) ? (
-							<Skeleton className="h-8 w-24" />
-						) : (
-							<div className="text-2xl font-bold">
-								{(summary?.total_value ?? 0).toLocaleString(
-									"en-US",
-									{
-										style: "currency",
-										currency: "USD",
-									},
+							<div className="space-y-3">
+								{trendHasReadError && (
+									<ListLoadError
+										resource="ROI trend data"
+										hasCachedData={trendHasData}
+										isRetrying={trendsFetching}
+										onRetry={() => void refetchTrends()}
+									/>
+								)}
+								{trendHasData && trends ? (
+									<ResponsiveContainer
+										width="100%"
+										height={300}
+									>
+										<LineChart
+											data={trends.entries.map(
+												(entry) => ({
+													...entry,
+													time_saved_hours:
+														entry.time_saved / 60,
+												}),
+											)}
+										>
+											<CartesianGrid
+												strokeDasharray="3 3"
+												className="stroke-muted"
+											/>
+											<XAxis
+												minTickGap={24}
+												dataKey="period"
+												className="text-xs"
+												tick={{
+													fontSize: 12,
+													fill: "var(--muted-foreground)",
+												}}
+												tickLine={false}
+												axisLine={{
+													stroke: "var(--border)",
+												}}
+												tickFormatter={
+													formatChartDateTick
+												}
+											/>
+											<YAxis
+												width={wideChart ? 64 : 42}
+												yAxisId="left"
+												className="text-xs"
+												tick={{
+													fontSize: 12,
+													fill: "var(--muted-foreground)",
+												}}
+												tickLine={false}
+												axisLine={{
+													stroke: "var(--border)",
+												}}
+												label={
+													wideChart
+														? {
+																value: "Hours Saved",
+																angle: -90,
+																position:
+																	"insideLeft",
+																fontSize: 12,
+																fill: "var(--muted-foreground)",
+															}
+														: undefined
+												}
+											/>
+											<YAxis
+												width={wideChart ? 64 : 42}
+												yAxisId="right"
+												orientation="right"
+												tickFormatter={(
+													value: number,
+												) =>
+													new Intl.NumberFormat(
+														"en-US",
+														{
+															notation: "compact",
+															maximumFractionDigits: 1,
+														},
+													).format(value)
+												}
+												className="text-xs"
+												tick={{
+													fontSize: 12,
+													fill: "var(--muted-foreground)",
+												}}
+												tickLine={false}
+												axisLine={{
+													stroke: "var(--border)",
+												}}
+												label={
+													wideChart
+														? {
+																value: "Value",
+																angle: 90,
+																position:
+																	"insideRight",
+																fontSize: 12,
+																fill: "var(--muted-foreground)",
+															}
+														: undefined
+												}
+											/>
+											<Tooltip
+												contentStyle={{
+													backgroundColor:
+														"var(--popover)",
+													border: "1px solid var(--border)",
+													borderRadius:
+														"var(--bf-radius-surface)",
+													color: "var(--popover-foreground)",
+												}}
+												formatter={(value, name) => {
+													const num = Number(
+														value ?? 0,
+													);
+													if (
+														name ===
+														"time_saved_hours"
+													)
+														return [
+															`${num.toFixed(2)} hrs`,
+															"Time Saved",
+														];
+													if (name === "value")
+														return [
+															`${num.toFixed(2)} ${trends.value_unit}`,
+															"Value",
+														];
+													return [
+														value as
+															string | number,
+														name as string,
+													];
+												}}
+												labelFormatter={
+													formatChartDateLabel
+												}
+											/>
+											<Legend
+												formatter={(value) => {
+													if (
+														value ===
+														"time_saved_hours"
+													)
+														return "Time Saved (hours)";
+													if (value === "value")
+														return `Value (${trends.value_unit})`;
+													return value;
+												}}
+											/>
+											<Line
+												isAnimationActive={
+													!reducedMotion
+												}
+												animationDuration={220}
+												yAxisId="left"
+												type="monotone"
+												dataKey="time_saved_hours"
+												stroke="var(--primary)"
+												strokeWidth={2}
+												dot={false}
+												activeDot={{ r: 5 }}
+											/>
+											<Line
+												isAnimationActive={
+													!reducedMotion
+												}
+												animationDuration={220}
+												yAxisId="right"
+												type="monotone"
+												dataKey="value"
+												stroke="var(--bf-success)"
+												strokeDasharray="6 3"
+												strokeWidth={2}
+												dot={false}
+												activeDot={{ r: 5 }}
+											/>
+										</LineChart>
+									</ResponsiveContainer>
+								) : (
+									<div className="flex items-center justify-center h-[300px] rounded-[var(--bf-radius-surface)] border border-dashed border-border/70 px-4 text-center text-muted-foreground">
+										{trendHasReadError
+											? "Trend data could not be loaded. Retry failed sections above or use the section retry."
+											: "No trend data available for this period"}
+									</div>
 								)}
 							</div>
 						)}
-						<p className="text-xs text-muted-foreground">
-							{summary?.value_unit ?? "USD"} value delivered
-						</p>
 					</CardContent>
 				</Card>
-			</div>
 
-			{/* Trends Chart */}
-			<Card>
-				<CardHeader>
-					<CardTitle>ROI Over Time</CardTitle>
-					<CardDescription>
-						Time savings and value trends during the selected period
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					{isLoading || (!showDemoData && trendsLoading) ? (
-						<Skeleton className="h-[300px] w-full" />
-					) : trends?.entries && trends.entries.length > 0 ? (
-						<ResponsiveContainer width="100%" height={300}>
-							<LineChart
-								data={trends.entries.map((entry) => ({
-									...entry,
-									time_saved_hours: entry.time_saved / 60,
-								}))}
-							>
-								<CartesianGrid
-									strokeDasharray="3 3"
-									className="stroke-muted"
-								/>
-								<XAxis
-									dataKey="period"
-									className="text-xs"
-									tick={{ fontSize: 12 }}
-									tickFormatter={(value) =>
-										format(new Date(value), "MMM dd")
-									}
-								/>
-								<YAxis
-									yAxisId="left"
-									className="text-xs"
-									tick={{ fontSize: 12 }}
-									label={{
-										value: "Hours Saved",
-										angle: -90,
-										position: "insideLeft",
-										fontSize: 12,
-									}}
-								/>
-								<YAxis
-									yAxisId="right"
-									orientation="right"
-									className="text-xs"
-									tick={{ fontSize: 12 }}
-									label={{
-										value: "Value",
-										angle: 90,
-										position: "insideRight",
-										fontSize: 12,
-									}}
-								/>
-								<Tooltip
-									contentStyle={{
-										backgroundColor: "hsl(var(--card))",
-										border: "1px solid hsl(var(--border))",
-										borderRadius: "6px",
-									}}
-									formatter={(value, name) => {
-										const num = Number(value ?? 0);
-										if (name === "time_saved_hours")
-											return [
-												`${num.toFixed(2)} hrs`,
-												"Time Saved",
-											];
-										if (name === "value")
-											return [
-												`${num.toFixed(2)}`,
-												"Value",
-											];
-										return [value as string | number, name as string];
-									}}
-									labelFormatter={formatChartDateLabel}
-								/>
-								<Legend
-									formatter={(value) => {
-										if (value === "time_saved_hours")
-											return "Time Saved (hours)";
-										if (value === "value")
-											return `Value (${trends.value_unit})`;
-										return value;
-									}}
-								/>
-								<Line
-									yAxisId="left"
-									type="monotone"
-									dataKey="time_saved_hours"
-									stroke="hsl(var(--chart-1, 220 70% 50%))"
-									strokeWidth={2}
-									dot={{ r: 3 }}
-									activeDot={{ r: 5 }}
-								/>
-								<Line
-									yAxisId="right"
-									type="monotone"
-									dataKey="value"
-									stroke="hsl(var(--chart-2, 160 60% 45%))"
-									strokeWidth={2}
-									dot={{ r: 3 }}
-									activeDot={{ r: 5 }}
-								/>
-							</LineChart>
-						</ResponsiveContainer>
-					) : (
-						<div className="flex items-center justify-center h-[300px] text-muted-foreground">
-							No trend data available for this period
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Per-Workflow Table */}
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<CardTitle>ROI by Workflow</CardTitle>
-							<CardDescription>
-								Value delivered by each workflow
-							</CardDescription>
-						</div>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={downloadWorkflowCSV}
-							disabled={
-								!byWorkflow?.workflows ||
-								byWorkflow.workflows.length === 0
-							}
-						>
-							<Download className="h-4 w-4 mr-2" />
-							Export CSV
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent>
-					{isLoading || (!showDemoData && workflowLoading) ? (
-						<div className="space-y-2">
-							<Skeleton className="h-10 w-full" />
-							<Skeleton className="h-10 w-full" />
-							<Skeleton className="h-10 w-full" />
-						</div>
-					) : sortedWorkflows.length > 0 ? (
-						<DataTable>
-							<DataTableHeader>
-								<DataTableRow>
-									<DataTableHead
-										className="cursor-pointer select-none transition-colors hover:bg-muted/50"
-										onClick={() =>
-											toggleWorkflowSort("name")
-										}
-									>
-										<div className="flex items-center gap-1">
-											Workflow
-											{workflowSort.by === "name" &&
-												(workflowSort.dir === "desc" ? (
-													<ChevronDown className="h-4 w-4" />
-												) : (
-													<ChevronUp className="h-4 w-4" />
-												))}
-										</div>
-									</DataTableHead>
-									<DataTableHead
-										className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-										onClick={() =>
-											toggleWorkflowSort("executions")
-										}
-									>
-										<div className="flex items-center justify-end gap-1">
-											Executions
-											{workflowSort.by === "executions" &&
-												(workflowSort.dir === "desc" ? (
-													<ChevronDown className="h-4 w-4" />
-												) : (
-													<ChevronUp className="h-4 w-4" />
-												))}
-										</div>
-									</DataTableHead>
-									<DataTableHead
-										className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-										onClick={() =>
-											toggleWorkflowSort("time")
-										}
-									>
-										<div className="flex items-center justify-end gap-1">
-											Time Saved (hrs)
-											{workflowSort.by === "time" &&
-												(workflowSort.dir === "desc" ? (
-													<ChevronDown className="h-4 w-4" />
-												) : (
-													<ChevronUp className="h-4 w-4" />
-												))}
-										</div>
-									</DataTableHead>
-									<DataTableHead
-										className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-										onClick={() =>
-											toggleWorkflowSort("value")
-										}
-									>
-										<div className="flex items-center justify-end gap-1">
-											Value
-											{workflowSort.by === "value" &&
-												(workflowSort.dir === "desc" ? (
-													<ChevronDown className="h-4 w-4" />
-												) : (
-													<ChevronUp className="h-4 w-4" />
-												))}
-										</div>
-									</DataTableHead>
-								</DataTableRow>
-							</DataTableHeader>
-							<DataTableBody>
-								{sortedWorkflows.map((workflow) => (
-									<DataTableRow key={workflow.workflow_id}>
-										<DataTableCell className="font-medium">
-											{workflow.workflow_name}
-										</DataTableCell>
-										<DataTableCell className="text-right">
-											{workflow.execution_count.toLocaleString()}
-										</DataTableCell>
-										<DataTableCell className="text-right">
-											{(
-												workflow.total_time_saved / 60
-											).toFixed(2)}
-										</DataTableCell>
-										<DataTableCell className="text-right">
-											{workflow.total_value.toLocaleString(
-												"en-US",
-												{
-													style: "currency",
-													currency: "USD",
-												},
-											)}
-										</DataTableCell>
-									</DataTableRow>
-								))}
-							</DataTableBody>
-						</DataTable>
-					) : (
-						<div className="flex items-center justify-center py-8 text-muted-foreground">
-							No workflow data available for this period
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Per-Organization Table - Only shown in global scope */}
-			{isGlobalScope && (
+				{/* Per-Workflow Table */}
 				<Card>
 					<CardHeader>
-						<div className="flex items-center justify-between">
+						<div className="flex flex-wrap items-center justify-between gap-3">
 							<div>
-								<CardTitle>ROI by Organization</CardTitle>
+								<CardTitle>ROI by Workflow</CardTitle>
 								<CardDescription>
-									Value delivered to each organization
+									Value delivered by each workflow
 								</CardDescription>
 							</div>
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={downloadOrganizationCSV}
+								className="min-h-11 sm:min-h-8"
+								onClick={downloadWorkflowCSV}
 								disabled={
-									!byOrg?.organizations ||
-									byOrg.organizations.length === 0
+									!byWorkflow?.workflows ||
+									byWorkflow.workflows.length === 0
 								}
 							>
 								<Download className="h-4 w-4 mr-2" />
@@ -948,117 +966,535 @@ export function ROIReports() {
 						</div>
 					</CardHeader>
 					<CardContent>
-						{isLoading || (!showDemoData && orgLoading) ? (
+						{!showDemoData && workflowLoading ? (
 							<div className="space-y-2">
 								<Skeleton className="h-10 w-full" />
 								<Skeleton className="h-10 w-full" />
 								<Skeleton className="h-10 w-full" />
 							</div>
-						) : sortedOrganizations.length > 0 ? (
-							<DataTable>
-								<DataTableHeader>
-									<DataTableRow>
-										<DataTableHead
-											className="cursor-pointer select-none transition-colors hover:bg-muted/50"
-											onClick={() =>
-												toggleOrgSort("name")
-											}
-										>
-											<div className="flex items-center gap-1">
-												Organization
-												{orgSort.by === "name" &&
-													(orgSort.dir === "desc" ? (
-														<ChevronDown className="h-4 w-4" />
-													) : (
-														<ChevronUp className="h-4 w-4" />
-													))}
-											</div>
-										</DataTableHead>
-										<DataTableHead
-											className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-											onClick={() =>
-												toggleOrgSort("executions")
-											}
-										>
-											<div className="flex items-center justify-end gap-1">
-												Executions
-												{orgSort.by === "executions" &&
-													(orgSort.dir === "desc" ? (
-														<ChevronDown className="h-4 w-4" />
-													) : (
-														<ChevronUp className="h-4 w-4" />
-													))}
-											</div>
-										</DataTableHead>
-										<DataTableHead
-											className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-											onClick={() =>
-												toggleOrgSort("time")
-											}
-										>
-											<div className="flex items-center justify-end gap-1">
-												Time Saved (hrs)
-												{orgSort.by === "time" &&
-													(orgSort.dir === "desc" ? (
-														<ChevronDown className="h-4 w-4" />
-													) : (
-														<ChevronUp className="h-4 w-4" />
-													))}
-											</div>
-										</DataTableHead>
-										<DataTableHead
-											className="text-right cursor-pointer select-none transition-colors hover:bg-muted/50"
-											onClick={() =>
-												toggleOrgSort("value")
-											}
-										>
-											<div className="flex items-center justify-end gap-1">
-												Value
-												{orgSort.by === "value" &&
-													(orgSort.dir === "desc" ? (
-														<ChevronDown className="h-4 w-4" />
-													) : (
-														<ChevronUp className="h-4 w-4" />
-													))}
-											</div>
-										</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{sortedOrganizations.map((org) => (
-										<DataTableRow key={org.organization_id}>
-											<DataTableCell className="font-medium">
-												{org.organization_name}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												{org.execution_count.toLocaleString()}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												{(
-													org.total_time_saved / 60
-												).toFixed(2)}
-											</DataTableCell>
-											<DataTableCell className="text-right">
-												{org.total_value.toLocaleString(
-													"en-US",
-													{
-														style: "currency",
-														currency: "USD",
-													},
-												)}
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
 						) : (
-							<div className="flex items-center justify-center py-8 text-muted-foreground">
-								No organization data available for this period
+							<div className="space-y-3">
+								{workflowHasReadError && (
+									<ListLoadError
+										resource="workflow ROI"
+										hasCachedData={workflowHasData}
+										isRetrying={workflowFetching}
+										onRetry={() => void refetchWorkflow()}
+									/>
+								)}
+								{workflowHasData ? (
+									<>
+										<ReportRecordList
+											label="workflow ROI"
+											sort={workflowSort}
+											onSort={toggleWorkflowSort}
+											columns={[
+												{ key: "name", label: "Name" },
+												{
+													key: "executions",
+													label: "Executions",
+												},
+												{
+													key: "time",
+													label: "Time saved",
+												},
+												{
+													key: "value",
+													label: "Value",
+												},
+											]}
+											records={sortedWorkflows.map(
+												(workflow) => ({
+													id: workflow.workflow_id,
+													title: workflow.workflow_name,
+													metrics: [
+														{
+															label: "Value (USD)",
+															value: workflow.total_value.toLocaleString(
+																"en-US",
+																{
+																	style: "currency",
+																	currency:
+																		"USD",
+																},
+															),
+														},
+														{
+															label: "Time saved",
+															value: `${(workflow.total_time_saved / 60).toFixed(2)} hrs`,
+														},
+														{
+															label: "Executions",
+															value: workflow.execution_count.toLocaleString(),
+														},
+													],
+												}),
+											)}
+										/>
+										<DataTable className="hidden lg:flex">
+											<DataTableHeader>
+												<DataTableRow>
+													<DataTableHead
+														className="px-2"
+														aria-sort={
+															workflowSort.by ===
+															"name"
+																? workflowSort.dir ===
+																	"asc"
+																	? "ascending"
+																	: "descending"
+																: "none"
+														}
+													>
+														<button
+															type="button"
+															onClick={() =>
+																toggleWorkflowSort(
+																	"name",
+																)
+															}
+															className="flex items-center gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+														>
+															Workflow
+															{workflowSort.by ===
+																"name" &&
+																(workflowSort.dir ===
+																"desc" ? (
+																	<ChevronDown className="h-4 w-4" />
+																) : (
+																	<ChevronUp className="h-4 w-4" />
+																))}
+														</button>
+													</DataTableHead>
+													<DataTableHead
+														className="px-2 text-right"
+														aria-sort={
+															workflowSort.by ===
+															"executions"
+																? workflowSort.dir ===
+																	"asc"
+																	? "ascending"
+																	: "descending"
+																: "none"
+														}
+													>
+														<button
+															type="button"
+															onClick={() =>
+																toggleWorkflowSort(
+																	"executions",
+																)
+															}
+															className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+														>
+															Executions
+															{workflowSort.by ===
+																"executions" &&
+																(workflowSort.dir ===
+																"desc" ? (
+																	<ChevronDown className="h-4 w-4" />
+																) : (
+																	<ChevronUp className="h-4 w-4" />
+																))}
+														</button>
+													</DataTableHead>
+													<DataTableHead
+														className="px-2 text-right"
+														aria-sort={
+															workflowSort.by ===
+															"time"
+																? workflowSort.dir ===
+																	"asc"
+																	? "ascending"
+																	: "descending"
+																: "none"
+														}
+													>
+														<button
+															type="button"
+															onClick={() =>
+																toggleWorkflowSort(
+																	"time",
+																)
+															}
+															className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+														>
+															Time Saved (hrs)
+															{workflowSort.by ===
+																"time" &&
+																(workflowSort.dir ===
+																"desc" ? (
+																	<ChevronDown className="h-4 w-4" />
+																) : (
+																	<ChevronUp className="h-4 w-4" />
+																))}
+														</button>
+													</DataTableHead>
+													<DataTableHead
+														className="px-2 text-right"
+														aria-sort={
+															workflowSort.by ===
+															"value"
+																? workflowSort.dir ===
+																	"asc"
+																	? "ascending"
+																	: "descending"
+																: "none"
+														}
+													>
+														<button
+															type="button"
+															onClick={() =>
+																toggleWorkflowSort(
+																	"value",
+																)
+															}
+															className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+														>
+															Value
+															{workflowSort.by ===
+																"value" &&
+																(workflowSort.dir ===
+																"desc" ? (
+																	<ChevronDown className="h-4 w-4" />
+																) : (
+																	<ChevronUp className="h-4 w-4" />
+																))}
+														</button>
+													</DataTableHead>
+												</DataTableRow>
+											</DataTableHeader>
+											<DataTableBody>
+												{sortedWorkflows.map(
+													(workflow) => (
+														<DataTableRow
+															key={
+																workflow.workflow_id
+															}
+														>
+															<DataTableCell className="min-w-48 font-medium [overflow-wrap:anywhere]">
+																{
+																	workflow.workflow_name
+																}
+															</DataTableCell>
+															<DataTableCell className="text-right font-mono tabular-nums">
+																{workflow.execution_count.toLocaleString()}
+															</DataTableCell>
+															<DataTableCell className="text-right font-mono tabular-nums">
+																{(
+																	workflow.total_time_saved /
+																	60
+																).toFixed(2)}
+															</DataTableCell>
+															<DataTableCell className="text-right font-mono tabular-nums">
+																{workflow.total_value.toLocaleString(
+																	"en-US",
+																	{
+																		style: "currency",
+																		currency:
+																			"USD",
+																	},
+																)}
+															</DataTableCell>
+														</DataTableRow>
+													),
+												)}
+											</DataTableBody>
+										</DataTable>
+									</>
+								) : (
+									<div className="flex items-center justify-center rounded-[var(--bf-radius-surface)] border border-dashed border-border/70 px-4 py-8 text-center text-muted-foreground">
+										{workflowHasReadError
+											? "Workflow data could not be loaded. Retry failed sections above or use the section retry."
+											: "No workflow data available for this period"}
+									</div>
+								)}
 							</div>
 						)}
 					</CardContent>
 				</Card>
-			)}
-		</div>
+
+				{/* Per-Organization Table - Only shown in global scope */}
+				{isGlobalScope && (
+					<Card>
+						<CardHeader>
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<div>
+									<CardTitle>ROI by Organization</CardTitle>
+									<CardDescription>
+										Value delivered to each organization
+									</CardDescription>
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									className="min-h-11 sm:min-h-8"
+									onClick={downloadOrganizationCSV}
+									disabled={
+										!byOrg?.organizations ||
+										byOrg.organizations.length === 0
+									}
+								>
+									<Download className="h-4 w-4 mr-2" />
+									Export CSV
+								</Button>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{!showDemoData && orgLoading ? (
+								<div className="space-y-2">
+									<Skeleton className="h-10 w-full" />
+									<Skeleton className="h-10 w-full" />
+									<Skeleton className="h-10 w-full" />
+								</div>
+							) : (
+								<div className="space-y-3">
+									{orgHasReadError && (
+										<ListLoadError
+											resource="organization ROI"
+											hasCachedData={orgHasData}
+											isRetrying={orgFetching}
+											onRetry={() => void refetchOrg()}
+										/>
+									)}
+									{orgHasData ? (
+										<>
+											<ReportRecordList
+												label="organization ROI"
+												sort={orgSort}
+												onSort={toggleOrgSort}
+												columns={[
+													{
+														key: "name",
+														label: "Name",
+													},
+													{
+														key: "executions",
+														label: "Executions",
+													},
+													{
+														key: "time",
+														label: "Time saved",
+													},
+													{
+														key: "value",
+														label: "Value",
+													},
+												]}
+												records={sortedOrganizations.map(
+													(org) => ({
+														id: org.organization_id,
+														title: org.organization_name,
+														metrics: [
+															{
+																label: "Value (USD)",
+																value: org.total_value.toLocaleString(
+																	"en-US",
+																	{
+																		style: "currency",
+																		currency:
+																			"USD",
+																	},
+																),
+															},
+															{
+																label: "Time saved",
+																value: `${(org.total_time_saved / 60).toFixed(2)} hrs`,
+															},
+															{
+																label: "Executions",
+																value: org.execution_count.toLocaleString(),
+															},
+														],
+													}),
+												)}
+											/>
+											<DataTable className="hidden lg:flex">
+												<DataTableHeader>
+													<DataTableRow>
+														<DataTableHead
+															className="px-2"
+															aria-sort={
+																orgSort.by ===
+																"name"
+																	? orgSort.dir ===
+																		"asc"
+																		? "ascending"
+																		: "descending"
+																	: "none"
+															}
+														>
+															<button
+																type="button"
+																onClick={() =>
+																	toggleOrgSort(
+																		"name",
+																	)
+																}
+																className="flex items-center gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+															>
+																Organization
+																{orgSort.by ===
+																	"name" &&
+																	(orgSort.dir ===
+																	"desc" ? (
+																		<ChevronDown className="h-4 w-4" />
+																	) : (
+																		<ChevronUp className="h-4 w-4" />
+																	))}
+															</button>
+														</DataTableHead>
+														<DataTableHead
+															className="px-2 text-right"
+															aria-sort={
+																orgSort.by ===
+																"executions"
+																	? orgSort.dir ===
+																		"asc"
+																		? "ascending"
+																		: "descending"
+																	: "none"
+															}
+														>
+															<button
+																type="button"
+																onClick={() =>
+																	toggleOrgSort(
+																		"executions",
+																	)
+																}
+																className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+															>
+																Executions
+																{orgSort.by ===
+																	"executions" &&
+																	(orgSort.dir ===
+																	"desc" ? (
+																		<ChevronDown className="h-4 w-4" />
+																	) : (
+																		<ChevronUp className="h-4 w-4" />
+																	))}
+															</button>
+														</DataTableHead>
+														<DataTableHead
+															className="px-2 text-right"
+															aria-sort={
+																orgSort.by ===
+																"time"
+																	? orgSort.dir ===
+																		"asc"
+																		? "ascending"
+																		: "descending"
+																	: "none"
+															}
+														>
+															<button
+																type="button"
+																onClick={() =>
+																	toggleOrgSort(
+																		"time",
+																	)
+																}
+																className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+															>
+																Time Saved (hrs)
+																{orgSort.by ===
+																	"time" &&
+																	(orgSort.dir ===
+																	"desc" ? (
+																		<ChevronDown className="h-4 w-4" />
+																	) : (
+																		<ChevronUp className="h-4 w-4" />
+																	))}
+															</button>
+														</DataTableHead>
+														<DataTableHead
+															className="px-2 text-right"
+															aria-sort={
+																orgSort.by ===
+																"value"
+																	? orgSort.dir ===
+																		"asc"
+																		? "ascending"
+																		: "descending"
+																	: "none"
+															}
+														>
+															<button
+																type="button"
+																onClick={() =>
+																	toggleOrgSort(
+																		"value",
+																	)
+																}
+																className="flex items-center justify-end gap-1 min-h-11 w-full rounded-[var(--bf-radius-control)] px-2 text-inherit hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:min-h-10"
+															>
+																Value
+																{orgSort.by ===
+																	"value" &&
+																	(orgSort.dir ===
+																	"desc" ? (
+																		<ChevronDown className="h-4 w-4" />
+																	) : (
+																		<ChevronUp className="h-4 w-4" />
+																	))}
+															</button>
+														</DataTableHead>
+													</DataTableRow>
+												</DataTableHeader>
+												<DataTableBody>
+													{sortedOrganizations.map(
+														(org) => (
+															<DataTableRow
+																key={
+																	org.organization_id
+																}
+															>
+																<DataTableCell className="min-w-48 font-medium [overflow-wrap:anywhere]">
+																	{
+																		org.organization_name
+																	}
+																</DataTableCell>
+																<DataTableCell className="text-right font-mono tabular-nums">
+																	{org.execution_count.toLocaleString()}
+																</DataTableCell>
+																<DataTableCell className="text-right font-mono tabular-nums">
+																	{(
+																		org.total_time_saved /
+																		60
+																	).toFixed(
+																		2,
+																	)}
+																</DataTableCell>
+																<DataTableCell className="text-right font-mono tabular-nums">
+																	{org.total_value.toLocaleString(
+																		"en-US",
+																		{
+																			style: "currency",
+																			currency:
+																				"USD",
+																		},
+																	)}
+																</DataTableCell>
+															</DataTableRow>
+														),
+													)}
+												</DataTableBody>
+											</DataTable>
+										</>
+									) : (
+										<div className="flex items-center justify-center rounded-[var(--bf-radius-surface)] border border-dashed border-border/70 px-4 py-8 text-center text-muted-foreground">
+											{orgHasReadError
+												? "Organization data could not be loaded. Retry failed sections above or use the section retry."
+												: "No organization data available for this period"}
+										</div>
+									)}
+								</div>
+							)}
+						</CardContent>
+					</Card>
+				)}
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

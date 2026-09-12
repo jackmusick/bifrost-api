@@ -13,14 +13,16 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Sparkles, Loader2, CheckCircle, XCircle, PlayCircle } from "lucide-react";
+import { Loader2, PlayCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ChatComposer } from "@/components/ui/chat-composer";
+import { ChatBubble, ChatBubbleSlot } from "@/components/agents/ChatBubble";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
-type FlagConversationResponse = components["schemas"]["FlagConversationResponse"];
+type FlagConversationResponse =
+	components["schemas"]["FlagConversationResponse"];
 type ConversationMessage = FlagConversationResponse["messages"][number];
 type UserTurn = components["schemas"]["UserTurn"];
 type AssistantTurn = components["schemas"]["AssistantTurn"];
@@ -29,8 +31,9 @@ type DryRunTurn = components["schemas"]["DryRunTurn"];
 
 export interface FlagConversationProps {
 	conversation: FlagConversationResponse | null;
-	onSend: (text: string) => void;
+	onSend: (text: string) => void | Promise<void>;
 	pending?: boolean;
+	disabled?: boolean;
 	onTestAgainstRun?: () => void;
 }
 
@@ -38,6 +41,7 @@ export function FlagConversation({
 	conversation,
 	onSend,
 	pending = false,
+	disabled = false,
 	onTestAgainstRun,
 }: FlagConversationProps) {
 	const messages = conversation?.messages ?? [];
@@ -46,17 +50,24 @@ export function FlagConversation({
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (!el) return;
-		el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+		const reducedMotionQuery = window.matchMedia?.(
+			"(prefers-reduced-motion: reduce)",
+		);
+		const prefersReducedMotion = reducedMotionQuery?.matches ?? false;
+		el.scrollTo({
+			top: el.scrollHeight,
+			behavior: prefersReducedMotion ? "auto" : "smooth",
+		});
 	}, [messages.length, pending]);
 
 	return (
 		<div
-			className="flex h-full flex-col"
+			className="flex h-full min-h-0 flex-col"
 			data-slot="flag-conversation"
 		>
 			<div
 				ref={scrollRef}
-				className="flex-1 min-h-0 overflow-y-auto px-4 py-3.5"
+				className="flex-1 min-h-0 space-y-3 overflow-y-auto px-3 py-3 sm:px-4"
 			>
 				{messages.length === 0 ? (
 					<EmptyState />
@@ -70,26 +81,35 @@ export function FlagConversation({
 					))
 				)}
 				{pending ? (
-					<div className="mt-2 inline-flex items-center gap-2 rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground">
-						<Loader2 size={13} className="animate-spin" />
+					<div
+						role="status"
+						className="inline-flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30 px-3 text-xs leading-5 text-muted-foreground"
+					>
+						<Loader2
+							size={13}
+							className="animate-spin motion-reduce:animate-none"
+						/>
 						Thinking…
 					</div>
 				) : null}
 			</div>
-			<div className="border-t bg-muted/40 p-3">
+			<fieldset
+				disabled={disabled}
+				className="border-t border-border/70 bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/90"
+			>
 				<ChatComposer
 					placeholder="What should it have done?"
 					onSend={onSend}
 					pending={pending}
 				/>
-			</div>
+			</fieldset>
 		</div>
 	);
 }
 
 function EmptyState() {
 	return (
-		<div className="rounded-2xl bg-muted/60 px-3.5 py-3 text-sm text-muted-foreground">
+		<div className="rounded-[var(--bf-radius-surface)] border border-dashed border-border/70 bg-muted/20 px-4 py-3 text-sm leading-6 text-muted-foreground">
 			Flag this run and tell me what went wrong. I&apos;ll help diagnose
 			and propose a change — nothing touches the live prompt until you
 			decide to tune.
@@ -126,33 +146,21 @@ function Bubble({
 
 function UserBubble({ msg }: { msg: UserTurn }) {
 	return (
-		<div className="mt-2 flex justify-end" data-bubble-kind="user">
-			<div className="max-w-[92%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground whitespace-pre-wrap break-words">
-				{msg.content}
-			</div>
-		</div>
-	);
-}
-
-function AvatarBadge() {
-	return (
-		<div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-purple-500 text-[#0b0d10]">
-			<Sparkles size={11} />
-		</div>
+		<ChatBubble kind="user" className="mt-1" data-bubble-kind="user">
+			{msg.content}
+		</ChatBubble>
 	);
 }
 
 function AssistantBubble({ msg }: { msg: AssistantTurn }) {
 	return (
-		<div
-			className="mt-2 flex items-start gap-2"
+		<ChatBubble
+			kind="assistant"
+			className="mt-1"
 			data-bubble-kind="assistant"
 		>
-			<AvatarBadge />
-			<div className="max-w-[92%] rounded-2xl bg-muted px-3.5 py-2 text-sm whitespace-pre-wrap break-words">
-				{msg.content}
-			</div>
-		</div>
+			{msg.content}
+		</ChatBubble>
 	);
 }
 
@@ -164,111 +172,115 @@ function ProposalBubble({
 	onTestAgainstRun?: () => void;
 }) {
 	return (
-		<div
-			className="mt-2 flex items-start gap-2"
+		<ChatBubble
+			kind="assistant"
+			className="mt-1"
 			data-bubble-kind="proposal"
-		>
-			<AvatarBadge />
-			<div className="flex-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3.5 py-2.5">
-				<div className="mb-2 text-xs font-medium text-primary">
-					Proposed change
-				</div>
-				<div className="mb-2.5 text-sm text-muted-foreground">
-					{msg.summary}
-				</div>
-				<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap">
-					{msg.diff.map((d, i) => (
-						<div
-							key={i}
-							className={cn(
-								"my-0.5 rounded px-1",
-								d.op === "add" &&
-									"bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-								d.op === "remove" &&
-									"bg-rose-500/10 text-rose-700 dark:text-rose-400",
-								d.op === "keep" && "text-muted-foreground",
-							)}
-						>
-							<span className="mr-1 opacity-50">
-								{d.op === "add"
-									? "+"
-									: d.op === "remove"
-										? "−"
-										: " "}
-							</span>
-							{d.text}
+			slots={
+				<ChatBubbleSlot title="Proposed change">
+					<div className="space-y-3">
+						<div className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+							{msg.summary}
 						</div>
-					))}
-				</div>
-				{onTestAgainstRun ? (
-					<div className="mt-2.5 flex items-center gap-2">
-						<Button type="button" size="xs" onClick={onTestAgainstRun}>
-							<PlayCircle size={12} /> Test against this run
-						</Button>
-						<span className="text-[11.5px] text-muted-foreground">
-							Sandbox · nothing is applied live
-						</span>
+						<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3 font-mono text-xs leading-6 text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]">
+							{msg.diff.map((d, i) => (
+								<div
+									key={i}
+									className={cn(
+										"flex gap-2 rounded px-1 py-0.5",
+										d.op === "add" &&
+											"bg-[var(--bf-success-soft)] text-[var(--bf-success)]",
+										d.op === "remove" &&
+											"bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]",
+										d.op === "keep" &&
+											"text-muted-foreground",
+									)}
+								>
+									<span
+										aria-hidden="true"
+										className="shrink-0 opacity-70"
+									>
+										{d.op === "add"
+											? "+"
+											: d.op === "remove"
+												? "−"
+												: " "}
+									</span>
+									<span className="min-w-0 flex-1">
+										{d.text}
+									</span>
+								</div>
+							))}
+						</div>
+						{onTestAgainstRun ? (
+							<div className="flex flex-wrap items-center gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									onClick={onTestAgainstRun}
+									className="min-h-11"
+								>
+									<PlayCircle size={12} />
+									Test against this run
+								</Button>
+								<span className="text-xs leading-5 text-muted-foreground">
+									Sandbox
+								</span>
+							</div>
+						) : null}
 					</div>
-				) : null}
-			</div>
-		</div>
+				</ChatBubbleSlot>
+			}
+		>
+			{null}
+		</ChatBubble>
 	);
 }
 
 function DryRunBubble({ msg }: { msg: DryRunTurn }) {
 	const passed = msg.predicted === "up";
 	return (
-		<div
-			className="mt-2 flex items-start gap-2"
+		<ChatBubble
+			kind="assistant"
+			className="mt-1"
 			data-bubble-kind="dryrun"
-		>
-			<div
-				className={cn(
-					"mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
-					passed
-						? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-						: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400",
-				)}
-			>
-				{passed ? <CheckCircle size={11} /> : <XCircle size={11} />}
-			</div>
-			<div className="flex-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 px-3.5 py-2.5">
-				<div
-					className={cn(
-						"mb-2 text-xs font-medium",
-						passed
-							? "text-emerald-600 dark:text-emerald-400"
-							: "text-yellow-600 dark:text-yellow-400",
-					)}
+			slots={
+				<ChatBubbleSlot
+					title={passed ? "Dry-run passed" : "Dry-run still wrong"}
+					titleTone={passed ? "emerald" : "yellow"}
 				>
-					{passed ? "Dry-run passed" : "Dry-run still wrong"}
-				</div>
-				<div className="grid grid-cols-2 gap-2">
-					<div>
-						<div className="mb-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-							Before
+					<div className="grid gap-2 sm:grid-cols-2">
+						<div className="space-y-1">
+							<div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+								Before
+							</div>
+							<div className="min-h-11 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 px-3 py-2 text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
+								{msg.before}
+							</div>
 						</div>
-						<div className="rounded-md bg-rose-500/10 px-2 py-1.5 text-xs">
-							{msg.before}
+						<div className="space-y-1">
+							<div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+								After
+							</div>
+							<div
+								className={cn(
+									"min-h-11 rounded-[var(--bf-radius-surface)] border px-3 py-2 text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]",
+									passed
+										? "border-[var(--bf-success)]/20 bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+										: "border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]",
+								)}
+							>
+								{msg.after}
+							</div>
 						</div>
 					</div>
-					<div>
-						<div className="mb-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-							After
-						</div>
-						<div
-							className={cn(
-								"rounded-md px-2 py-1.5 text-xs",
-								passed
-									? "bg-emerald-500/10"
-									: "bg-yellow-500/10",
-							)}
-						>
-							{msg.after}
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+				</ChatBubbleSlot>
+			}
+		>
+			{passed
+				? "Prediction matched the run."
+				: "Prediction still disagreed with the run."}
+		</ChatBubble>
 	);
 }

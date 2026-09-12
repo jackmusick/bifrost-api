@@ -1,19 +1,19 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useUsersFiltered } from "@/hooks/useUsers";
-import {
-	testAllActions,
-	type FileAccessTestResult,
-	type FilePolicyAction,
-} from "@/services/filePolicies";
+import { testAllActions, type FilePolicyAction } from "@/services/filePolicies";
 import { InlineLoader } from "./InlineLoader";
 
 interface TestAccessModalProps {
@@ -22,112 +22,254 @@ interface TestAccessModalProps {
 	location: string;
 	scope: string | null;
 	path: string;
+	scopeLabel?: string;
+}
+
+export interface TestAccessPanelProps {
+	location: string;
+	scope: string | null;
+	path: string;
+	scopeLabel?: string;
+	onOpenChange?: (open: boolean) => void;
 }
 
 const ACTIONS: FilePolicyAction[] = ["read", "write", "delete", "list"];
 
-export function TestAccessModal({
-	open,
-	onOpenChange,
+function formatScope(scope: string | null) {
+	return !scope || scope === "global" ? "Global" : scope;
+}
+
+function formatPath(path: string) {
+	return path || "Share root";
+}
+
+function readableRuleName(name: string) {
+	if (name === "admin_bypass") return "Administrator Access";
+	return name
+		.split(/[_-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
+function formatAllowedReason(result: {
+	matchedRule?: string | null;
+	matchedPolicy?: string | null;
+}) {
+	if (result.matchedRule === "allowing rule")
+		return "Allowed by the matching policy rule.";
+	if (result.matchedRule) {
+		return `Allowed by ${readableRuleName(result.matchedRule)}.`;
+	}
+	if (result.matchedPolicy) {
+		return `Allowed by policy ${result.matchedPolicy}.`;
+	}
+	return "Access granted by the applicable policy.";
+}
+
+function TestAccessSession({
 	location,
 	scope,
 	path,
-}: TestAccessModalProps) {
-	// List ALL users (admin-only modal): an admin tests any principal against
-	// this path regardless of the share's scope. The backend resolves the
-	// picked user's real org/roles when evaluating access. Scoping the list to
-	// the share's org would hide valid principals (e.g. every user in Global).
-	const { data: users } = useUsersFiltered(undefined);
+	scopeLabel,
+	onOpenChange,
+}: TestAccessPanelProps) {
+	// This admin tool must include principals outside the share's scope. The
+	// backend resolves the selected user's actual organization and roles.
+	const usersQuery = useUsersFiltered(undefined);
 	const [userId, setUserId] = useState("");
-	const [results, setResults] = useState<Record<
-		FilePolicyAction,
-		FileAccessTestResult
-	> | null>(null);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
 	const options = useMemo(
 		() =>
-			(users ?? []).map((u) => ({
-				value: u.id,
-				label: u.name ? `${u.name} (${u.email})` : u.email,
+			(usersQuery.data ?? []).map((user) => ({
+				value: user.id,
+				label: user.name ? `${user.name} (${user.email})` : user.email,
 			})),
-		[users],
+		[usersQuery.data],
 	);
-
-	async function runForUser(nextUserId: string) {
-		setUserId(nextUserId);
-		if (!nextUserId) return;
-		setLoading(true);
-		setError(null);
-		try {
-			const next = await testAllActions({
-				location,
-				path,
-				scope,
-				userId: nextUserId,
-			});
-			setResults(next);
-		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
-			setResults(null);
-		} finally {
-			setLoading(false);
-		}
-	}
+	const access = useQuery({
+		queryKey: ["file-access-test", location, scope, path, userId],
+		queryFn: () => testAllActions({ location, scope, path, userId }),
+		enabled: !!userId,
+		retry: false,
+		gcTime: 0,
+	});
+	const results =
+		userId && !access.isFetching && !access.isError
+			? access.data
+			: undefined;
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-h-[90vh] gap-4 overflow-auto sm:max-w-lg">
-				<DialogHeader>
-					<DialogTitle>Test access</DialogTitle>
-				</DialogHeader>
-				<div className="space-y-1">
-					<Label>Location</Label>
-					<p className="rounded-md border bg-muted/30 px-2 py-1 text-sm">
-						<span className="font-mono">
-							{location}:{scope ?? "global"}:{path}
-						</span>
-					</p>
+		<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+			<div className="shrink-0 space-y-2 border-b border-border/70 p-4">
+				{onOpenChange && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="-ml-2 min-h-11 justify-start px-2 text-xs text-muted-foreground"
+						onClick={() => onOpenChange(false)}
+					>
+						<ArrowLeft className="size-4" />
+						Back to Access
+					</Button>
+				)}
+				<div className="flex min-h-6 items-center gap-2">
+					<FlaskConical className="size-4 shrink-0 text-primary" />
+					<h2 className="text-sm font-semibold">Test Access</h2>
 				</div>
-				<div className="space-y-1">
+				<p className="text-sm text-muted-foreground">
+					Choose a user to see the policy decision for each file
+					action.
+				</p>
+				<p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+					<span className="font-medium text-foreground">
+						{location}
+					</span>
+					{" / "}
+					<span className="font-mono">{formatPath(path)}</span>
+					{" / "}
+					{scopeLabel ?? formatScope(scope)}
+				</p>
+			</div>
+			<div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+				<div className="space-y-2">
 					<Label htmlFor="test-access-user">User</Label>
 					<Combobox
+						id="test-access-user"
+						className="min-h-11"
 						options={options}
 						value={userId}
-						onValueChange={(value) => void runForUser(value)}
+						onValueChange={setUserId}
 						placeholder="Select a user…"
+						searchPlaceholder="Search users…"
+						emptyText="No matching users."
+						isLoading={usersQuery.isLoading}
+						disabled={!options.length}
 					/>
+					{usersQuery.isError && (
+						<div role="alert" className="space-y-2 text-sm">
+							<p className="text-destructive">
+								Couldn’t load users.
+								{options.length
+									? " Showing the last loaded users."
+									: ""}
+							</p>
+							<Button
+								variant="outline"
+								className="min-h-11"
+								disabled={usersQuery.isFetching}
+								onClick={() => void usersQuery.refetch()}
+							>
+								Retry Users
+							</Button>
+						</div>
+					)}
+					{!usersQuery.isLoading &&
+						!usersQuery.isError &&
+						options.length === 0 && (
+							<p className="text-sm text-muted-foreground">
+								No users are available to test.
+							</p>
+						)}
 				</div>
-				{error && <p className="text-xs text-destructive">{error}</p>}
-				{loading && (
+				{!userId && options.length > 0 && (
+					<p className="text-sm text-muted-foreground">
+						Select a user to check read, write, delete, and list
+						access.
+					</p>
+				)}
+				{!!userId && access.isFetching && (
 					<InlineLoader label="Resolving access…" />
 				)}
+				{!!userId && access.isError && (
+					<div role="alert" className="space-y-2 text-sm">
+						<p className="text-destructive">
+							Couldn’t test access. No access decision was
+							returned.
+						</p>
+						<Button
+							variant="outline"
+							className="min-h-11"
+							disabled={access.isFetching}
+							onClick={() => void access.refetch()}
+						>
+							Retry Test
+						</Button>
+					</div>
+				)}
 				{results && (
-					<ul className="space-y-1">
+					<ul aria-label="Access test results" className="space-y-3">
 						{ACTIONS.map((action) => {
-							const r = results[action];
+							const result = results[action];
 							return (
 								<li
 									key={action}
-									className="flex items-center justify-between rounded-md border px-2 py-1 text-xs"
+									className="space-y-2 rounded-[var(--bf-radius-surface)] border p-3 text-sm"
 								>
-									<span className="font-medium">{action}</span>
-									<div className="flex items-center gap-2">
-										<span className="text-muted-foreground">
-											{r.allowed
-												? (r.matchedRule ?? r.matchedPolicy ?? "")
-												: (r.denialReason ?? "no matching rule")}
+									<div className="flex items-center justify-between gap-3">
+										<span className="font-medium capitalize">
+											{action}
 										</span>
-										<Badge variant={r.allowed ? "secondary" : "destructive"}>
-											{r.allowed ? "Allowed" : "Denied"}
+										<Badge
+											className={
+												result.allowed
+													? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+													: undefined
+											}
+											variant={
+												result.allowed
+													? "secondary"
+													: "destructive"
+											}
+										>
+											{result.allowed
+												? "Allowed"
+												: "Denied"}
 										</Badge>
 									</div>
+									<p className="text-muted-foreground [overflow-wrap:anywhere]">
+										{result.allowed
+											? formatAllowedReason(result)
+											: (result.denialReason ??
+												"No matching rule.")}
+									</p>
 								</li>
 							);
 						})}
 					</ul>
 				)}
+			</div>
+		</section>
+	);
+}
+
+export function TestAccessPanel(props: TestAccessPanelProps) {
+	return (
+		<TestAccessSession
+			key={JSON.stringify([props.location, props.scope, props.path])}
+			{...props}
+		/>
+	);
+}
+
+export function TestAccessModal(props: TestAccessModalProps) {
+	if (!props.open) return null;
+	return (
+		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg [&_[data-slot=dialog-header]]:pr-16">
+				<DialogHeader className="sr-only">
+					<DialogTitle>Test Access</DialogTitle>
+					<DialogDescription>
+						Check what a user can do with this file or folder.
+					</DialogDescription>
+				</DialogHeader>
+				<TestAccessPanel
+					location={props.location}
+					scope={props.scope}
+					path={props.path}
+					scopeLabel={props.scopeLabel}
+					onOpenChange={props.onOpenChange}
+				/>
 			</DialogContent>
 		</Dialog>
 	);

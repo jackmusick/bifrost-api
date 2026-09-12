@@ -6,18 +6,13 @@
  * back on click and surface in the active-filter chip.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { WorkflowSidebar } from "./WorkflowSidebar";
 
-vi.mock("@/lib/api-client", () => ({
-	$api: {
-		useQuery: () => ({
-			data: { forms: [], apps: [], agents: [] },
-			isLoading: false,
-		}),
-	},
-}));
+const query = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api-client", () => ({ $api: { useQuery: () => query() } }));
+beforeEach(() => query.mockReturnValue({ data: { forms: [], apps: [], agents: [] }, isLoading: false }));
 
 function renderSidebar(overrides: Record<string, unknown> = {}) {
 	const onCategorySelect = vi.fn();
@@ -86,4 +81,14 @@ describe("WorkflowSidebar — Orphaned filter", () => {
 		expect(onOrphanedFilterChange).toHaveBeenCalledWith(false);
 		expect(onEndpointFilterChange).toHaveBeenCalledWith(false);
 	});
+});
+
+it("shows usage-query recovery without claiming no entities exist", async () => {
+	const refetch = vi.fn();
+	query.mockReturnValue({ isError: true, isLoading: false, refetch });
+	const { user } = renderSidebar();
+	expect(screen.getByRole("alert")).toHaveTextContent("Could not load workflow usage filters.");
+	expect(screen.queryByText(/No forms found/i)).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry usage filters" }));
+	expect(refetch).toHaveBeenCalledOnce();
 });

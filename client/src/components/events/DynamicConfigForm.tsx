@@ -11,10 +11,10 @@
  * - Falls back to text input on error or for manual entry
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Select,
@@ -39,11 +39,6 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/api-error";
 import { useDynamicValues } from "@/services/events";
@@ -85,41 +80,62 @@ function FieldLabel({
 	title,
 	isRequired,
 	help,
+	largeTarget = false,
 }: {
 	htmlFor?: string;
 	title: string;
 	isRequired?: boolean;
 	help?: HelpSpec;
+	largeTarget?: boolean;
 }) {
 	return (
-		<div className="flex items-center gap-1.5">
-			<Label htmlFor={htmlFor}>
+		<div className="flex min-w-0 items-center gap-1.5">
+			<Label
+				htmlFor={htmlFor}
+				className={cn(
+					"min-w-0 flex-wrap leading-6 [overflow-wrap:anywhere]",
+					largeTarget && "min-h-11 cursor-pointer",
+				)}
+			>
 				{title}
-				{isRequired && <span className="text-destructive"> *</span>}
+				{isRequired && (
+					<span className="text-destructive" aria-hidden="true">
+						{" "}
+						*
+					</span>
+				)}
+				{isRequired && <span className="sr-only"> (required)</span>}
 			</Label>
 			{help && (
-				<Tooltip>
-					<TooltipTrigger asChild>
-						<button
+				<Popover>
+					<PopoverTrigger asChild>
+						<Button
 							type="button"
-							className="text-muted-foreground hover:text-foreground transition-colors"
-							onClick={(e) => e.preventDefault()}
+							variant="ghost"
+							className="size-11 shrink-0 p-0"
+							aria-label={`Help for ${title}`}
 						>
-							<Info className="h-3.5 w-3.5" />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent
-						side="right"
-						className="max-w-xs text-left space-y-2 p-3"
+							<Info className="size-4" />
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent
+						align="start"
+						collisionPadding={16}
+						className="max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-2rem)] space-y-3 overflow-auto text-sm leading-6 [overflow-wrap:anywhere]"
+						aria-label={`Help for ${title}`}
 					>
 						<p>{help.text}</p>
 						{help.code && (
-							<pre className="bg-background/20 rounded-md px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
+							<pre
+								tabIndex={0}
+								aria-label={`${title} example`}
+								className="max-h-60 overflow-auto whitespace-pre-wrap rounded-[var(--bf-radius-surface)] border bg-muted p-3 font-mono text-sm leading-6 [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							>
 								{help.code}
 							</pre>
 						)}
-					</TooltipContent>
-				</Tooltip>
+					</PopoverContent>
+				</Popover>
 			)}
 		</div>
 	);
@@ -186,6 +202,33 @@ function buildDependencyOrder(
 	return result;
 }
 
+function hasConfigValue(value: unknown) {
+	return value !== undefined && value !== null && value !== "";
+}
+
+/** Remove downstream selections when their option source changes. */
+function clearDependentValues(
+	config: Record<string, unknown>,
+	properties: Record<string, SchemaProperty>,
+	changedField: string,
+) {
+	const visited = new Set([changedField]);
+	const pending = [changedField];
+	while (pending.length) {
+		const parent = pending.shift()!;
+		for (const [field, property] of Object.entries(properties)) {
+			if (
+				!visited.has(field) &&
+				property["x-dynamic-values"]?.depends_on?.includes(parent)
+			) {
+				visited.add(field);
+				pending.push(field);
+				delete config[field];
+			}
+		}
+	}
+}
+
 /**
  * Dynamic field component that handles x-dynamic-values
  */
@@ -212,6 +255,8 @@ function DynamicField({
 	onChange: (value: unknown) => void;
 	isRequired: boolean;
 }) {
+	const fieldId = useId();
+	const descriptionId = `${fieldId}-description`;
 	const [manualMode, setManualMode] = useState(false);
 	const [open, setOpen] = useState(false);
 
@@ -221,9 +266,8 @@ function DynamicField({
 	// Check if dependencies are satisfied
 	const dependenciesSatisfied = useMemo(() => {
 		if (!dynamicSpec?.depends_on?.length) return true;
-		return dynamicSpec.depends_on.every(
-			(dep) =>
-				currentConfig[dep] !== undefined && currentConfig[dep] !== "",
+		return dynamicSpec.depends_on.every((dep) =>
+			hasConfigValue(currentConfig[dep]),
 		);
 	}, [dynamicSpec, currentConfig]);
 
@@ -252,10 +296,11 @@ function DynamicField({
 
 	// Handle array enum types (like change_types)
 	if (property.type === "array" && property.items?.enum) {
-		const arrayValue = (value as string[]) || property.default || [];
+		const arrayValue =
+			(value as string[] | undefined) ?? property.default ?? [];
 
 		return (
-			<div className="space-y-2">
+			<div className="min-w-0 space-y-2">
 				<FieldLabel
 					title={property.title || fieldName}
 					isRequired={isRequired}
@@ -264,19 +309,26 @@ function DynamicField({
 				<ToggleGroup
 					type="multiple"
 					value={arrayValue as string[]}
-					onValueChange={(val) =>
-						onChange(val.length > 0 ? val : undefined)
-					}
-					className="justify-start flex-wrap"
+					onValueChange={onChange}
+					aria-label={property.title || fieldName}
+					className="max-w-full flex-wrap justify-start gap-2"
 				>
 					{property.items.enum.map((option) => (
-						<ToggleGroupItem key={option} value={option} size="sm">
+						<ToggleGroupItem
+							key={option}
+							value={option}
+							size="sm"
+							className="h-auto min-h-11 max-w-full whitespace-normal py-2 [overflow-wrap:anywhere]"
+						>
 							{option}
 						</ToggleGroupItem>
 					))}
 				</ToggleGroup>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">
+					<p
+						id={descriptionId}
+						className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+					>
 						{property.description}
 					</p>
 				)}
@@ -289,44 +341,28 @@ function DynamicField({
 		const boolValue = value !== undefined ? !!value : !!property.default;
 
 		return (
-			<div className="flex items-start space-x-3">
-				<Checkbox
-					id={fieldName}
+			<div className="flex min-w-0 items-start gap-3">
+				<Switch
+					className="mt-3 shrink-0"
+					aria-describedby={
+						property.description ? descriptionId : undefined
+					}
+					id={fieldId}
 					checked={boolValue}
 					onCheckedChange={(checked) => onChange(checked)}
 				/>
-				<div className="space-y-1">
-					<div className="flex items-center gap-1.5">
-						<Label htmlFor={fieldName} className="cursor-pointer">
-							{property.title || fieldName}
-						</Label>
-						{help && (
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<button
-										type="button"
-										className="text-muted-foreground hover:text-foreground transition-colors"
-										onClick={(e) => e.preventDefault()}
-									>
-										<Info className="h-3.5 w-3.5" />
-									</button>
-								</TooltipTrigger>
-								<TooltipContent
-									side="right"
-									className="max-w-xs text-left space-y-2 p-3"
-								>
-									<p>{help.text}</p>
-									{help.code && (
-										<pre className="bg-background/20 rounded-md px-2 py-1 text-[10px] font-mono whitespace-pre overflow-x-auto">
-											{help.code}
-										</pre>
-									)}
-								</TooltipContent>
-							</Tooltip>
-						)}
-					</div>
+				<div className="min-w-0 space-y-1">
+					<FieldLabel
+						htmlFor={fieldId}
+						title={property.title || fieldName}
+						help={help}
+						largeTarget
+					/>
 					{property.description && (
-						<p className="text-xs text-muted-foreground">
+						<p
+							id={descriptionId}
+							className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+						>
 							{property.description}
 						</p>
 					)}
@@ -338,32 +374,46 @@ function DynamicField({
 	// Handle static enum type
 	if (property.enum && !dynamicSpec) {
 		return (
-			<div className="space-y-2">
+			<div className="min-w-0 space-y-2">
 				<FieldLabel
-					htmlFor={fieldName}
+					htmlFor={fieldId}
 					title={property.title || fieldName}
 					isRequired={isRequired}
 					help={help}
 				/>
 				<Select
-					value={(value as string) || ""}
+					value={(value as string) ?? ""}
 					onValueChange={(val) => onChange(val || undefined)}
 				>
-					<SelectTrigger id={fieldName} className="w-full">
+					<SelectTrigger
+						aria-required={isRequired}
+						id={fieldId}
+						aria-describedby={
+							property.description ? descriptionId : undefined
+						}
+						className="min-h-11 w-full data-[size=default]:h-auto py-2 [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:text-left [&_[data-slot=select-value]]:[overflow-wrap:anywhere]"
+					>
 						<SelectValue
 							placeholder={`Select ${property.title || fieldName}...`}
 						/>
 					</SelectTrigger>
 					<SelectContent>
 						{property.enum.map((option) => (
-							<SelectItem key={option} value={option}>
+							<SelectItem
+								key={option}
+								value={option}
+								className="min-h-11 [overflow-wrap:anywhere]"
+							>
 								{option}
 							</SelectItem>
 						))}
 					</SelectContent>
 				</Select>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">
+					<p
+						id={descriptionId}
+						className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+					>
 						{property.description}
 					</p>
 				)}
@@ -376,20 +426,28 @@ function DynamicField({
 		// Show dependency message if not satisfied
 		if (!dependenciesSatisfied) {
 			return (
-				<div className="space-y-2">
+				<div className="min-w-0 space-y-2">
 					<FieldLabel
-						htmlFor={fieldName}
+						htmlFor={fieldId}
 						title={property.title || fieldName}
 						isRequired={isRequired}
 						help={help}
 					/>
 					<Input
-						id={fieldName}
+						aria-required={isRequired}
+						aria-describedby={
+							property.description ? descriptionId : undefined
+						}
+						id={fieldId}
+						className="min-h-11"
 						disabled
 						placeholder={`Select ${dynamicSpec.depends_on.join(", ")} first...`}
 					/>
 					{property.description && (
-						<p className="text-xs text-muted-foreground">
+						<p
+							id={descriptionId}
+							className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+						>
 							{property.description}
 						</p>
 					)}
@@ -400,12 +458,12 @@ function DynamicField({
 		// Show loading state
 		if (isLoading) {
 			return (
-				<div className="space-y-2">
+				<div className="min-w-0 space-y-2">
 					<FieldLabel
 						title={property.title || fieldName}
 						help={help}
 					/>
-					<Skeleton className="h-10 w-full" />
+					<Skeleton className="h-11 w-full" />
 				</div>
 			);
 		}
@@ -413,28 +471,34 @@ function DynamicField({
 		// Show error with manual fallback
 		if (error || manualMode) {
 			return (
-				<div className="space-y-2">
-					<div className="flex items-center justify-between gap-3">
+				<div className="min-w-0 space-y-2">
+					<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
 						<FieldLabel
-							htmlFor={fieldName}
+							htmlFor={fieldId}
 							title={property.title || fieldName}
 							isRequired={isRequired}
 							help={help}
 						/>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							className="h-7 px-2 text-xs text-muted-foreground"
-							onClick={() => setManualMode((current) => !current)}
-						>
-							{manualMode ? "Use list" : "Enter manually"}
-						</Button>
+						{manualMode && (
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="min-h-11 px-3 text-sm text-muted-foreground"
+								onClick={() => setManualMode(false)}
+							>
+								Use list
+							</Button>
+						)}
 					</div>
 					<div className="flex items-center gap-2">
 						<Input
-							id={fieldName}
-							value={(value as string) || ""}
+							aria-required={isRequired}
+							aria-describedby={
+								property.description ? descriptionId : undefined
+							}
+							id={fieldId}
+							value={(value as string) ?? ""}
 							onChange={(e) =>
 								onChange(e.target.value || undefined)
 							}
@@ -442,15 +506,26 @@ function DynamicField({
 								property.description ||
 								`Enter ${property.title || fieldName}...`
 							}
-							className={error ? "border-amber-500" : ""}
+							className={cn(
+								"min-h-11",
+								error && "border-[var(--bf-warning)]",
+							)}
 						/>
 						{error && (
-							<AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+							<AlertCircle className="h-4 w-4 text-[var(--bf-warning)] flex-shrink-0" />
 						)}
 					</div>
+					{property.description && (
+						<p
+							id={descriptionId}
+							className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+						>
+							{property.description}
+						</p>
+					)}
 					{error && (
 						<div
-							className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
+							className="rounded-[var(--bf-radius-surface)] border bg-[var(--bf-warning-soft)] p-3 text-sm leading-6 text-[var(--bf-warning)]"
 							role="status"
 							aria-live="polite"
 						>
@@ -468,7 +543,7 @@ function DynamicField({
 											type="button"
 											variant="outline"
 											size="sm"
-											className="h-7 px-2 text-xs"
+											className="min-h-11 px-3 text-sm"
 											onClick={() => void refetch()}
 											disabled={isFetching}
 										>
@@ -476,20 +551,24 @@ function DynamicField({
 												className={cn(
 													"mr-1.5 h-3 w-3",
 													isFetching &&
-														"animate-spin",
+														"motion-safe:animate-spin",
 												)}
 											/>
 											Retry
 										</Button>
-										<Button
-											type="button"
-											variant="ghost"
-											size="sm"
-											className="h-7 px-2 text-xs"
-											onClick={() => setManualMode(true)}
-										>
-											Enter manually
-										</Button>
+										{!manualMode && (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												className="min-h-11 px-3 text-sm"
+												onClick={() =>
+													setManualMode(true)
+												}
+											>
+												Enter manually
+											</Button>
+										)}
 									</div>
 								</div>
 							</div>
@@ -512,8 +591,8 @@ function DynamicField({
 			: undefined;
 
 		return (
-			<div className="space-y-2">
-				<div className="flex items-center justify-between">
+			<div className="min-w-0 space-y-2">
+				<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
 					<FieldLabel
 						title={property.title || fieldName}
 						isRequired={isRequired}
@@ -521,7 +600,7 @@ function DynamicField({
 					/>
 					<button
 						type="button"
-						className="text-xs text-muted-foreground hover:underline"
+						className="min-h-11 rounded-[var(--bf-radius-control)] px-3 text-sm text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						onClick={() => setManualMode(true)}
 					>
 						Enter manually
@@ -531,27 +610,40 @@ function DynamicField({
 					<PopoverTrigger asChild>
 						<Button
 							variant="outline"
+							type="button"
+							id={fieldId}
+							aria-label={`${property.title || fieldName}: ${selectedLabel || (value !== undefined && value !== "" ? String(value) : "Select an option")}`}
+							aria-describedby={
+								property.description ? descriptionId : undefined
+							}
 							role="combobox"
+							aria-required={isRequired}
 							aria-expanded={open}
-							className="w-full justify-between font-normal"
+							className="h-auto min-h-11 w-full justify-between whitespace-normal py-2 text-left font-normal"
 						>
 							<span
 								className={cn(
+									"min-w-0 [overflow-wrap:anywhere]",
 									!selectedLabel && "text-muted-foreground",
 								)}
 							>
 								{selectedLabel ||
+									(value !== undefined && value !== ""
+										? String(value)
+										: undefined) ||
 									`Select ${property.title || fieldName}...`}
 							</span>
 							<ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent
-						className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] p-0"
+					<PopoverContent variant="picker"
+						aria-label={`${property.title || fieldName} options`}
+						className="p-0"
 						align="start"
 					>
 						<Command>
 							<CommandInput
+								aria-label={`Search ${property.title || fieldName}`}
 								placeholder={`Search ${property.title || fieldName}...`}
 							/>
 							<CommandList>
@@ -574,6 +666,7 @@ function DynamicField({
 
 										return (
 											<CommandItem
+												className="min-h-11"
 												key={
 													String(optValue) ||
 													String(idx)
@@ -587,10 +680,10 @@ function DynamicField({
 													setOpen(false);
 												}}
 											>
-												<div className="flex flex-col">
+												<div className="flex min-w-0 flex-col [overflow-wrap:anywhere]">
 													<span>{optLabel}</span>
 													{optDesc && (
-														<span className="text-xs text-muted-foreground">
+														<span className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 															{optDesc}
 														</span>
 													)}
@@ -604,7 +697,10 @@ function DynamicField({
 					</PopoverContent>
 				</Popover>
 				{property.description && (
-					<p className="text-xs text-muted-foreground">
+					<p
+						id={descriptionId}
+						className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+					>
 						{property.description}
 					</p>
 				)}
@@ -616,17 +712,22 @@ function DynamicField({
 	const isPassword = property.format === "password";
 
 	return (
-		<div className="space-y-2">
+		<div className="min-w-0 space-y-2">
 			<FieldLabel
-				htmlFor={fieldName}
+				htmlFor={fieldId}
 				title={property.title || fieldName}
 				isRequired={isRequired}
 				help={help}
 			/>
 			<Input
-				id={fieldName}
+				aria-required={isRequired}
+				aria-describedby={
+					property.description ? descriptionId : undefined
+				}
+				id={fieldId}
+				className="min-h-11"
 				type={isPassword ? "password" : "text"}
-				value={(value as string) || ""}
+				value={(value as string) ?? ""}
 				onChange={(e) => onChange(e.target.value || undefined)}
 				placeholder={
 					property.description ||
@@ -634,7 +735,10 @@ function DynamicField({
 				}
 			/>
 			{property.description && (
-				<p className="text-xs text-muted-foreground">
+				<p
+					id={descriptionId}
+					className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+				>
 					{property.description}
 				</p>
 			)}
@@ -670,53 +774,55 @@ export function DynamicConfigForm({
 		[properties],
 	);
 
-	// Clear dependent fields when parent changes
+	const optionContext = JSON.stringify([
+		adapterName,
+		integrationId ?? null,
+		organizationId ?? null,
+	]);
+	const previousOptionContext = useRef(optionContext);
+
+	// Normalize incoming configurations whose required parent selections are absent.
 	useEffect(() => {
 		const newConfig = { ...config };
 		let hasChanges = false;
-
-		for (const field of fieldOrder) {
-			const prop = properties[field];
-			if (prop?.["x-dynamic-values"]?.depends_on) {
-				for (const dep of prop["x-dynamic-values"].depends_on) {
-					// If parent changed and current field has a value, clear it
-					if (config[dep] !== undefined) {
-						// Check if any parent dependency is undefined/empty
-						const parentMissing = prop[
-							"x-dynamic-values"
-						].depends_on.some(
-							(d) => config[d] === undefined || config[d] === "",
-						);
-						if (parentMissing && config[field] !== undefined) {
-							newConfig[field] = undefined;
-							hasChanges = true;
-						}
-					}
+		if (previousOptionContext.current !== optionContext) {
+			previousOptionContext.current = optionContext;
+			for (const field of fieldOrder) {
+				if (
+					properties[field]?.["x-dynamic-values"] &&
+					Object.hasOwn(newConfig, field)
+				) {
+					delete newConfig[field];
+					clearDependentValues(newConfig, properties, field);
+					hasChanges = true;
 				}
 			}
 		}
-
-		if (hasChanges) {
-			onChange(newConfig);
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const field of fieldOrder) {
+				if (
+					Object.hasOwn(newConfig, field) &&
+					properties[field]?.["x-dynamic-values"]?.depends_on?.some(
+						(dep) => !hasConfigValue(newConfig[dep]),
+					)
+				) {
+					delete newConfig[field];
+					changed = true;
+					hasChanges = true;
+				}
+			}
 		}
-	}, [config, fieldOrder, properties, onChange]);
+		if (hasChanges) onChange(newConfig);
+	}, [config, fieldOrder, properties, onChange, optionContext]);
 
 	const handleFieldChange = (fieldName: string, value: unknown) => {
 		const newConfig = { ...config };
-
-		if (value === undefined || value === "") {
-			delete newConfig[fieldName];
-
-			// Clear dependent fields
-			for (const [field, prop] of Object.entries(properties)) {
-				if (prop["x-dynamic-values"]?.depends_on?.includes(fieldName)) {
-					delete newConfig[field];
-				}
-			}
-		} else {
-			newConfig[fieldName] = value;
-		}
-
+		if (!hasConfigValue(value)) delete newConfig[fieldName];
+		else newConfig[fieldName] = value;
+		if (!Object.is(config[fieldName], value))
+			clearDependentValues(newConfig, properties, fieldName);
 		onChange(newConfig);
 	};
 
@@ -725,14 +831,14 @@ export function DynamicConfigForm({
 	}
 
 	return (
-		<div className="space-y-4">
+		<div className="min-w-0 space-y-4">
 			{fieldOrder.map((fieldName) => {
 				const property = properties[fieldName];
 				if (!property) return null;
 
 				return (
 					<DynamicField
-						key={fieldName}
+						key={`${optionContext}:${fieldName}`}
 						fieldName={fieldName}
 						property={property}
 						value={config[fieldName]}

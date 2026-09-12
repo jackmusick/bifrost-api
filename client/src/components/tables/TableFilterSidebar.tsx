@@ -55,6 +55,10 @@ function generateId() {
 	return Math.random().toString(36).substring(2, 9);
 }
 
+function getBooleanConditionValue(value: string) {
+	return value === "false" ? "false" : "true";
+}
+
 interface FiltersSectionProps {
 	conditions: FilterCondition[];
 	onAdd: () => void;
@@ -71,61 +75,76 @@ function FiltersSection({
 	const [isExpanded, setIsExpanded] = useState(true);
 
 	return (
-		<div>
+		<div className="min-w-0">
 			<button
+				type="button"
+				aria-expanded={isExpanded}
+				aria-label={
+					isExpanded
+						? "Collapse query filters"
+						: "Expand query filters"
+				}
 				onClick={() => setIsExpanded(!isExpanded)}
-				className="flex w-full items-center justify-between py-3 pl-4 pr-4 text-left transition-colors hover:bg-muted/50"
+				className="flex min-h-11 w-full items-center justify-between gap-3 border-b border-border/60 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
 			>
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-2">
 					{isExpanded ? (
 						<ChevronDown className="size-4 text-muted-foreground" />
 					) : (
 						<ChevronRight className="size-4 text-muted-foreground" />
 					)}
 					<Filter className="size-4 text-muted-foreground" />
-					<span className="font-medium text-sm">Query Filters</span>
+					<span className="truncate font-medium text-sm">
+						Query Filters
+					</span>
 				</div>
-				<Badge variant="secondary" className="text-xs">
+				<Badge
+					variant="secondary"
+					className="min-w-7 justify-center text-xs"
+				>
 					{conditions.length}
 				</Badge>
 			</button>
 
 			{isExpanded && (
-				<div className="px-3 pb-3">
+				<div className="space-y-3 px-4 py-3">
 					{conditions.length === 0 ? (
-						<div className="py-2 text-center text-xs italic text-muted-foreground">
+						<div className="py-2 text-sm text-muted-foreground">
 							No filters applied
 						</div>
 					) : (
-						<div className="space-y-2">
-							{conditions.map((condition) => (
+						<div className="space-y-3">
+							{conditions.map((condition, index) => (
 								<div
 									key={condition.id}
-									className="flex flex-col gap-1.5 rounded-xl bg-muted/50 p-2 ring-1 ring-foreground/5"
+									className="space-y-3 border-b border-border/60 pb-3 last:border-b-0 last:pb-0"
 								>
-									<div className="flex items-center gap-1">
+									<div className="flex items-start gap-2">
 										<Input
-											placeholder="Field"
+											aria-label={`Filter field ${index + 1}`}
+											placeholder="Field name"
 											value={condition.field}
 											onChange={(e) =>
 												onUpdate(condition.id, {
 													field: e.target.value,
 												})
 											}
-											className="flex-1"
+											className="min-h-11 min-w-0 flex-1"
 										/>
 										<Button
+											type="button"
 											variant="ghost"
 											size="icon"
 											onClick={() =>
 												onRemove(condition.id)
 											}
-											className="shrink-0 text-muted-foreground"
+											aria-label={`Remove filter ${index + 1}`}
+											className="h-11 w-11 shrink-0 text-muted-foreground"
 										>
-											<Trash2 className="size-3.5" />
+											<Trash2 className="size-4" />
 										</Button>
 									</div>
-									<div className="flex items-center gap-1">
+									<div className="grid gap-2">
 										<Select
 											value={condition.operator}
 											onValueChange={(
@@ -136,7 +155,10 @@ function FiltersSection({
 												})
 											}
 										>
-											<SelectTrigger className="w-[104px]">
+											<SelectTrigger
+												aria-label={`Filter operator ${index + 1}`}
+												className="min-h-11 w-full"
+											>
 												<SelectValue />
 											</SelectTrigger>
 											<SelectContent>
@@ -153,16 +175,19 @@ function FiltersSection({
 										{condition.operator === "is_null" ||
 										condition.operator === "has_key" ? (
 											<Select
-												value={
-													condition.value || "true"
-												}
+												value={getBooleanConditionValue(
+													condition.value,
+												)}
 												onValueChange={(value) =>
 													onUpdate(condition.id, {
 														value,
 													})
 												}
 											>
-												<SelectTrigger className="flex-1">
+												<SelectTrigger
+													aria-label={`Filter boolean value ${index + 1}`}
+													className="min-h-11 w-full"
+												>
 													<SelectValue />
 												</SelectTrigger>
 												<SelectContent>
@@ -176,6 +201,7 @@ function FiltersSection({
 											</Select>
 										) : (
 											<Input
+												aria-label={`Filter value ${index + 1}`}
 												placeholder="Value"
 												value={condition.value}
 												onChange={(e) =>
@@ -183,7 +209,7 @@ function FiltersSection({
 														value: e.target.value,
 													})
 												}
-												className="flex-1"
+												className="min-h-11 min-w-0"
 											/>
 										)}
 									</div>
@@ -192,12 +218,13 @@ function FiltersSection({
 						</div>
 					)}
 					<Button
+						type="button"
 						variant="outline"
 						size="sm"
 						onClick={onAdd}
-						className="mt-2 w-full"
+						className="min-h-11 w-full"
 					>
-						<Plus />
+						<Plus className="size-4" />
 						Add Filter
 					</Button>
 				</div>
@@ -265,10 +292,14 @@ export function TableFilterSidebar({
 
 			switch (condition.operator) {
 				case "is_null":
-					value = { is_null: condition.value === "true" };
+					value = {
+						is_null: getBooleanConditionValue(condition.value) === "true",
+					};
 					break;
 				case "has_key":
-					value = { has_key: condition.value === "true" };
+					value = {
+						has_key: getBooleanConditionValue(condition.value) === "true",
+					};
 					break;
 				case "in":
 					value = {
@@ -303,30 +334,38 @@ export function TableFilterSidebar({
 	return (
 		<div
 			className={cn(
-				"flex h-full flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
+				"flex h-full min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card",
 				className,
 			)}
 		>
-			{/* Header */}
-			<div className="flex items-center justify-between border-b px-4 py-3">
-				<span className="font-medium text-sm">Filters</span>
+			<div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+				<div className="flex min-w-0 items-center gap-2">
+					<Filter className="size-4 shrink-0 text-muted-foreground" />
+					<span className="truncate font-medium text-sm">
+						Filters
+					</span>
+				</div>
 				<div className="flex items-center gap-1">
 					{hasActiveFilters && (
 						<Button
+							type="button"
 							variant="ghost"
-							size="xs"
+							className="min-h-11 px-2"
 							onClick={handleClear}
+							aria-label="Clear filters"
 						>
-							<X />
+							<X className="size-4" />
 							Clear
 						</Button>
 					)}
 					{onClose && (
 						<Button
+							type="button"
 							variant="ghost"
-							size="icon-xs"
+							size="icon-lg"
 							onClick={onClose}
-							title="Hide filters"
+							title="Close filters"
+							aria-label="Close filters"
 						>
 							<PanelLeftClose className="size-4" />
 						</Button>
@@ -334,16 +373,14 @@ export function TableFilterSidebar({
 				</div>
 			</div>
 
-			{/* Active Filter Indicator */}
 			{hasActiveFilters && (
-				<div className="border-b bg-primary/5 px-4 py-2">
-					<div className="text-xs text-muted-foreground">
+				<div className="border-b border-border/60 bg-primary/5 px-4 py-2">
+					<div className="text-sm text-muted-foreground">
 						Active filters applied
 					</div>
 				</div>
 			)}
 
-			{/* Filter Sections */}
 			<div className="flex-1 overflow-auto">
 				<FiltersSection
 					conditions={conditions}
@@ -353,11 +390,10 @@ export function TableFilterSidebar({
 				/>
 			</div>
 
-			{/* Apply Button */}
 			{hasConditions && (
-				<div className="border-t p-3">
-					<Button onClick={handleApply} className="w-full">
-						<Search />
+				<div className="border-t border-border/60 p-3">
+					<Button type="button" onClick={handleApply} className="min-h-11 w-full">
+						<Search className="size-4" />
 						Apply Filters
 					</Button>
 				</div>

@@ -30,6 +30,14 @@ function renderCards(
 }
 
 describe("DashboardStatCards", () => {
+	it("keeps execution metrics visible while failed inventory and value queries are unavailable", () => {
+		renderCards({ inventoryError: true, roiError: true });
+		expect(screen.getByText("75.0%")).toBeInTheDocument();
+		expect(screen.getByText("12")).toBeInTheDocument();
+		expect(screen.getAllByText("—")).toHaveLength(6);
+		expect(screen.queryByText("1h 35m")).not.toBeInTheDocument();
+		expect(screen.getByRole("link", { name: /Workflows/ })).toHaveAttribute("href", "/workflows");
+	});
 	it("shows success rate and execution count for the chart window", () => {
 		renderCards();
 		expect(screen.getByText("75.0%")).toBeInTheDocument();

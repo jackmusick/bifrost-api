@@ -10,9 +10,9 @@
  *   - All four legacy reference sections render when open
  *   - Worked examples block renders >= 16 patterns and includes the
  *     canonical names (admin_bypass, manager_reads_reports, ...)
- *   - Each example row exposes a Copy button and clicking it flips the
- *     button text to "Copied!" then back. We don't assert clipboard write —
- *     jsdom omits navigator.clipboard and the spec calls that out.
+ *   - Each example exposes a named Copy button; confirmed clipboard writes
+ *     show "Copied!" and reset. Clipboard rejection/payload coverage lives
+ *     in PolicyExampleBlock.test.tsx.
  *   - Footguns section is present with at least 5 entries.
  *
  * Examples are rendered through `CodeEditor` (the Monaco wrapper) so mock
@@ -127,7 +127,7 @@ describe("PolicyReferencePanel — worked examples", () => {
 	it("renders a Copy button for each example", () => {
 		renderAndOpen();
 		const exampleHeadings = screen.getAllByRole("heading", { level: 5 });
-		const copyButtons = screen.getAllByRole("button", { name: /^copy$/i });
+		const copyButtons = screen.getAllByRole("button", { name: /^copy /i });
 		expect(copyButtons.length).toBe(exampleHeadings.length);
 	});
 
@@ -187,23 +187,17 @@ describe("PolicyReferencePanel — worked examples", () => {
 		// (findBy*, waitFor) keep working with real timers everywhere else.
 		renderAndOpen();
 		const firstCopy = screen.getAllByRole("button", {
-			name: /^copy$/i,
+			name: /^copy /i,
 		})[0]!;
 
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		try {
-			fireEvent.click(firstCopy);
-			expect(
-				screen.getAllByRole("button", { name: /copied!/i }).length,
-			).toBeGreaterThanOrEqual(1);
+			await act(async () => { fireEvent.click(firstCopy); });
+			expect(firstCopy).toHaveTextContent("Copied!");
 			act(() => {
 				vi.advanceTimersByTime(2000);
 			});
-			await waitFor(() =>
-				expect(
-					screen.queryByRole("button", { name: /copied!/i }),
-				).not.toBeInTheDocument(),
-			);
+			await waitFor(() => expect(firstCopy).toHaveTextContent(/^Copy$/));
 		} finally {
 			vi.useRealTimers();
 		}

@@ -2,14 +2,17 @@ import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
 	const { theme, setTheme } = useTheme();
 
-	const toggleTheme = async (event: React.MouseEvent<HTMLButtonElement>) => {
+	const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
 		const newTheme = theme === "light" ? "dark" : "light";
 
 		// Check if View Transitions API is supported
-		if (!document.startViewTransition) {
+		if (
+			window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+			!document.startViewTransition
+		) {
 			setTheme(newTheme);
 			return;
 		}
@@ -26,19 +29,13 @@ export function ThemeToggle() {
 			Math.max(y, window.innerHeight - y),
 		);
 
-		// Start the view transition
-		const transition = document.startViewTransition(() => {
-			setTheme(newTheme);
-		});
-
-		// Animate from the button position
-		await transition.ready;
 		document.documentElement.style.setProperty("--transition-x", `${x}px`);
 		document.documentElement.style.setProperty("--transition-y", `${y}px`);
 		document.documentElement.style.setProperty(
 			"--transition-r",
 			`${maxRadius}px`,
 		);
+		setTheme(newTheme);
 	};
 
 	return (
@@ -46,10 +43,10 @@ export function ThemeToggle() {
 			variant="ghost"
 			size="icon"
 			onClick={toggleTheme}
-			className="relative"
+			className={`relative ${className ?? ""}`}
 		>
-			<Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-			<Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+			<Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all motion-reduce:transition-none dark:-rotate-90 dark:scale-0" />
+			<Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all motion-reduce:transition-none dark:rotate-0 dark:scale-100" />
 			<span className="sr-only">Toggle theme</span>
 		</Button>
 	);

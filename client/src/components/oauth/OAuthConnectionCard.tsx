@@ -12,7 +12,7 @@ import {
 	RefreshCw,
 	MoreVertical,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -35,6 +35,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { components } from "@/lib/v1";
 import { getStatusLabel, isExpired, expiresSoon } from "@/lib/client-types";
 
@@ -66,14 +68,49 @@ export function OAuthConnectionCard({
 	isCanceling = false,
 }: OAuthConnectionCardProps) {
 	const [copiedCallback, setCopiedCallback] = useState(false);
+	const [isCopying, setIsCopying] = useState(false);
+	const [copyError, setCopyError] = useState(false);
+	const copyAttempt = useRef(0);
+	const copyPending = useRef(false);
+	const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	const callbackUrl = `${window.location.origin}/oauth/callback/${connection.connection_name}`;
 
-	const handleCopyCallback = () => {
-		navigator.clipboard.writeText(callbackUrl);
+	const [copyUrl, setCopyUrl] = useState(callbackUrl);
+	if (copyUrl !== callbackUrl) {
+		setCopyUrl(callbackUrl);
+		setCopiedCallback(false);
+		setIsCopying(false);
+		setCopyError(false);
+	}
+
+	useEffect(() => {
+		copyPending.current = false;
+		return () => {
+			copyAttempt.current += 1;
+			clearTimeout(copyTimer.current);
+		};
+	}, [callbackUrl]);
+
+	const handleCopyCallback = async () => {
+		if (copyPending.current) return;
+		copyPending.current = true;
+		const attempt = ++copyAttempt.current;
+		clearTimeout(copyTimer.current);
+		setIsCopying(true);
+		setCopiedCallback(false);
+		setCopyError(false);
+		const succeeded = await copyToClipboard(callbackUrl);
+		if (attempt !== copyAttempt.current) return;
+		copyPending.current = false;
+		setIsCopying(false);
+		if (!succeeded) {
+			setCopyError(true);
+			return;
+		}
 		setCopiedCallback(true);
 		toast.success("Callback URL copied to clipboard");
-		setTimeout(() => setCopiedCallback(false), 2000);
+		copyTimer.current = setTimeout(() => setCopiedCallback(false), 2000);
 	};
 
 	const handleAuthorizeClick = async () => {
@@ -83,16 +120,20 @@ export function OAuthConnectionCard({
 	const getStatusIcon = () => {
 		switch (connection.status) {
 			case "completed":
-				return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+				return (
+					<CheckCircle2 className="h-4 w-4 text-[var(--bf-success)]" />
+				);
 			case "failed":
-				return <XCircle className="h-4 w-4 text-red-600" />;
+				return (
+					<XCircle className="h-4 w-4 text-[var(--bf-danger)]" />
+				);
 			case "waiting_callback":
 			case "testing":
 				return (
-					<Loader2 className="h-4 w-4 text-yellow-600 animate-spin" />
+					<Loader2 className="h-4 w-4 motion-safe:animate-spin text-[var(--bf-warning)]" />
 				);
 			default:
-				return <Clock className="h-4 w-4 text-gray-500" />;
+				return <Clock className="h-4 w-4 text-muted-foreground" />;
 		}
 	};
 
@@ -191,29 +232,39 @@ export function OAuthConnectionCard({
 	};
 
 	return (
-		<Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
-			<CardHeader className="pb-3 !grid-cols-1 !grid-rows-1">
+		<Card className="flex h-full flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border-border/70 bg-card shadow-sm transition-shadow hover:shadow-md motion-reduce:transition-none">
+			<CardHeader className="pb-4">
 				<div className="flex items-start justify-between gap-3">
-					<div className="flex-1 min-w-0 space-y-1">
-						<CardTitle className="text-lg truncate">
+					<div className="min-w-0 flex-1 space-y-2">
+						<CardTitle className="text-base font-semibold leading-6 [overflow-wrap:anywhere]">
 							{connection.connection_name}
 						</CardTitle>
-						<Badge variant="outline" className="text-xs w-fit">
-							{connection.oauth_flow_type}
+						<Badge
+							variant="outline"
+							className="w-fit rounded-[var(--bf-radius-control)] text-xs"
+						>
+							{connection.oauth_flow_type === "client_credentials" ? "Client credentials" : "Authorization code"}
 						</Badge>
 					</div>
-					<div className="flex items-center gap-2 shrink-0">
+					<div className="flex shrink-0 items-center gap-2">
 						{connection.expires_at && (
 							<TooltipProvider>
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<div
-											className={`flex items-center gap-1 text-xs cursor-help whitespace-nowrap ${isTokenExpired ? "text-red-600" : expirationWarning ? "text-yellow-600" : "text-muted-foreground"}`}
+											className={cn(
+												"flex items-center gap-1 text-xs leading-5 cursor-help whitespace-nowrap",
+												isTokenExpired
+													? "text-[var(--bf-danger)]"
+													: expirationWarning
+														? "text-[var(--bf-warning)]"
+														: "text-muted-foreground",
+											)}
 										>
 											{isTokenExpired ? (
-												<XCircle className="h-3 w-3" />
+												<XCircle className="h-3.5 w-3.5" />
 											) : (
-												<CheckCircle2 className="h-3 w-3" />
+												<CheckCircle2 className="h-3.5 w-3.5" />
 											)}
 											<span>
 												{formatDateTimeCompact(
@@ -251,31 +302,39 @@ export function OAuthConnectionCard({
 				</div>
 			</CardHeader>
 
-			<CardContent className="flex-1 space-y-3">
+			<CardContent className="flex-1 space-y-4">
 				{/* Callback URL for not connected state */}
 				{needsReconnection && canConnect && (
-					<div className="space-y-2">
-						<p className="text-xs font-medium text-muted-foreground">
-							Callback URL:
-						</p>
-						<div className="flex items-center gap-2">
-							<code className="flex-1 px-2 py-1 bg-muted rounded text-xs break-all">
-								{callbackUrl}
-							</code>
+					<div className="space-y-2 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3">
+						<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+							<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Callback URL</p>
+
 							<Button
 								type="button"
 								variant="outline"
-								size="sm"
+								size="icon-lg"
 								onClick={handleCopyCallback}
+								disabled={isCopying}
+								aria-busy={isCopying}
+								className="shrink-0"
+								aria-label={
+									isCopying ? "Copying callback URL" : copiedCallback
+										? "Callback URL copied"
+										: "Copy callback URL"
+								}
 							>
 								{copiedCallback ? (
-									<Check className="h-3 w-3" />
+									<Check className="h-4 w-4" />
 								) : (
-									<Copy className="h-3 w-3" />
+									<Copy className="h-4 w-4" />
 								)}
 							</Button>
+							<code className="col-span-2 min-w-0 rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-2.5 py-2 text-xs leading-5 [overflow-wrap:anywhere]">
+								{callbackUrl}
+							</code>
 						</div>
-						<p className="text-xs text-muted-foreground">
+						{copyError && <p role="alert" className="text-sm text-[var(--bf-danger)]">Could not copy. Try again or select the URL to copy it manually.</p>}
+						<p className="text-xs leading-5 text-muted-foreground">
 							Add this URL to your OAuth app's allowed redirect
 							URIs
 						</p>
@@ -285,15 +344,15 @@ export function OAuthConnectionCard({
 				{/* Status Message - only show for non-completed statuses */}
 				{connection.status_message &&
 					connection.status !== "completed" && (
-						<div className="text-sm text-muted-foreground rounded-md bg-muted p-2 ring-1 ring-foreground/5">
+						<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30 p-3 text-sm leading-6 text-muted-foreground">
 							{connection.status_message}
 						</div>
 					)}
 
 				{/* Expiration Warning */}
 				{connection.status === "completed" && isTokenExpired && (
-					<div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400 rounded-md bg-red-50 p-2 ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900/50">
-						<AlertCircle className="h-4 w-4 mt-0.5" />
+					<div className="flex items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-3 text-sm leading-6 text-[var(--bf-danger)]">
+						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 						<span>
 							Token expired. Reconnect to continue using this
 							connection.
@@ -304,24 +363,24 @@ export function OAuthConnectionCard({
 				{connection.status === "completed" &&
 					!isTokenExpired &&
 					expirationWarning && (
-						<div className="flex items-start gap-2 text-sm text-yellow-600 dark:text-yellow-400 rounded-md bg-yellow-50 p-2 ring-1 ring-yellow-200 dark:bg-yellow-950/30 dark:ring-yellow-900/50">
-							<AlertCircle className="h-4 w-4 mt-0.5" />
+						<div className="flex items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 p-3 text-sm leading-6 text-[var(--bf-warning)]">
+							<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 							<span>Token expires soon</span>
 						</div>
 					)}
 			</CardContent>
 
-			<CardFooter className="flex flex-col gap-2">
-				<div className="flex gap-2 w-full">
+			<CardFooter className="border-t border-border/70 px-6 py-4">
+				<div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
 					{needsReconnection && canConnect && (
 						<Button
 							onClick={handleAuthorizeClick}
 							disabled={isAuthorizing}
-							className="flex-1"
+							className="min-h-11 w-full sm:flex-1"
 						>
 							{isAuthorizing ? (
 								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 									Connecting...
 								</>
 							) : (
@@ -340,11 +399,11 @@ export function OAuthConnectionCard({
 						<Button
 							onClick={() => onRefresh(connection.connection_name)}
 							disabled={isRefreshing}
-							className="flex-1"
+							className="min-h-11 w-full sm:flex-1"
 						>
 							{isRefreshing ? (
 								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 									Getting Token...
 								</>
 							) : (
@@ -363,11 +422,11 @@ export function OAuthConnectionCard({
 							onClick={handleAuthorizeClick}
 							disabled={isAuthorizing}
 							variant="outline"
-							className="flex-1"
+							className="min-h-11 w-full sm:flex-1"
 						>
 							{isAuthorizing ? (
 								<>
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 									Reconnecting...
 								</>
 							) : (
@@ -380,7 +439,7 @@ export function OAuthConnectionCard({
 					)}
 
 					{/* For client_credentials, show Refresh Token button where Reconnect would be */}
-					{connection.status === "completed" &&
+						{connection.status === "completed" &&
 						!canConnect &&
 						connection.expires_at && (
 							<Button
@@ -389,11 +448,11 @@ export function OAuthConnectionCard({
 								}
 								disabled={isRefreshing}
 								variant="outline"
-								className="flex-1"
+								className="min-h-11 w-full sm:flex-1"
 							>
 								{isRefreshing ? (
 									<>
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+										<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 										Refreshing...
 									</>
 								) : (
@@ -409,20 +468,20 @@ export function OAuthConnectionCard({
 						<>
 							<Button
 								variant="outline"
-								className="flex-1"
+								className="min-h-11 w-full sm:flex-1"
 								disabled
 							>
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 								Connecting...
 							</Button>
 							{onCancel && (
 								<Button
 									variant="ghost"
-									size="sm"
 									onClick={() =>
 										onCancel(connection.connection_name)
 									}
 									disabled={isCanceling}
+									className="min-h-11 w-full sm:w-auto"
 								>
 									{isCanceling ? "Canceling..." : "Cancel"}
 								</Button>
@@ -431,15 +490,24 @@ export function OAuthConnectionCard({
 					)}
 
 					{connection.status === "testing" && (
-						<Button variant="outline" className="flex-1" disabled>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Button
+							variant="outline"
+							className="min-h-11 w-full sm:flex-1"
+							disabled
+						>
+							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 							Testing connection...
 						</Button>
 					)}
 
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="outline" size="icon">
+							<Button
+								variant="outline"
+								size="icon-lg"
+								className="shrink-0"
+								aria-label="Connection actions"
+							>
 								<MoreVertical className="h-4 w-4" />
 							</Button>
 						</DropdownMenuTrigger>
@@ -457,7 +525,7 @@ export function OAuthConnectionCard({
 										disabled={isRefreshing}
 									>
 										<RefreshCw
-											className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+											className={`mr-2 h-4 w-4 ${isRefreshing ? "motion-safe:animate-spin" : ""}`}
 										/>
 										{isRefreshing
 											? "Refreshing..."
@@ -477,7 +545,7 @@ export function OAuthConnectionCard({
 									onDelete(connection.connection_name)
 								}
 								disabled={isDeleting}
-								className="text-red-600 focus:text-red-600"
+								className="text-[var(--bf-danger)] focus:text-[var(--bf-danger)]"
 							>
 								<Trash2 className="mr-2 h-4 w-4" />
 								{isDeleting ? "Deleting..." : "Delete"}

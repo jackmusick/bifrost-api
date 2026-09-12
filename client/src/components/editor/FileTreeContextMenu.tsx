@@ -1,9 +1,4 @@
-import {
-	FilePlus,
-	FolderPlus,
-	Trash2,
-	Edit2,
-} from "lucide-react";
+import { FilePlus, FolderPlus, Trash2, Edit2 } from "lucide-react";
 import type { FileMetadata } from "@/services/fileService";
 import {
 	ContextMenu,
@@ -34,37 +29,35 @@ export function FileTreeContextMenu({
 }: FileTreeContextMenuProps) {
 	return (
 		<ContextMenu>
-			<ContextMenuTrigger asChild>
-				{children}
-			</ContextMenuTrigger>
+			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
 				{isFolder && (
 					<>
 						<ContextMenuItem
-							onClick={() => onCreateFile(file.path)}
+							onSelect={() => onCreateFile(file.path)}
 						>
-							<FilePlus className="mr-2 h-4 w-4" />
+							<FilePlus className="h-4 w-4" />
 							New File
 						</ContextMenuItem>
 						<ContextMenuItem
-							onClick={() => onCreateFolder(file.path)}
+							onSelect={() => onCreateFolder(file.path)}
 						>
-							<FolderPlus className="mr-2 h-4 w-4" />
+							<FolderPlus className="h-4 w-4" />
 							New Folder
 						</ContextMenuItem>
 						<ContextMenuSeparator />
 					</>
 				)}
-				<ContextMenuItem onClick={() => onRename(file)}>
-					<Edit2 className="mr-2 h-4 w-4" />
+				<ContextMenuItem onSelect={() => onRename(file)}>
+					<Edit2 className="h-4 w-4" />
 					Rename
 				</ContextMenuItem>
 				<ContextMenuSeparator />
 				<ContextMenuItem
-					onClick={() => onDelete(file)}
-					className="text-destructive focus:text-destructive"
+					onSelect={() => onDelete(file)}
+					variant="destructive"
 				>
-					<Trash2 className="mr-2 h-4 w-4" />
+					<Trash2 className="h-4 w-4" />
 					Delete
 				</ContextMenuItem>
 			</ContextMenuContent>

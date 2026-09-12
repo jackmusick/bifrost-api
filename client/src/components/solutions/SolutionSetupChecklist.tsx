@@ -7,7 +7,7 @@
  * deliberately side-effect-free so it's unit-testable without a network.
  */
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, ExternalLink, KeyRound, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,53 +46,62 @@ export function ConfigItem({
 	item: SolutionSetupItem;
 	onSet: (key: string, value: string) => void | Promise<void>;
 }) {
+	const inputId = useId();
+	const pendingRef = useRef(false);
+	const [failed, setFailed] = useState(false);
 	const [value, setValue] = useState("");
 	const [pending, setPending] = useState(false);
 	const secret = isSecretType(item.type);
 	const requiredUnset = item.required && !item.is_set;
 
 	const handleSet = async () => {
-		if (!value.trim()) return;
+		if (!value.trim() || pendingRef.current) return;
+		pendingRef.current = true;
+		setFailed(false);
 		setPending(true);
 		try {
 			await onSet(item.key, value);
 			setValue("");
+		} catch {
+			setFailed(true);
 		} finally {
+			pendingRef.current = false;
 			setPending(false);
 		}
 	};
 
 	const placeholder = item.is_set
 		? "Enter a new value…"
-		: item.default
+		: item.default && !secret
 			? `Default: ${item.default}`
 			: "Enter a value…";
 
 	return (
-		<div
+		<form
+			onSubmit={(event) => { event.preventDefault(); void handleSet(); }}
 			className={
-				"rounded-lg border p-4 " +
-				(requiredUnset ? "border-yellow-500/60 bg-yellow-500/5" : "")
+				"min-w-0 rounded-[var(--bf-radius-surface)] border p-4 " +
+				(requiredUnset ? "border-[var(--bf-warning)]/40 bg-[var(--bf-warning)]/5" : "")
 			}
 		>
 			{/* Key + meta row */}
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate font-mono text-sm font-medium">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+					<label htmlFor={inputId} className="w-full font-mono text-sm font-medium [overflow-wrap:anywhere]">
 						{item.key}
-					</span>
+					</label>
 					<Badge variant="outline" className="shrink-0 text-[10px]">
 						{item.type}
 					</Badge>
 					{item.required && (
-						<span className="shrink-0 text-xs text-destructive">required</span>
+						<span className="shrink-0 text-xs text-muted-foreground">required</span>
 					)}
 				</div>
 				<span
 					className={
 						"flex shrink-0 items-center gap-1 text-xs font-medium " +
 						(item.is_set
-							? "text-green-600 dark:text-green-500"
+							? "text-[var(--bf-success)]"
 							: "text-muted-foreground")
 					}
 				>
@@ -106,35 +115,39 @@ export function ConfigItem({
 			</div>
 
 			{item.description && (
-				<p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+				<p id={`${inputId}-description`} className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">{item.description}</p>
 			)}
 
 			{/* Value input — always rendered so the user can override an existing value */}
-			<div className="mt-3 flex items-center gap-2">
+			<div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
 				<Input
+					id={inputId}
+					disabled={pending}
+					className="min-h-11"
+					aria-describedby={item.description ? `${inputId}-description` : undefined}
+					aria-invalid={failed || undefined}
+					aria-errormessage={failed ? `${inputId}-error` : undefined}
 					data-testid={`config-value-input-${item.key}`}
 					type={secret ? "password" : "text"}
 					value={value}
 					placeholder={placeholder}
-					onChange={(e) => setValue(e.target.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" && value.trim()) {
-							void handleSet();
-						}
-					}}
+					onChange={(e) => { setValue(e.target.value); setFailed(false); }}
 				/>
 				{(value.trim() || requiredUnset) && (
 					<Button
-						aria-label={`Set ${item.key}`}
+						type="submit"
+						className="min-h-11"
+						aria-label={`${failed ? "Retry setting" : "Set"} ${item.key}`}
 						disabled={!value.trim() || pending}
-						onClick={() => void handleSet()}
 					>
-						{pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-						Set
+						{pending && <Loader2 aria-hidden="true" className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" />}
+						{pending ? "Saving…" : failed ? "Retry" : "Set"}
 					</Button>
 				)}
 			</div>
-		</div>
+			{failed && <p id={`${inputId}-error`} role="alert" className="mt-3 text-sm text-destructive">Couldn't save this value. Your entry is ready to retry.</p>}
+			{pending && <p role="status" className="sr-only">Saving setup value…</p>}
+		</form>
 	);
 }
 
@@ -156,26 +169,26 @@ export function ConnectionItem({
 	return (
 		<div
 			className={
-				"rounded-lg border p-4 " +
-				(requiredUnset ? "border-amber-500/60 bg-amber-500/5" : "")
+				"rounded-[var(--bf-radius-surface)] border p-4 " +
+				(requiredUnset ? "border-[var(--bf-warning)]/40 bg-[var(--bf-warning)]/5" : "")
 			}
 		>
 			{/* Name + meta row */}
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate text-sm font-medium">{item.key}</span>
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+					<span className="w-full text-sm font-medium [overflow-wrap:anywhere]">{item.key}</span>
 					<Badge variant="outline" className="shrink-0 text-[10px]">
 						integration
 					</Badge>
 					{item.required && (
-						<span className="shrink-0 text-xs text-destructive">required</span>
+						<span className="shrink-0 text-xs text-muted-foreground">required</span>
 					)}
 				</div>
 				<span
 					className={
 						"flex shrink-0 items-center gap-1 text-xs font-medium " +
 						(item.connected
-							? "text-green-600 dark:text-green-500"
+							? "text-[var(--bf-success)]"
 							: "text-muted-foreground")
 					}
 				>
@@ -189,11 +202,11 @@ export function ConnectionItem({
 			</div>
 
 			{item.description && (
-				<p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+				<p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">{item.description}</p>
 			)}
 
 			{showOauthWarning && (
-				<div className="mt-3 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+				<div className="mt-3 flex items-start gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/40 bg-[var(--bf-warning)]/10 px-3 py-2 text-xs text-[var(--bf-warning)]">
 					<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
 					<span>
 						This integration uses OAuth — connect it (client ID/secret +
@@ -205,7 +218,7 @@ export function ConnectionItem({
 
 			{/* External link to the global Integrations page (new tab). */}
 			<div className="mt-3">
-				<Button asChild variant="outline" size="sm">
+				<Button asChild variant="outline" className="min-h-11 h-auto whitespace-normal">
 					<a
 						href={integrationHref(item.key)}
 						target="_blank"
@@ -228,6 +241,8 @@ export function WorkflowEndpointKeyItem({
 	onGenerateWorkflowKey?: (workflowId: string) => void | Promise<void>;
 }) {
 	const [pending, setPending] = useState(false);
+	const pendingRef = useRef(false);
+	const [failed, setFailed] = useState(false);
 	const workflowId = item.workflow_id ?? item.key;
 	const label = item.workflow_name ?? item.key;
 	const methods = item.allowed_methods?.length
@@ -235,11 +250,16 @@ export function WorkflowEndpointKeyItem({
 		: "POST";
 
 	const handleGenerate = async () => {
-		if (!workflowId || !onGenerateWorkflowKey) return;
+		if (!workflowId || !onGenerateWorkflowKey || pendingRef.current) return;
+		pendingRef.current = true;
+		setFailed(false);
 		setPending(true);
 		try {
 			await onGenerateWorkflowKey(workflowId);
+		} catch {
+			setFailed(true);
 		} finally {
+			pendingRef.current = false;
 			setPending(false);
 		}
 	};
@@ -247,26 +267,26 @@ export function WorkflowEndpointKeyItem({
 	return (
 		<div
 			className={
-				"rounded-lg border p-4 " +
-				(item.required && !item.is_set ? "border-yellow-500/60 bg-yellow-500/5" : "")
+				"rounded-[var(--bf-radius-surface)] border p-4 " +
+				(item.required && !item.is_set ? "border-[var(--bf-warning)]/40 bg-[var(--bf-warning)]/5" : "")
 			}
 		>
-			<div className="flex items-center justify-between gap-3">
-				<div className="flex min-w-0 items-center gap-2">
+			<div className="flex flex-wrap items-start justify-between gap-3">
+				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
 					<KeyRound className="h-4 w-4 shrink-0 text-muted-foreground" />
-					<span className="truncate text-sm font-medium">{label}</span>
+					<span className="w-full text-sm font-medium [overflow-wrap:anywhere]">{label}</span>
 					<Badge variant="outline" className="shrink-0 text-[10px]">
 						endpoint key
 					</Badge>
 					{item.required && (
-						<span className="shrink-0 text-xs text-destructive">required</span>
+						<span className="shrink-0 text-xs text-muted-foreground">required</span>
 					)}
 				</div>
 				<span
 					className={
 						"flex shrink-0 items-center gap-1 text-xs font-medium " +
 						(item.is_set
-							? "text-green-600 dark:text-green-500"
+							? "text-[var(--bf-success)]"
 							: "text-muted-foreground")
 					}
 				>
@@ -278,24 +298,26 @@ export function WorkflowEndpointKeyItem({
 					{item.is_set ? "Key generated" : "Missing"}
 				</span>
 			</div>
-			<p className="mt-1 text-xs text-muted-foreground">
+			<p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">
 				{methods} endpoint callers need an API key.
 			</p>
 			<div className="mt-3">
 				<Button
 					variant={item.is_set ? "outline" : "default"}
-					size="sm"
+					className="min-h-11 h-auto whitespace-normal"
 					disabled={pending || !onGenerateWorkflowKey}
 					onClick={() => void handleGenerate()}
 				>
 					{pending ? (
-						<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+						<Loader2 aria-hidden="true" className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
 					) : (
 						<KeyRound className="mr-1.5 h-3.5 w-3.5" />
 					)}
-					{item.is_set ? "Rotate endpoint key" : "Generate endpoint key"}
+					{pending ? "Generating…" : failed ? "Retry key generation" : item.is_set ? "Rotate endpoint key" : "Generate endpoint key"}
 				</Button>
 			</div>
+			{pending && <p role="status" className="sr-only">Generating endpoint key…</p>}
+			{failed && <p role="alert" className="mt-3 text-sm text-destructive">Couldn't finish generating the key. Check the current key status before trying again.</p>}
 		</div>
 	);
 }
@@ -309,7 +331,7 @@ export function SolutionSetupChecklist({
 }: SolutionSetupChecklistProps) {
 	if (items.length === 0) {
 		return (
-			<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-surface)] border py-12 text-center text-sm text-muted-foreground">
 				This Solution declares no configuration.
 			</div>
 		);
@@ -320,7 +342,7 @@ export function SolutionSetupChecklist({
 			{setupComplete && (
 				<div
 					data-testid="setup-complete-banner"
-					className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/5 px-4 py-3 text-sm text-green-700 dark:text-green-400"
+					className="flex items-center gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-success)]/40 bg-[var(--bf-success)]/5 px-4 py-3 text-sm text-[var(--bf-success)]"
 				>
 					<CheckCircle2 className="h-4 w-4 shrink-0" />
 					All required configs are set — this Solution is ready to run.

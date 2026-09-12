@@ -1,29 +1,16 @@
 /**
- * Agent-surfaces design tokens.
- *
- * Central source of truth for typography, spacing, radius, and color classes
- * used across FleetPage, AgentDetailPage, AgentRunDetailPage, AgentReviewPage,
- * AgentTunePage and their supporting primitives (StatCard, PillTabs, Sparkline,
- * MetaLine, KVList, Chip, ChatBubble).
- *
- * These exist to prevent visual drift across the growing set of agent pages —
- * the mockup relies on a tight, consistent type / spacing grid that shadcn's
- * default classes don't encode. Every primitive and page composition in
- * `client/src/components/agents/` and `client/src/pages/agents/` should import
- * from here instead of hand-rolling class strings.
- *
- * Composable with `cn()`. Do NOT hand-roll hex colors — use semantic tokens
- * (`bg-card`, `border-border`, `text-muted-foreground`, `text-emerald-500`,
- * `text-rose-500`, `text-yellow-500`).
+ * Agent-surface roles mapped to the Bifrost design contract in DESIGN.md.
+ * Keep exported names stable for existing agent components. Colors follow
+ * semantic outcomes independently of tenant branding.
  */
 
 // ──────────────────────────────────────────────────────────────────────────
-// Type scale — exact px values from /tmp/agent-mockup/src/styles.css
+// Type scale — Bifrost display, interface and measurement roles
 // ──────────────────────────────────────────────────────────────────────────
 
-/** 20px page title — `.page-title` */
+/** Responsive Prompt page title. */
 export const TYPE_PAGE_TITLE =
-	"text-[20px] font-semibold leading-tight tracking-tight";
+	"font-display text-2xl sm:text-3xl font-semibold leading-tight tracking-tight";
 
 /** 14.5px card / section title — `.card-title` */
 export const TYPE_CARD_TITLE = "text-[14.5px] font-semibold";
@@ -79,25 +66,25 @@ export const GAP_VALUE_DELTA = "gap-1";
 // Radius
 // ──────────────────────────────────────────────────────────────────────────
 
-/** 16px — primary card radius (matches the ui/ card chrome family) */
-export const RADIUS_CARD = "rounded-2xl";
+/** Ordinary content surface. */
+export const RADIUS_CARD = "rounded-[var(--bf-radius-surface)]";
 
-/** 8px — secondary elements (verdict bar, tool step, advanced details) */
-export const RADIUS_INNER = "rounded-lg";
+/** Nested content surface. */
+export const RADIUS_INNER = "rounded-[var(--bf-radius-surface)]";
 
 /** 6px — small buttons, inputs, tab items */
-export const RADIUS_BUTTON = "rounded-md";
+export const RADIUS_BUTTON = "rounded-[var(--bf-radius-control)]";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Card surface — the repeated base container
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Base card surface: card chrome (radius + card bg + shadow + hairline ring). Add padding separately. */
-export const CARD_SURFACE = `${RADIUS_CARD} bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10`;
+/** Inset outline stays visible against bounded scroll-container edges. Add padding separately. */
+export const CARD_SURFACE = `${RADIUS_CARD} bg-card ring-1 ring-inset ring-border`;
 
-/** Hoverable card — lifts 1px on hover, warms the ring. */
+/** Hover feedback without moving content. */
 export const CARD_HOVER =
-	"transition-all hover:ring-foreground/10 dark:hover:ring-foreground/15 hover:-translate-y-px";
+	"transition-colors duration-[var(--bf-motion-feedback)] hover:ring-primary/40 motion-reduce:transition-none";
 
 /** Card header strip — 14px/16px vertical/horizontal, border-b. */
 export const CARD_HEADER = "border-b px-4 py-3";
@@ -110,29 +97,29 @@ export const CARD_BODY = "p-4";
 // ──────────────────────────────────────────────────────────────────────────
 
 /** Up/success delta — emerald. */
-export const TONE_UP = "text-emerald-500";
+export const TONE_UP = "text-[var(--bf-success)]";
 /** Down/error delta — rose. */
-export const TONE_DOWN = "text-rose-500";
+export const TONE_DOWN = "text-[var(--bf-danger)]";
 /** Warning — yellow. */
-export const TONE_WARN = "text-yellow-500";
+export const TONE_WARN = "text-[var(--bf-warning)]";
 /** Muted — default delta tone. */
 export const TONE_MUTED = "text-muted-foreground";
 
 /** Status pill — soft green (Active badge). */
 export const PILL_ACTIVE =
-	"inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11.5px] font-medium text-emerald-500";
+	"inline-flex items-center gap-1 rounded-[var(--bf-radius-control)] bg-[var(--bf-success)]/10 px-2 py-0.5 text-[11.5px] font-medium text-[var(--bf-success)]";
 
 /** Status pill — soft rose (Failed / flagged). */
 export const PILL_ROSE =
-	"inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[11.5px] font-medium text-rose-500";
+	"inline-flex items-center gap-1 rounded-[var(--bf-radius-control)] bg-[var(--bf-danger)]/10 px-2 py-0.5 text-[11.5px] font-medium text-[var(--bf-danger)]";
 
 /** Status pill — soft yellow (Queued / in-progress). */
 export const PILL_YELLOW =
-	"inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11.5px] font-medium text-yellow-500";
+	"inline-flex items-center gap-1 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning)]/10 px-2 py-0.5 text-[11.5px] font-medium text-[var(--bf-warning)]";
 
 /** Outlined channel / meta chip — transparent bg, muted text. */
 export const CHIP_OUTLINE =
-	"inline-flex items-center gap-1 rounded-full border border-border bg-transparent px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground";
+	"inline-flex items-center gap-1 rounded-[var(--bf-radius-control)] border border-border bg-transparent px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Color helpers

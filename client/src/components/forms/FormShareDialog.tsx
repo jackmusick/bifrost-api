@@ -1,36 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormConfirmationEditor } from "./FormConfirmationEditor";
+import { FormPublicationReviewDialog, type PublicAction } from "./FormPublicationReviewDialog";
+import { FormSharingToggle } from "./FormSharingToggle";
+import { FormWebsiteRestrictions } from "./FormWebsiteRestrictions";
+import { FormEmbedOptions, type EmbedTheme } from "./FormEmbedOptions";
+import { FormEmbedCodePanel } from "./FormEmbedCodePanel";
+import { FormPrivateLinkPanel } from "./FormPrivateLinkPanel";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	AlertTriangle,
-	Check,
-	ChevronDown,
-	Copy,
-	ExternalLink,
-	Globe2,
 	RefreshCw,
-	ShieldCheck,
 } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
 	Dialog,
 	DialogContent,
@@ -38,20 +21,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { TiptapEditor } from "@/components/ui/tiptap-editor";
-import { FormConfirmationMarkdown } from "@/components/forms/FormConfirmation";
 import { FormEmbedSection } from "@/components/forms/FormEmbedSection";
 import { authFetch } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
@@ -67,9 +37,7 @@ interface FormShareDialogProps {
 	onOpenChange: (open: boolean) => void;
 }
 
-type PublicAction = "publish" | "rotate" | "unpublish" | null;
 type RestrictionSaveState = "idle" | "saving" | "saved" | "error";
-type EmbedTheme = "light" | "dark" | "system";
 const DEFAULT_CONFIRMATION_MARKDOWN = "## Form submitted\n\nThank you!";
 
 function parseAllowedOrigins(value: string): string[] {
@@ -79,7 +47,12 @@ function parseAllowedOrigins(value: string): string[] {
 		.filter(Boolean);
 }
 
-export function FormShareDialog({
+export function FormShareDialog(props: FormShareDialogProps) {
+	// Sharing drafts, request guards and one-time secrets belong to one form.
+	return <FormShareDialogSession key={props.formId} {...props} />;
+}
+
+function FormShareDialogSession({
 	formId,
 	formName,
 	open,
@@ -91,25 +64,37 @@ export function FormShareDialog({
 	const [review, setReview] = useState<PublicationReview | null>(null);
 	const [allowedOrigins, setAllowedOrigins] = useState("");
 	const [savedAllowedOrigins, setSavedAllowedOrigins] = useState("");
+	const savedOriginsRef = useRef("");
+	const originEditVersion = useRef(0);
+	const sessionActive = useRef(true);
+	useEffect(() => { sessionActive.current = true; return () => { sessionActive.current = false; }; }, []);
 	const [restrictionSaveState, setRestrictionSaveState] =
 		useState<RestrictionSaveState>("idle");
 	const [isLoading, setIsLoading] = useState(false);
 	const [loadError, setLoadError] = useState(false);
 	const [publicAction, setPublicAction] = useState<PublicAction>(null);
 	const [isUpdating, setIsUpdating] = useState(false);
+	const [hmacBusy, setHmacBusy] = useState(false);
+	const [sharingTab, setSharingTab] = useState("private");
+	const [restrictionRetryFocus, setRestrictionRetryFocus] = useState(0);
 	const [confirmationMarkdown, setConfirmationMarkdown] = useState(
 		DEFAULT_CONFIRMATION_MARKDOWN,
 	);
 	const [savedConfirmationMarkdown, setSavedConfirmationMarkdown] = useState(
 		DEFAULT_CONFIRMATION_MARKDOWN,
 	);
+	const savedConfirmationRef = useRef(DEFAULT_CONFIRMATION_MARKDOWN);
 	const [isSavingConfirmation, setIsSavingConfirmation] = useState(false);
+	const [confirmationError, setConfirmationError] = useState(false);
+	const confirmationPending = useRef(false);
 	const [confirmationView, setConfirmationView] = useState<
 		"edit" | "preview"
 	>("edit");
 	const [spamProtectionEnabled, setSpamProtectionEnabled] = useState(true);
 	const [isSavingSpamProtection, setIsSavingSpamProtection] = useState(false);
 	const [restrictionsOpen, setRestrictionsOpen] = useState(false);
+	const publicationPending = useRef(false);
+	const publicationBusy = isUpdating || isSavingSpamProtection || restrictionSaveState === "saving";
 	const [embedTheme, setEmbedTheme] = useState<EmbedTheme>("light");
 	const [embedHeaderVisible, setEmbedHeaderVisible] = useState(true);
 	const [embedTransparent, setEmbedTransparent] = useState(false);
@@ -143,6 +128,8 @@ export function FormShareDialog({
 	]);
 
 	const fetchPublication = useCallback(async () => {
+		const savedConfirmationAtRequest = savedConfirmationRef.current;
+		const savedOriginsAtRequest = savedOriginsRef.current;
 		setIsLoading(true);
 		setLoadError(false);
 		try {
@@ -169,17 +156,22 @@ export function FormShareDialog({
 			const formData: FormPublic = await formResponse.json();
 			const nextConfirmation =
 				formData.confirmation_markdown || DEFAULT_CONFIRMATION_MARKDOWN;
-			setConfirmationMarkdown(nextConfirmation);
-			setSavedConfirmationMarkdown(nextConfirmation);
+			// A refresh must not discard a draft or supersede a save completed after it started.
+			if (savedConfirmationRef.current === savedConfirmationAtRequest) {
+				setConfirmationMarkdown(current => current === savedConfirmationAtRequest ? nextConfirmation : current);
+				savedConfirmationRef.current = nextConfirmation;
+				setSavedConfirmationMarkdown(nextConfirmation);
+			}
 			const nextAllowedOrigins = (
 				nextPublication.allowed_origins || []
 			).join("\n");
-			setAllowedOrigins(nextAllowedOrigins);
-			setSavedAllowedOrigins(nextAllowedOrigins);
-			setRestrictionSaveState("idle");
-			setRestrictionsOpen(
-				(nextPublication.allowed_origins || []).length > 0,
-			);
+			if (savedOriginsRef.current === savedOriginsAtRequest) {
+				setAllowedOrigins(current => current === savedOriginsAtRequest ? nextAllowedOrigins : current);
+				savedOriginsRef.current = nextAllowedOrigins;
+				setSavedAllowedOrigins(nextAllowedOrigins);
+				setRestrictionSaveState("idle");
+			}
+			setRestrictionsOpen(current => current || nextAllowedOrigins.length > 0);
 		} catch {
 			setLoadError(true);
 		} finally {
@@ -188,6 +180,9 @@ export function FormShareDialog({
 	}, [formId]);
 
 	const saveConfirmation = async () => {
+		if (confirmationPending.current) return;
+		confirmationPending.current = true;
+		setConfirmationError(false);
 		setIsSavingConfirmation(true);
 		try {
 			const response = await authFetch(`/api/forms/${formId}`, {
@@ -198,11 +193,13 @@ export function FormShareDialog({
 				}),
 			});
 			if (!response.ok) throw new Error("Confirmation update failed");
+			savedConfirmationRef.current = confirmationMarkdown;
 			setSavedConfirmationMarkdown(confirmationMarkdown);
 			toast.success("Confirmation Message saved");
 		} catch {
-			toast.error("Could not save the Confirmation Message");
+			setConfirmationError(true);
 		} finally {
+			confirmationPending.current = false;
 			setIsSavingConfirmation(false);
 		}
 	};
@@ -215,13 +212,33 @@ export function FormShareDialog({
 	}, [fetchPublication, open]);
 
 	const handleOpenChange = (nextOpen: boolean) => {
+		if (!nextOpen && (hmacBusy || publicationBusy || isSavingConfirmation)) return;
+		if (!nextOpen && publication?.status === "published" && allowedOrigins !== savedAllowedOrigins) {
+			const version = originEditVersion.current;
+			setRestrictionsOpen(true);
+			void saveAllowedOrigins(allowedOrigins).then(saved => {
+				if (!sessionActive.current) return;
+				if (!saved) {
+					setSharingTab("website");
+					setRestrictionsOpen(true);
+					setRestrictionRetryFocus(current => current + 1);
+					return;
+				}
+				if (originEditVersion.current === version) {
+					setConfirmationView("edit");
+					onOpenChange(false);
+				}
+			});
+			return;
+		}
 		if (!nextOpen) setConfirmationView("edit");
 		onOpenChange(nextOpen);
 	};
 
 	const saveAllowedOrigins = useCallback(
 		async (nextAllowedOrigins: string) => {
-			if (!review || publication?.status !== "published") return;
+			if (!review || publication?.status !== "published" || publicationPending.current) return false;
+			publicationPending.current = true;
 			setRestrictionSaveState("saving");
 			try {
 				const response = await authFetch(
@@ -238,6 +255,7 @@ export function FormShareDialog({
 					},
 				);
 				if (!response.ok) throw new Error("Restriction update failed");
+				savedOriginsRef.current = nextAllowedOrigins;
 				setSavedAllowedOrigins(nextAllowedOrigins);
 				setPublication((current) =>
 					current
@@ -249,18 +267,24 @@ export function FormShareDialog({
 						: current,
 				);
 				setRestrictionSaveState("saved");
+				return true;
 			} catch {
 				setRestrictionSaveState("error");
+				return false;
+			} finally {
+				publicationPending.current = false;
 			}
 		},
 		[formId, publication?.status, review, spamProtectionEnabled],
 	);
 
 	const saveSpamProtection = async (enabled: boolean) => {
+		if (publicationPending.current) return;
 		const previous = spamProtectionEnabled;
 		setSpamProtectionEnabled(enabled);
 		if (!review || publication?.status !== "published") return;
 
+		publicationPending.current = true;
 		setIsSavingSpamProtection(true);
 		try {
 			const response = await authFetch(
@@ -278,6 +302,8 @@ export function FormShareDialog({
 			if (!response.ok) throw new Error("Spam protection update failed");
 			const nextPublication: FormPublication = await response.json();
 			setPublication(nextPublication);
+			savedOriginsRef.current = allowedOrigins;
+			setSavedAllowedOrigins(allowedOrigins);
 			toast.success(
 				enabled
 					? "Spam Protection enabled"
@@ -287,6 +313,7 @@ export function FormShareDialog({
 			setSpamProtectionEnabled(previous);
 			toast.error("Could not update Spam Protection");
 		} finally {
+			publicationPending.current = false;
 			setIsSavingSpamProtection(false);
 		}
 	};
@@ -295,7 +322,8 @@ export function FormShareDialog({
 		if (
 			!open ||
 			publication?.status !== "published" ||
-			allowedOrigins === savedAllowedOrigins
+			allowedOrigins === savedAllowedOrigins ||
+			publicationBusy || restrictionSaveState === "error"
 		) {
 			return;
 		}
@@ -309,6 +337,8 @@ export function FormShareDialog({
 		publication?.status,
 		saveAllowedOrigins,
 		savedAllowedOrigins,
+		publicationBusy,
+		restrictionSaveState,
 	]);
 
 	const copy = async (target: "private" | "embed", value: string) => {
@@ -326,9 +356,13 @@ export function FormShareDialog({
 		}
 	};
 
+	const [publicationError, setPublicationError] = useState(false);
 	const updatePublication = async () => {
 		if (!review || publicAction !== "publish") return;
 		const origins = parseAllowedOrigins(allowedOrigins);
+		if (publicationPending.current) return;
+		publicationPending.current = true;
+		setPublicationError(false);
 		setIsUpdating(true);
 		try {
 			const response = await authFetch(
@@ -345,18 +379,22 @@ export function FormShareDialog({
 			);
 			if (!response.ok) throw new Error("Publication failed");
 			await fetchPublication();
+			setPublicAction(null);
 			toast.success("Public embed published");
 		} catch {
-			toast.error("Could not publish this form");
+			setPublicationError(true);
 		} finally {
+			publicationPending.current = false;
 			setIsUpdating(false);
-			setPublicAction(null);
 		}
 	};
 
 	const rotateOrUnpublish = async () => {
 		if (publicAction !== "rotate" && publicAction !== "unpublish") return;
 		const rotate = publicAction === "rotate";
+		if (publicationPending.current) return;
+		publicationPending.current = true;
+		setPublicationError(false);
 		setIsUpdating(true);
 		try {
 			const response = await authFetch(
@@ -367,154 +405,52 @@ export function FormShareDialog({
 			);
 			if (!response.ok) throw new Error("Public access update failed");
 			await fetchPublication();
+			setPublicAction(null);
 			toast.success(
 				rotate ? "Public embed code rotated" : "Public embed disabled",
 			);
 		} catch {
-			toast.error("Could not update public access");
+			setPublicationError(true);
 		} finally {
+			publicationPending.current = false;
 			setIsUpdating(false);
-			setPublicAction(null);
 		}
 	};
 
-	const providerFields = review?.provider_fields || [];
-	const fileFields = review?.file_fields || [];
 	const blockers = review?.blockers || [];
-	const warnings = review?.warnings || [];
 	const isPublished = publication?.status === "published";
 	const needsReview = publication?.status === "needs_review";
 
 	return (
 		<>
 			<Dialog open={open} onOpenChange={handleOpenChange}>
-				<DialogContent className="max-h-[90vh] max-w-3xl overflow-x-hidden overflow-y-auto">
-					<DialogHeader className="min-w-0 pr-8">
-						<DialogTitle>Share {formName}</DialogTitle>
+				<DialogContent className="max-h-[90dvh] max-w-3xl overflow-x-hidden overflow-y-auto p-[var(--bf-surface-pad)]">
+					<DialogHeader className="min-w-0">
+						<DialogTitle className="[overflow-wrap:anywhere]">Share {formName}</DialogTitle>
 						<DialogDescription>
 							Choose how people access this form and what they see
 							after submitting it.
 						</DialogDescription>
 					</DialogHeader>
 
-					<Tabs defaultValue="private" className="min-w-0">
-						<TabsList className="grid w-full grid-cols-3">
-							<TabsTrigger value="private">
+					<Tabs value={sharingTab} onValueChange={setSharingTab} className="min-w-0">
+						<TabsList className="grid w-full grid-cols-3 items-stretch group-data-horizontal/tabs:h-auto">
+							<TabsTrigger disabled={hmacBusy || publicationBusy || isSavingConfirmation} value="private" className="h-auto min-h-11 min-w-0 whitespace-normal px-1 text-center leading-5">
 								Private Link
 							</TabsTrigger>
-							<TabsTrigger value="website">
+							<TabsTrigger disabled={hmacBusy || publicationBusy || isSavingConfirmation} value="website" className="h-auto min-h-11 min-w-0 whitespace-normal px-1 text-center leading-5">
 								Website Embed
 							</TabsTrigger>
-							<TabsTrigger value="hmac">HMAC</TabsTrigger>
+							<TabsTrigger disabled={hmacBusy || publicationBusy || isSavingConfirmation} value="hmac" className="h-auto min-h-11 min-w-0 whitespace-normal px-1 text-center leading-5">HMAC</TabsTrigger>
 						</TabsList>
 
 						<TabsContent value="private" className="pt-3">
-							<section className="min-w-0 space-y-3 rounded-2xl border p-4">
-								<div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
-									<div className="flex gap-3">
-										<ShieldCheck className="mt-0.5 h-5 w-5 text-muted-foreground" />
-										<div>
-											<h3 className="font-medium">
-												Private Link
-											</h3>
-											<p className="text-sm text-muted-foreground">
-												Recipients must sign in and
-												already have access to this
-												form.
-											</p>
-										</div>
-									</div>
-									<Badge variant="secondary">Private</Badge>
-								</div>
-								<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
-									<Input
-										aria-label="Private form link"
-										readOnly
-										value={privateUrl}
-									/>
-									<Button
-										variant="outline"
-										size="icon"
-										onClick={() =>
-											void copy("private", privateUrl)
-										}
-										title="Copy private link"
-									>
-										{copiedTarget === "private" ? (
-											<Check className="h-4 w-4" />
-										) : (
-											<Copy className="h-4 w-4" />
-										)}
-										<span className="sr-only">
-											Copy private link
-										</span>
-									</Button>
-									<Button
-										variant="outline"
-										size="icon"
-										asChild
-										title="Open private link"
-									>
-										<a
-											href={privateUrl}
-											target="_blank"
-											rel="noreferrer"
-										>
-											<ExternalLink className="h-4 w-4" />
-											<span className="sr-only">
-												Open private link
-											</span>
-										</a>
-									</Button>
-								</div>
-							</section>
+							<FormPrivateLinkPanel url={privateUrl} copied={copiedTarget === "private"} onCopy={() => void copy("private", privateUrl)} />
 						</TabsContent>
 
 						<TabsContent value="website" className="pt-3">
-							<section className="min-w-0 space-y-4 rounded-2xl border p-4">
-								<div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
-									<div className="flex gap-3">
-										<Globe2 className="mt-0.5 h-5 w-5 text-muted-foreground" />
-										<div>
-											<h3 className="font-medium">
-												Website Embed
-											</h3>
-											<p className="text-sm text-muted-foreground">
-												Anonymous visitors can submit
-												this form without a Bifrost
-												account.
-											</p>
-										</div>
-									</div>
-									<div className="flex shrink-0 items-center gap-2">
-										<Label
-											htmlFor={`public-form-enabled-${formId}`}
-										>
-											{needsReview
-												? "Review Required"
-												: isPublished
-													? "Published"
-													: "Not Published"}
-										</Label>
-										<Switch
-											id={`public-form-enabled-${formId}`}
-											checked={isPublished}
-											disabled={
-												isLoading ||
-												isUpdating ||
-												(!isPublished &&
-													blockers.length > 0)
-											}
-											onCheckedChange={(checked) =>
-												setPublicAction(
-													checked
-														? "publish"
-														: "unpublish",
-												)
-											}
-										/>
-									</div>
-								</div>
+							<section className="min-w-0 space-y-4">
+								<FormSharingToggle title="Website Embed" label={needsReview ? "Review Required" : isPublished ? "Published" : "Not Published"} description="Anonymous visitors can submit this form without a Bifrost account." checked={isPublished} disabled={isLoading || loadError || publicationBusy || (!isPublished && blockers.length > 0)} onChange={checked => setPublicAction(checked ? "publish" : "unpublish")} />
 
 								{isLoading ? (
 									<p className="text-sm text-muted-foreground">
@@ -556,108 +492,9 @@ export function FormShareDialog({
 											</Alert>
 										) : null}
 
-										<div className="flex items-start justify-between gap-4 border-t py-3">
-											<div className="flex gap-3">
-												<ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
-												<div>
-													<Label
-														htmlFor={`public-form-spam-protection-${formId}`}
-														className="font-medium"
-													>
-														Spam Protection
-													</Label>
-													<p className="mt-1 text-sm text-muted-foreground">
-														Require anonymous
-														visitors to complete a
-														private, self-hosted
-														verification. No
-														external service or
-														account is required.
-													</p>
-												</div>
-											</div>
-												<Switch
-													id={`public-form-spam-protection-${formId}`}
-													checked={spamProtectionEnabled}
-													disabled={isSavingSpamProtection}
-												onCheckedChange={(checked) =>
-													void saveSpamProtection(
-														checked,
-													)
-												}
-												aria-label="Spam Protection"
-											/>
-										</div>
+										<div className="border-t pt-4"><FormSharingToggle title="Spam Protection" label="Spam Protection" description="Require anonymous visitors to complete a private, self-hosted verification. No external service or account is required." checked={spamProtectionEnabled} disabled={publicationBusy} pendingText={isSavingSpamProtection ? "Saving spam protection…" : undefined} onChange={checked => void saveSpamProtection(checked)} /></div>
 
-										<Collapsible
-											open={restrictionsOpen}
-											onOpenChange={setRestrictionsOpen}
-											className="border-t pt-1"
-										>
-											<CollapsibleTrigger className="flex min-h-9 w-full items-center justify-between py-2 text-sm font-medium outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50">
-												<span className="text-left">
-													Website Restrictions
-													<span className="ml-2 text-xs font-normal text-muted-foreground">
-														Optional
-													</span>
-												</span>
-												<ChevronDown
-													className={`h-4 w-4 transition-transform ${restrictionsOpen ? "rotate-180" : ""}`}
-												/>
-											</CollapsibleTrigger>
-											<CollapsibleContent className="space-y-2 pb-3 pt-2">
-												<Label
-													htmlFor={`public-form-origins-${formId}`}
-												>
-													Allowed Website Origins
-												</Label>
-												<Textarea
-													id={`public-form-origins-${formId}`}
-													value={allowedOrigins}
-													onChange={(event) =>
-														setAllowedOrigins(
-															event.target.value,
-														)
-													}
-													placeholder="https://www.example.com"
-													rows={2}
-													className="field-sizing-fixed min-w-0 max-w-full"
-												/>
-												<p className="text-xs text-muted-foreground">
-													Limit which websites can
-													frame this form. Use one
-													exact origin per line; leave
-													empty to allow any website.
-												</p>
-												{isPublished ? (
-													<p
-														className={
-															restrictionSaveState ===
-															"error"
-																? "text-xs text-destructive"
-																: "text-xs text-muted-foreground"
-														}
-														role={
-															restrictionSaveState ===
-															"error"
-																? "alert"
-																: "status"
-														}
-													>
-														{restrictionSaveState ===
-														"saving"
-															? "Saving restrictions…"
-															: restrictionSaveState ===
-																  "saved"
-																? "Restrictions saved"
-																: restrictionSaveState ===
-																	  "error"
-																	? "Restrictions could not be saved. Check each origin and try again."
-																	: "Changes save automatically."}
-													</p>
-												) : null}
-											</CollapsibleContent>
-										</Collapsible>
+										<FormWebsiteRestrictions focusRetryRequest={restrictionRetryFocus} open={restrictionsOpen} value={allowedOrigins} published={isPublished} state={restrictionSaveState} onOpenChange={setRestrictionsOpen} busy={publicationBusy} onChange={value => { originEditVersion.current++; setAllowedOrigins(value); setRestrictionSaveState(current => current === "error" ? "idle" : current); }} onRetry={() => void saveAllowedOrigins(allowedOrigins)} />
 
 										{blockers.map((blocker) => (
 											<Alert
@@ -676,154 +513,13 @@ export function FormShareDialog({
 
 										{isPublished && publicIframeSnippet ? (
 											<div className="space-y-3">
-												<div className="space-y-2">
-													<Label>Embed Options</Label>
-													<div className="grid gap-3 rounded-xl bg-muted/30 p-3 sm:grid-cols-3">
-														<div className="space-y-1.5">
-															<Label
-																htmlFor={`embed-theme-${formId}`}
-															>
-																Theme
-															</Label>
-															<Select
-																value={
-																	embedTheme
-																}
-																onValueChange={(
-																	value,
-																) =>
-																	setEmbedTheme(
-																		value as EmbedTheme,
-																	)
-																}
-															>
-																<SelectTrigger
-																	id={`embed-theme-${formId}`}
-																	className="w-full"
-																>
-																	<SelectValue />
-																</SelectTrigger>
-																<SelectContent>
-																	<SelectItem value="light">
-																		Light
-																	</SelectItem>
-																	<SelectItem value="dark">
-																		Dark
-																	</SelectItem>
-																	<SelectItem value="system">
-																		System
-																	</SelectItem>
-																</SelectContent>
-															</Select>
-														</div>
-														<div className="space-y-1.5">
-															<Label
-																htmlFor={`embed-header-${formId}`}
-																className="whitespace-nowrap"
-															>
-																Show Header
-															</Label>
-															<div className="flex h-8 items-center justify-between rounded-lg bg-background/70 px-3">
-																<span className="text-xs text-muted-foreground">
-																	{embedHeaderVisible
-																		? "Shown"
-																		: "Hidden"}
-																</span>
-																<Switch
-																	id={`embed-header-${formId}`}
-																	checked={
-																		embedHeaderVisible
-																	}
-																	onCheckedChange={
-																		setEmbedHeaderVisible
-																	}
-																/>
-															</div>
-														</div>
-														<div className="space-y-1.5">
-															<Label
-																htmlFor={`embed-transparent-${formId}`}
-																className="whitespace-nowrap"
-															>
-																Transparent
-																Background
-															</Label>
-															<div className="flex h-8 items-center justify-between rounded-lg bg-background/70 px-3">
-																<span className="text-xs text-muted-foreground">
-																	{embedTransparent
-																		? "Transparent"
-																		: "Solid"}
-																</span>
-																<Switch
-																	id={`embed-transparent-${formId}`}
-																	checked={
-																		embedTransparent
-																	}
-																	onCheckedChange={
-																		setEmbedTransparent
-																	}
-																/>
-															</div>
-														</div>
-													</div>
-													<p className="text-xs text-muted-foreground">
-														These options only
-														change the code you
-														copy.
-													</p>
-												</div>
-												<Label>Embed Code</Label>
-												<div
-													className="relative min-w-0 max-w-full overflow-hidden rounded-xl"
-													role="region"
-													aria-label="Embed Code"
-												>
-													<SyntaxHighlighter
-														language="html"
-														style={oneDark}
-														wrapLongLines
-														codeTagProps={{
-															style: {
-																whiteSpace:
-																	"pre-wrap",
-																wordBreak:
-																	"break-all",
-															},
-														}}
-														customStyle={{
-															margin: 0,
-															paddingRight:
-																"3rem",
-															fontSize: "0.75rem",
-														}}
-													>
-														{publicIframeSnippet}
-													</SyntaxHighlighter>
-													<Button
-														variant="secondary"
-														size="icon"
-														className="absolute right-2 top-2 h-7 w-7"
-														onClick={() =>
-															void copy(
-																"embed",
-																publicIframeSnippet,
-															)
-														}
-														title="Copy Embed Code"
-													>
-														{copiedTarget ===
-														"embed" ? (
-															<Check />
-														) : (
-															<Copy />
-														)}
-														<span className="sr-only">
-															Copy Embed Code
-														</span>
-													</Button>
-												</div>
+												<FormEmbedOptions theme={embedTheme} headerVisible={embedHeaderVisible} transparent={embedTransparent} onTheme={setEmbedTheme} onHeaderVisible={setEmbedHeaderVisible} onTransparent={setEmbedTransparent} />
+												<FormEmbedCodePanel code={publicIframeSnippet} />
 												<div className="flex justify-end border-t pt-3">
 													<Button
+														type="button"
+														className="min-h-11"
+														disabled={publicationBusy}
 														variant="outline"
 														onClick={() =>
 															setPublicAction(
@@ -837,219 +533,22 @@ export function FormShareDialog({
 											</div>
 										) : null}
 
-										<section className="space-y-3 border-t pt-4">
-											<div>
-												<h3 className="font-medium">
-													Confirmation Message
-												</h3>
-												<p className="text-sm text-muted-foreground">
-													Shown after a successful
-													anonymous submission.
-												</p>
-											</div>
-											<Tabs
-												value={confirmationView}
-												onValueChange={(value) =>
-													setConfirmationView(
-														value as
-															"edit" | "preview",
-													)
-												}
-											>
-												<TabsList className="grid w-48 grid-cols-2">
-													<TabsTrigger value="edit">
-														Edit
-													</TabsTrigger>
-													<TabsTrigger value="preview">
-														Preview
-													</TabsTrigger>
-												</TabsList>
-												<TabsContent
-													value="edit"
-													forceMount
-													className="pt-1 data-[state=inactive]:hidden"
-												>
-													<TiptapEditor
-														content={
-															confirmationMarkdown
-														}
-														onChange={
-															setConfirmationMarkdown
-														}
-														ariaLabel="Confirmation Message editor"
-														placeholder="Write a confirmation message…"
-														className="min-h-[220px]"
-													/>
-												</TabsContent>
-												<TabsContent
-													value="preview"
-													forceMount
-													className="pt-1 data-[state=inactive]:hidden"
-												>
-													<div className="prose prose-sm min-h-[220px] max-w-none rounded-xl bg-muted/40 p-4 ring-1 ring-foreground/5 dark:prose-invert">
-														<FormConfirmationMarkdown
-															markdown={
-																confirmationMarkdown
-															}
-														/>
-													</div>
-												</TabsContent>
-											</Tabs>
-											<p className="text-xs text-muted-foreground">
-												Markdown and HTTPS images are
-												supported. External image hosts
-												receive a request when visitors
-												view the confirmation.
-											</p>
-											<div className="flex justify-end">
-												<Button
-													onClick={() =>
-														void saveConfirmation()
-													}
-														disabled={
-															isSavingConfirmation ||
-														confirmationMarkdown ===
-															savedConfirmationMarkdown
-													}
-												>
-													{isSavingConfirmation
-														? "Updating…"
-														: "Update"}
-												</Button>
-											</div>
-										</section>
+										<FormConfirmationEditor value={confirmationMarkdown} savedValue={savedConfirmationMarkdown} view={confirmationView} pending={isSavingConfirmation} error={confirmationError} onView={setConfirmationView} onChange={value => { setConfirmationMarkdown(value); setConfirmationError(false); }} onSave={() => void saveConfirmation()} />
 									</>
 								)}
 							</section>
 						</TabsContent>
 
 						<TabsContent value="hmac" className="pt-3">
-							<section className="min-w-0 rounded-2xl border p-4">
-								<FormEmbedSection formId={formId} />
+							<section className="min-w-0">
+								<FormEmbedSection formId={formId} onBusyChange={setHmacBusy} />
 							</section>
 						</TabsContent>
 					</Tabs>
 				</DialogContent>
 			</Dialog>
 
-			<AlertDialog
-				open={publicAction !== null}
-				onOpenChange={(nextOpen) => !nextOpen && setPublicAction(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							{publicAction === "rotate"
-								? "Rotate the public embed code?"
-								: publicAction === "unpublish"
-									? "Disable the public embed?"
-									: "Allow anonymous form access?"}
-						</AlertDialogTitle>
-						<AlertDialogDescription asChild>
-							<div className="space-y-3">
-								{publicAction !== "rotate" &&
-								publicAction !== "unpublish" ? (
-									<>
-										<p>
-											Anyone on an allowed website can
-											load this form without signing in.
-											The public session can only use the
-											capabilities below.
-										</p>
-										<ul className="list-disc space-y-1 pl-5 text-left">
-											<li>
-												Execute{" "}
-												{review?.submission_workflow
-													?.name ||
-													"the linked submission workflow"}
-												.
-											</li>
-											{review?.startup_workflow ? (
-												<li>
-													Load data from{" "}
-													{
-														review.startup_workflow
-															.name
-													}{" "}
-													when the form opens.
-												</li>
-											) : null}
-											{providerFields.length > 0 ? (
-												<li>
-													Query{" "}
-													{providerFields.length}{" "}
-													approved data provider
-													{providerFields.length === 1
-														? ""
-														: "s"}
-													:{" "}
-													{providerFields
-														.map(
-															(field) =>
-																field.provider_name,
-														)
-														.join(", ")}
-													.
-												</li>
-											) : null}
-											{fileFields.length > 0 ? (
-												<li>
-													Upload files for:{" "}
-													{fileFields.join(", ")}.
-												</li>
-											) : null}
-										</ul>
-										{warnings.map((warning) => (
-											<p
-												key={warning}
-												className="text-amber-600 dark:text-amber-400"
-											>
-												{warning}
-											</p>
-										))}
-										<p className="font-medium text-foreground">
-											No other workflows or Bifrost
-											execution APIs are granted.
-										</p>
-									</>
-								) : publicAction === "rotate" ? (
-									<p>
-										Existing embed code stops loading
-										immediately. Replace it on every website
-										with the newly generated code.
-									</p>
-								) : (
-									<p>
-										The public iframe and issued public
-										sessions stop working immediately. The
-										private link and HMAC integrations are
-										unaffected.
-									</p>
-								)}
-							</div>
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							disabled={isUpdating}
-							onClick={() =>
-								publicAction === "publish"
-									? void updatePublication()
-									: void rotateOrUnpublish()
-							}
-						>
-							{isUpdating
-								? "Updating…"
-								: publicAction === "rotate"
-									? "Rotate"
-									: publicAction === "unpublish"
-										? "Disable embed"
-										: "Publish public embed"}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<FormPublicationReviewDialog action={publicAction} review={review} pending={publicationBusy} error={publicationError} onClose={() => { if (!publicationPending.current) { setPublicAction(null); setPublicationError(false); } }} onConfirm={() => { if (publicAction === "publish") void updatePublication(); else void rotateOrUnpublish(); }} />
 		</>
 	);
 }

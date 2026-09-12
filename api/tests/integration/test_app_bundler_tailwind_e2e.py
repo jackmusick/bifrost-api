@@ -120,3 +120,31 @@ async def test_no_classes_no_output() -> None:
         css = (src_dir / TAILWIND_OUTPUT_CSS).read_text(encoding="utf-8")
         # Even if extraction is over-broad, output must be small
         assert len(css) < 5000, "no real classes → output should be near-empty"
+
+
+@pytest.mark.asyncio
+async def test_generated_utilities_do_not_promote_authored_css_into_their_layer() -> None:
+    """Host responsive classes win over supplemental app utilities, while
+    explicit app selectors remain available to override shared components.
+    """
+    from src.services.app_compiler import AppTailwindService
+
+    css = await AppTailwindService.generate_css_pipeline(
+        code_sources=['<div className="w-full md:w-60 review-custom" />'],
+        user_css=[("review.css", ".review-custom { @apply p-4; color: rebeccapurple; }")],
+    )
+    assert css is not None
+    assert "@layer bifrost-app-utilities" in css
+    assert ".w-full" in css
+    assert ".review-custom" in css
+    # The generated layer closes before the authored selector; custom @apply
+    # expands successfully without changing the selector's cascade contract.
+    layer_start = css.index("@layer bifrost-app-utilities")
+    opening = css.index("{", layer_start)
+    depth = 1
+    cursor = opening + 1
+    while depth:
+        depth += (css[cursor] == "{") - (css[cursor] == "}")
+        cursor += 1
+    assert css.index(".review-custom") > cursor
+    assert "rebeccapurple" in css

@@ -4,12 +4,19 @@ Unit tests for ExecutionLogRepository.list_logs method.
 Tests the database operations for listing execution logs with filtering and pagination.
 """
 
+import base64
+import json
+
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
-from src.repositories.execution_logs import ExecutionLogRepository
+from src.repositories.execution_logs import (
+    ExecutionLogRepository,
+    decode_execution_log_cursor,
+    encode_execution_log_cursor,
+)
 
 
 class TestExecutionLogRepositoryListLogs:
@@ -69,7 +76,11 @@ class TestExecutionLogRepositoryListLogs:
 
         # Assert
         assert len(logs) == 1  # Should only return limit, not limit+1
-        assert next_token == "1"  # Next offset
+        assert next_token is not None
+        assert decode_execution_log_cursor(next_token) == (
+            mock_log.timestamp,
+            mock_log.id,
+        )
         assert logs[0]["workflow_name"] == "test-workflow"
         assert logs[0]["organization_name"] == "Test Org"
         assert logs[0]["level"] == "ERROR"
@@ -243,3 +254,100 @@ class TestExecutionLogRepositoryListLogs:
         assert len(logs) == 1
         assert logs[0]["organization_name"] is None
         assert logs[0]["workflow_name"] == "test-workflow"
+
+
+@pytest.mark.asyncio
+async def test_workflow_id_filter_uses_exact_identity():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+    workflow_id = uuid4()
+    await ExecutionLogRepository(session).list_logs(workflow_id=workflow_id)
+    query = session.execute.call_args.args[0]
+    compiled = query.compile()
+    assert "executions.workflow_id =" in str(compiled)
+    assert workflow_id in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_global_filter_excludes_organization_executions():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+    await ExecutionLogRepository(session).list_logs(global_only=True)
+    query = session.execute.call_args.args[0]
+    assert "executions.organization_id IS NULL" in str(query.compile())
+
+
+@pytest.mark.asyncio
+async def test_cursor_filter_uses_timestamp_and_id_keyset():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+    cursor_timestamp = datetime(2026, 9, 10, 12, 0, 0)
+
+    await ExecutionLogRepository(session).list_logs(
+        cursor=(cursor_timestamp, 166),
+        limit=50,
+    )
+
+    query = session.execute.call_args.args[0]
+    compiled = query.compile()
+    sql = str(compiled)
+    assert "execution_logs.timestamp <" in sql
+    assert "execution_logs.timestamp =" in sql
+    assert "execution_logs.id <" in sql
+    assert cursor_timestamp in compiled.params.values()
+    assert 166 in compiled.params.values()
+
+
+@pytest.mark.asyncio
+async def test_legacy_offset_is_still_applied_without_cursor():
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.unique.return_value.all.return_value = []
+    session.execute.return_value = result
+
+    await ExecutionLogRepository(session).list_logs(offset=25, limit=10)
+
+    query = session.execute.call_args.args[0]
+    compiled = query.compile()
+    assert "OFFSET" in str(compiled)
+    assert 25 in compiled.params.values()
+
+
+def test_log_cursor_round_trips_timestamp_and_id():
+    timestamp = datetime(2026, 9, 10, 12, 0, 0, tzinfo=timezone.utc)
+    token = encode_execution_log_cursor(timestamp, 166)
+
+    assert decode_execution_log_cursor(token) == (
+        timestamp,
+        166,
+    )
+
+
+def test_log_cursor_preserves_instant_with_non_utc_offset():
+    timestamp = datetime(2026, 9, 10, 8, tzinfo=timezone(timedelta(hours=-4)))
+    assert decode_execution_log_cursor(encode_execution_log_cursor(timestamp, 166)) == (
+        datetime(2026, 9, 10, 12, tzinfo=timezone.utc), 166,
+    )
+
+
+@pytest.mark.parametrize("log_id", [True, 1.5, "166", 0, -1, 2147483648])
+def test_log_cursor_rejects_invalid_row_identity(log_id):
+    payload = {"v": 1, "t": "2026-09-10T12:00:00+00:00", "i": log_id}
+    token = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    assert decode_execution_log_cursor(token) is None
+
+
+@pytest.mark.parametrize("token", ["25", "garbage", "e30=", "W10="])
+def test_log_cursor_rejects_non_cursor_tokens(token):
+    assert decode_execution_log_cursor(token) is None
+
+
+def test_log_cursor_rejects_ambiguous_naive_timestamp():
+    token = encode_execution_log_cursor(datetime(2026, 9, 10, 12), 166)
+    assert decode_execution_log_cursor(token) is None

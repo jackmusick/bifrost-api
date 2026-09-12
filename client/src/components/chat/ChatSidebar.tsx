@@ -9,8 +9,9 @@
 
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Files, Plus, MessageSquare, Trash2, Search, X } from "lucide-react";
+import { Files, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConversationRecord } from "./ConversationRecord";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -41,6 +42,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [deleteTarget, setDeleteTarget] =
 		useState<ConversationSummary | null>(null);
@@ -50,14 +52,14 @@ export function ChatSidebar({
 		useChatStore();
 
 	// API hooks
-	const { data: conversations, isLoading: isLoadingConversations } =
+	const { data: conversations, isLoading: isLoadingConversations, isError: conversationsError, isFetching: fetchingConversations, refetch: refetchConversations } =
 		useConversations();
 	const deleteConversation = useDeleteConversation();
 
 	// Filter conversations by search term
 	const filteredConversations = conversations?.filter((conv) => {
-		if (!searchTerm) return true;
-		const term = searchTerm.toLowerCase();
+		const term = searchTerm.trim().toLowerCase();
+		if (!term) return true;
 		return (
 			conv.title?.toLowerCase().includes(term) ||
 			conv.agent_name?.toLowerCase().includes(term) ||
@@ -84,46 +86,32 @@ export function ChatSidebar({
 
 	// Handle delete confirmation
 	const handleDeleteConfirm = () => {
-		if (deleteTarget) {
-			const wasActive = activeConversationId === deleteTarget.id;
-			deleteConversation.mutate({
-				params: { path: { conversation_id: deleteTarget.id } },
-			});
-			setDeleteTarget(null);
-			// Navigate to clean /chat URL so it looks like a fresh screen
-			if (wasActive) {
-				navigate("/chat");
-			}
-		}
+		if (!deleteTarget || deleteConversation.isPending) return;
+		const wasActive = activeConversationId === deleteTarget.id;
+		setDeleteError(null);
+		deleteConversation.mutate({
+			params: { path: { conversation_id: deleteTarget.id } },
+		}, {
+			onSuccess: () => {
+				setDeleteTarget(null);
+				if (wasActive) navigate("/chat");
+			},
+			onError: () => setDeleteError("Could not delete this conversation. Try again."),
+		});
 	};
 
-	// Format relative time
-	const formatTime = (dateStr: string) => {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffDays = Math.floor(diffMs / 86400000);
-
-		if (diffMins < 1) return "now";
-		if (diffMins < 60) return `${diffMins}m`;
-		if (diffHours < 24) return `${diffHours}h`;
-		if (diffDays < 7) return `${diffDays}d`;
-		return date.toLocaleDateString();
-	};
 
 	return (
 		<div
 			className={cn(
-				"flex flex-col h-full bg-background border-r",
+				"flex min-h-0 flex-col h-full bg-background",
 				className,
 			)}
 		>
 			{/* Header */}
-			<div className="p-3 border-b space-y-2">
+			<div className="p-4 border-b space-y-2">
 				<div className="flex items-center justify-between">
-					<h2 className="font-semibold text-lg">Chat</h2>
+					<h2 className="font-display font-semibold text-lg">Chat</h2>
 					{onClose && (
 						<Button
 							variant="ghost"
@@ -138,7 +126,7 @@ export function ChatSidebar({
 				</div>
 				<Button
 					variant="ghost"
-					className="min-h-11 w-full justify-start gap-2 sm:min-h-8"
+					className="min-h-11 w-full justify-start gap-2"
 					onClick={handleNewChat}
 				>
 					<Plus className="h-4 w-4" />
@@ -147,7 +135,7 @@ export function ChatSidebar({
 				<Button
 					variant="ghost"
 					className={cn(
-						"min-h-11 w-full justify-start gap-2 sm:min-h-8",
+						"min-h-11 w-full justify-start gap-2",
 						location.pathname === "/chat/artifacts" && "bg-accent",
 					)}
 					onClick={() => {
@@ -161,10 +149,11 @@ export function ChatSidebar({
 				<div className="relative">
 					<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 					<Input
+						aria-label="Search conversations"
 						placeholder="Search conversations..."
 						value={searchTerm}
 						onChange={(e) => setSearchTerm(e.target.value)}
-						className="pl-9"
+						className="min-h-11 pl-9"
 					/>
 				</div>
 			</div>
@@ -175,64 +164,28 @@ export function ChatSidebar({
 					<h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
 						Recent Conversations
 					</h3>
+					{conversationsError && (
+						<div role="alert" className="mb-3 space-y-3 rounded-[var(--bf-radius-control)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] p-4 text-sm">
+							<p>{conversations ? "Could not refresh conversations. Previously loaded conversations are still shown." : "Conversations could not be loaded."}</p>
+							<Button type="button" variant="outline" className="min-h-11" disabled={fetchingConversations} onClick={() => { void refetchConversations(); }}>{fetchingConversations ? "Retrying…" : "Retry conversations"}</Button>
+						</div>
+					)}
 					{isLoadingConversations ? (
-						<div className="space-y-2">
+						<div role="status" aria-label="Loading conversations" className="space-y-2">
 							{[1, 2, 3].map((i) => (
 								<Skeleton key={i} className="h-14 w-full" />
 							))}
 						</div>
-					) : filteredConversations &&
+					) : conversationsError && !conversations ? null : filteredConversations &&
 					  filteredConversations.length > 0 ? (
 						<div className="space-y-1">
 							{filteredConversations.map((conv) => (
-								<div
-									key={conv.id}
-									className={cn(
-										"group flex items-start rounded-lg transition-colors hover:bg-accent",
-										activeConversationId === conv.id &&
-											"bg-accent",
-									)}
-								>
-									<button
-										type="button"
-										aria-label={`Open ${conv.title || conv.agent_name || "Untitled"}`}
-										className="flex min-h-11 min-w-0 flex-1 items-start gap-2 rounded-lg p-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-										onClick={() => handleSelectConversation(conv)}
-									>
-										<MessageSquare className="h-4 w-4 mt-1 text-muted-foreground shrink-0" />
-										<div className="flex-1 min-w-0">
-											<div className="flex items-center justify-between gap-2">
-												<span className="font-medium text-sm truncate">
-													{conv.title ||
-														conv.agent_name ||
-														"Untitled"}
-												</span>
-												<span className="text-xs text-muted-foreground shrink-0">
-													{formatTime(conv.updated_at)}
-												</span>
-											</div>
-											{conv.last_message_preview && (
-												<p className="text-xs text-muted-foreground truncate">
-													{conv.last_message_preview}
-												</p>
-											)}
-										</div>
-									</button>
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										className="mr-1 mt-1 size-11 shrink-0 opacity-100 transition-opacity sm:size-7 sm:opacity-0 sm:group-hover:opacity-100"
-										aria-label={`Delete ${conv.title || conv.agent_name || "Untitled"}`}
-										onClick={() => setDeleteTarget(conv)}
-									>
-										<Trash2 className="h-3 w-3" />
-									</Button>
-								</div>
+								<ConversationRecord key={conv.id} conversation={conv} active={activeConversationId === conv.id} onSelect={handleSelectConversation} onDelete={(conversation) => { setDeleteError(null); setDeleteTarget(conversation); }} />
 							))}
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground py-2">
-							{searchTerm
+							{searchTerm.trim()
 								? "No matching conversations"
 								: "No conversations yet"}
 						</p>
@@ -243,14 +196,14 @@ export function ChatSidebar({
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={!!deleteTarget}
-				onOpenChange={(open) => !open && setDeleteTarget(null)}
+				onOpenChange={(open) => !open && !deleteConversation.isPending && setDeleteTarget(null)}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
 							Delete Conversation?
 						</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							This will delete the conversation "
 							{deleteTarget?.title ||
 								deleteTarget?.agent_name ||
@@ -258,13 +211,15 @@ export function ChatSidebar({
 							". This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{deleteError && <p role="alert" className="text-sm text-destructive">{deleteError}</p>}
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogCancel disabled={deleteConversation.isPending}>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							onClick={handleDeleteConfirm}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							disabled={deleteConversation.isPending}
+							onClick={(event) => { event.preventDefault(); handleDeleteConfirm(); }}
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
-							Delete
+							{deleteConversation.isPending ? "Deleting…" : "Delete"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

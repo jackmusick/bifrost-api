@@ -9,6 +9,7 @@ import { useState, useCallback } from "react";
 import type { FileNode, FileTreeNode, FileOperations } from "./types";
 
 interface FileTreeState {
+	failedPaths: Set<string>;
 	/** Map of path -> children for lazy loading */
 	fileMap: Map<string, FileNode[]>;
 	/** Set of expanded folder paths */
@@ -20,6 +21,7 @@ interface FileTreeState {
 }
 
 interface UseFileTreeResult {
+	failedPaths: string[];
 	/** Flat list of visible files with hierarchy info */
 	files: FileTreeNode[];
 	/** Whether the tree is loading */
@@ -65,6 +67,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 		expandedFolders: new Set<string>(),
 		loadingFolders: new Set<string>(),
 		isLoading: false,
+		failedPaths: new Set<string>(),
 	});
 
 	/**
@@ -75,7 +78,11 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 			setState((prev) => {
 				const newLoadingFolders = new Set(prev.loadingFolders);
 				newLoadingFolders.add(path);
-				return { ...prev, isLoading: true, loadingFolders: newLoadingFolders };
+				return {
+					...prev,
+					isLoading: true,
+					loadingFolders: newLoadingFolders,
+				};
 			});
 
 			try {
@@ -106,7 +113,9 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 					} else {
 						// Nested file - extract the immediate folder name
 						const folderName = relativePath.slice(0, slashIndex);
-						const folderPath = path ? `${path}/${folderName}` : folderName;
+						const folderPath = path
+							? `${path}/${folderName}`
+							: folderName;
 
 						if (!seenFolders.has(folderPath)) {
 							seenFolders.add(folderPath);
@@ -127,11 +136,14 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 				setState((prev) => {
 					const newFileMap = new Map(prev.fileMap);
 					newFileMap.set(path, sortedFiles);
+					const failedPaths = new Set(prev.failedPaths);
+					failedPaths.delete(path);
 					const newLoadingFolders = new Set(prev.loadingFolders);
 					newLoadingFolders.delete(path);
 					return {
 						...prev,
 						fileMap: newFileMap,
+						failedPaths,
 						isLoading: newLoadingFolders.size > 0,
 						loadingFolders: newLoadingFolders,
 					};
@@ -140,7 +152,12 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 				setState((prev) => {
 					const newLoadingFolders = new Set(prev.loadingFolders);
 					newLoadingFolders.delete(path);
-					return { ...prev, isLoading: newLoadingFolders.size > 0, loadingFolders: newLoadingFolders };
+					return {
+						...prev,
+						failedPaths: new Set([...prev.failedPaths, path]),
+						isLoading: newLoadingFolders.size > 0,
+						loadingFolders: newLoadingFolders,
+					};
 				});
 			}
 		},
@@ -203,15 +220,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 	 * Refresh all loaded paths
 	 */
 	const refreshAll = useCallback(async () => {
-		let foldersToReload: string[] = [];
-		setState((prev) => {
-			foldersToReload = Array.from(prev.expandedFolders);
-			return {
-				...prev,
-				fileMap: new Map([["", []]]),
-				isLoading: true,
-			};
-		});
+		const foldersToReload = Array.from(state.expandedFolders);
 
 		// Reload root
 		await loadFiles("");
@@ -220,9 +229,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 		for (const folderPath of foldersToReload) {
 			await loadFiles(folderPath);
 		}
-
-		setState((prev) => ({ ...prev, isLoading: false }));
-	}, [loadFiles]);
+	}, [loadFiles, state.expandedFolders]);
 
 	/**
 	 * Optimistically add files to the tree without refetching
@@ -249,11 +256,13 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 						const folderParentPath =
 							i === 0 ? "" : pathParts.slice(0, i).join("/");
 
-						const existingInParent = newFileMap.get(folderParentPath) || [];
+						const existingInParent =
+							newFileMap.get(folderParentPath) || [];
 						const folderExistsInMap = existingInParent.some(
 							(f) => f.path === folderPath,
 						);
-						const folderAlreadyQueued = foldersQueued.has(folderPath);
+						const folderAlreadyQueued =
+							foldersQueued.has(folderPath);
 
 						if (!folderExistsInMap && !folderAlreadyQueued) {
 							const folderEntry: FileNode = {
@@ -268,7 +277,9 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 							if (!itemsByParent.has(folderParentPath)) {
 								itemsByParent.set(folderParentPath, []);
 							}
-							itemsByParent.get(folderParentPath)!.push(folderEntry);
+							itemsByParent
+								.get(folderParentPath)!
+								.push(folderEntry);
 							foldersQueued.add(folderPath);
 							newExpandedFolders.add(folderPath);
 						} else {
@@ -291,7 +302,9 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 				for (const [parentPath, items] of itemsByParent) {
 					const existing = newFileMap.get(parentPath) || [];
 					const existingPaths = new Set(existing.map((f) => f.path));
-					const newItems = items.filter((item) => !existingPaths.has(item.path));
+					const newItems = items.filter(
+						(item) => !existingPaths.has(item.path),
+					);
 					const combined = [...existing, ...newItems];
 					newFileMap.set(parentPath, sortFiles(combined));
 				}
@@ -368,7 +381,10 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 				const node: FileTreeNode = { ...file, level };
 				result.push(node);
 
-				if (file.type === "folder" && state.expandedFolders.has(file.path)) {
+				if (
+					file.type === "folder" &&
+					state.expandedFolders.has(file.path)
+				) {
 					addFilesRecursively(file.path, level + 1);
 				}
 			}
@@ -380,6 +396,7 @@ export function useFileTree(operations: FileOperations): UseFileTreeResult {
 
 	return {
 		files: buildVisibleFiles(),
+		failedPaths: Array.from(state.failedPaths),
 		isLoading: state.isLoading,
 		isFolderLoading,
 		loadFiles,

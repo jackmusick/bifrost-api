@@ -6,6 +6,8 @@ import {
 	Presentation,
 	Video,
 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
@@ -17,8 +19,6 @@ import {
 	type AttachmentPublic,
 } from "@/services/chatAttachments";
 import { FilePreviewSheet } from "./FilePreviewSheet";
-import { useState } from "react";
-import { toast } from "sonner";
 
 function FileIcon({ attachment }: { attachment: AttachmentPublic }) {
 	if (isImageAttachment(attachment.content_type)) {
@@ -55,7 +55,7 @@ export function ChatAttachmentList({
 					"mb-2 flex gap-2",
 					variant === "attachment"
 						? "flex-wrap justify-end"
-						: "w-full flex-col items-stretch px-4",
+						: "w-full flex-col items-stretch px-3 sm:px-4",
 				)}
 			>
 				{attachments.map((attachment) => {
@@ -67,10 +67,10 @@ export function ChatAttachmentList({
 						<div
 							key={attachment.id}
 							className={cn(
-								"group/file flex items-center rounded-xl border p-1.5 text-left transition-colors duration-150 motion-reduce:transition-none",
+								"group/file flex min-w-0 items-stretch rounded-[var(--bf-radius-surface)] border p-1.5 text-left transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none",
 								variant === "attachment"
-									? "max-w-72 border-primary-foreground/20 bg-primary-foreground/10 hover:bg-primary-foreground/15"
-									: "w-full max-w-none animate-in fade-in-0 slide-in-from-bottom-1 border-border bg-card text-card-foreground shadow-sm hover:bg-accent/60 motion-reduce:animate-none",
+									? "max-w-[min(100%,18rem)] border-border/70 bg-muted/30 hover:bg-muted/50"
+									: "w-full max-w-none animate-in fade-in-0 slide-in-from-bottom-1 border-border/70 bg-card text-card-foreground shadow-sm hover:bg-accent/40 motion-reduce:animate-none",
 							)}
 						>
 							<button
@@ -78,7 +78,7 @@ export function ChatAttachmentList({
 								onClick={() => setPreview(attachment)}
 								aria-label={`Preview ${attachment.filename}`}
 								className={cn(
-									"flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+									"flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-[var(--bf-radius-control)] p-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
 									variant === "artifact" && "w-full max-w-none",
 								)}
 							>
@@ -86,14 +86,14 @@ export function ChatAttachmentList({
 								<img
 									src={previewUrl}
 									alt=""
-									className="h-11 w-11 rounded-lg object-cover"
+									className="h-11 w-11 rounded-[var(--bf-radius-control)] object-cover"
 								/>
 							) : (
 								<span
 									className={cn(
-										"flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+										"flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)]",
 										variant === "attachment"
-											? "bg-primary-foreground/10"
+											? "bg-background/70 text-foreground"
 											: "bg-primary/10 text-primary",
 									)}
 								>
@@ -101,10 +101,10 @@ export function ChatAttachmentList({
 								</span>
 							)}
 							<span className="min-w-0 flex-1">
-								<span className="block truncate text-xs font-medium">
+								<span className="block text-xs font-medium leading-5 [overflow-wrap:anywhere]">
 									{attachment.filename}
 								</span>
-								<span className="block text-[11px] opacity-65">
+								<span className="block text-[11px] leading-4 text-muted-foreground [overflow-wrap:anywhere]">
 									{variant === "artifact"
 										? "Generated file · "
 										: ""}
@@ -114,7 +114,7 @@ export function ChatAttachmentList({
 							</button>
 							<button
 								type="button"
-								className="flex size-11 shrink-0 items-center justify-center rounded-lg opacity-60 hover:bg-background/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-8"
+								className="flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] border border-border/70 bg-background/80 text-muted-foreground opacity-80 hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 								onClick={() => {
 									void downloadChatAttachment(conversationId, attachment).catch(() =>
 										toast.error("Download failed"),

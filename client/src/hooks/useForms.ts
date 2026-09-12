@@ -8,6 +8,7 @@ import type { components } from "@/lib/v1";
 import type { FormSubmission } from "@/lib/client-types";
 
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/api-error";
 
 type FormCreate = components["schemas"]["FormCreate"];
 type FormUpdate = components["schemas"]["FormUpdate"];
@@ -17,14 +18,6 @@ type FormStartupResponse = components["schemas"]["FormStartupResponse"];
 type FormSubmissionResponse =
 	| components["schemas"]["FormConfirmationResponse"]
 	| components["schemas"]["FormExecutionResponse"];
-
-/** Helper to extract error message from API error response */
-function getErrorMessage(error: unknown, fallback: string): string {
-	if (typeof error === "object" && error && "message" in error) {
-		return String((error as Record<string, unknown>)["message"]);
-	}
-	return fallback;
-}
 
 /**
  * Get all forms
@@ -131,7 +124,7 @@ export async function executeFormStartup(
 	);
 	if (error || !data) {
 		throw new Error(
-			getErrorMessage(error, "Failed to execute startup workflow"),
+			getErrorMessage(error, "Please try loading the form data again."),
 		);
 	}
 	return data;
@@ -203,18 +196,23 @@ export function useFormRuntime(formId: string | undefined) {
 /**
  * Mutation hook to create a form
  */
-export function useCreateForm() {
+export function useCreateForm({
+	errorToast = true,
+	successToast = true,
+}: { errorToast?: boolean; successToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/forms", {
 		onSuccess: (_responseData, variables) => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/forms"] });
 			const name = (variables.body as FormCreate)?.name;
-			toast.success("Form created", {
-				description: `Form "${name}" has been created`,
-			});
+			if (successToast)
+				toast.success("Form created", {
+					description: `Form "${name}" has been created`,
+				});
 		},
 		onError: (error) => {
+			if (!errorToast) return;
 			toast.error("Failed to create form", {
 				description: getErrorMessage(error, "Unknown error"),
 			});
@@ -225,7 +223,10 @@ export function useCreateForm() {
 /**
  * Mutation hook to update a form
  */
-export function useUpdateForm() {
+export function useUpdateForm({
+	errorToast = true,
+	successToast = true,
+}: { errorToast?: boolean; successToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("patch", "/api/forms/{form_id}", {
@@ -240,11 +241,13 @@ export function useUpdateForm() {
 					{ params: { path: { form_id: formId } } },
 				],
 			});
-			toast.success("Form updated", {
-				description: "The form has been updated successfully",
-			});
+			if (successToast)
+				toast.success("Form updated", {
+					description: "The form has been updated successfully",
+				});
 		},
 		onError: (error) => {
+			if (!errorToast) return;
 			toast.error("Failed to update form", {
 				description: getErrorMessage(error, "Unknown error"),
 			});
@@ -255,7 +258,9 @@ export function useUpdateForm() {
 /**
  * Mutation hook to delete a form
  */
-export function useDeleteForm() {
+export function useDeleteForm({
+	errorToast = true,
+}: { errorToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("delete", "/api/forms/{form_id}", {
@@ -272,6 +277,7 @@ export function useDeleteForm() {
 			);
 		},
 		onError: (error) => {
+			if (!errorToast) return;
 			toast.error("Failed to delete form", {
 				description: getErrorMessage(error, "Unknown error"),
 			});
@@ -282,16 +288,24 @@ export function useDeleteForm() {
 /**
  * Mutation hook to submit a form and execute workflow
  */
-export function useSubmitForm() {
+export function useSubmitForm({
+	errorToast = true,
+	successToast = true,
+}: { errorToast?: boolean; successToast?: boolean } = {}) {
 	return $api.useMutation("post", "/api/forms/{form_id}/submissions", {
 		onSuccess: (responseData) => {
-			if (responseData.mode === "execution") {
+			if (
+				successToast &&
+				responseData.mode === "execution" &&
+				responseData.status !== "Scheduled"
+			) {
 				toast.success("Workflow execution started", {
 					description: `Execution ID: ${responseData.execution_id}`,
 				});
 			}
 		},
 		onError: (error) => {
+			if (!errorToast) return;
 			toast.error("Failed to submit form", {
 				description: getErrorMessage(error, "Unknown error"),
 			});

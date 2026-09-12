@@ -60,7 +60,7 @@ describe("ExecutionMetadataBar — fallbacks for missing fields", () => {
 				startedAt={null}
 			/>,
 		);
-		expect(screen.getByText(/not started/i)).toBeInTheDocument();
+		expect(screen.getAllByText(/not started/i).length).toBeGreaterThan(0);
 	});
 
 	it("shows 'In progress...' when durationMs is null", () => {
@@ -121,4 +121,11 @@ describe("ExecutionMetadataBar — provided metadata", () => {
 		expect(screen.getByText("Alice")).toBeInTheDocument();
 		expect(screen.getByText("Acme")).toBeInTheDocument();
 	});
+});
+
+
+it("does not describe a completed run with missing timing as still in progress", () => {
+	renderWithProviders(<ExecutionMetadataBar workflowName="Completed run" status="Success" durationMs={null} />);
+	expect(screen.getByText("Not available")).toBeVisible();
+	expect(screen.queryByText(/in progress/i)).not.toBeInTheDocument();
 });

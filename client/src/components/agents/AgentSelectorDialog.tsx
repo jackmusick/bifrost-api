@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { Bot, Building2, Globe, Loader2, Search } from "lucide-react";
+import { Building2, Globe, Loader2, Search } from "lucide-react";
 import {
 	Dialog,
 	DialogContent,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAgents } from "@/hooks/useAgents";
@@ -40,30 +41,33 @@ export interface AgentSelectorDialogProps {
 export function AgentSelectorDialog({
 	open,
 	onOpenChange,
+	...props
+}: AgentSelectorDialogProps) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-w-2xl">
+				<AgentSelectorContent {...props} onOpenChange={onOpenChange} />
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function AgentSelectorContent({
+	onOpenChange,
 	selectedAgentId,
 	onSelect,
 	title,
 	description,
-}: AgentSelectorDialogProps) {
+}: Omit<AgentSelectorDialogProps, "open">) {
 	const [localSelection, setLocalSelection] = useState<string | null>(
 		selectedAgentId,
 	);
 	const [searchQuery, setSearchQuery] = useState("");
 
-	// Reset local state when dialog opens
-	const handleOpenChange = useCallback(
-		(nextOpen: boolean) => {
-			if (nextOpen) {
-				setLocalSelection(selectedAgentId);
-				setSearchQuery("");
-			}
-			onOpenChange(nextOpen);
-		},
-		[selectedAgentId, onOpenChange],
-	);
+	const handleOpenChange = onOpenChange;
 
 	// Fetch agents and organizations
-	const { data: agents, isLoading, error } = useAgents();
+	const { data: agents, isLoading, error, refetch, isFetching } = useAgents();
 	const { data: organizations } = useOrganizations({});
 
 	const getOrgName = useCallback(
@@ -103,98 +107,119 @@ export function AgentSelectorDialog({
 	}, [agents, searchQuery]);
 
 	const handleConfirm = useCallback(() => {
-		if (localSelection) {
+		if (
+			localSelection &&
+			!error &&
+			agents?.some(
+				(agent) => agent.id === localSelection && agent.is_active,
+			)
+		) {
 			onSelect(localSelection);
 		}
 		handleOpenChange(false);
-	}, [localSelection, onSelect, handleOpenChange]);
+	}, [localSelection, error, agents, onSelect, handleOpenChange]);
 
 	return (
-		<Dialog open={open} onOpenChange={handleOpenChange}>
-			<DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-				<DialogHeader>
-					<DialogTitle>{title || "Select Agent"}</DialogTitle>
-					<DialogDescription>
-						{description ||
-							"Choose an agent to receive events from this source."}
-					</DialogDescription>
-				</DialogHeader>
+		<>
+			<DialogHeader>
+				<DialogTitle>{title || "Select Agent"}</DialogTitle>
+				<DialogDescription>
+					{description ||
+						"Choose an agent to receive events from this source."}
+				</DialogDescription>
+			</DialogHeader>
 
-				<div className="flex-1 min-h-0 flex flex-col rounded-lg ring-1 ring-foreground/5 overflow-hidden">
-					{/* Search */}
-					<div className="p-3 border-b bg-muted/20">
-						<div className="relative">
-							<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-							<Input
-								placeholder="Search agents..."
-								value={searchQuery}
-								onChange={(e) => setSearchQuery(e.target.value)}
-								className="pl-9"
-							/>
-						</div>
-					</div>
-
-					{/* Agent list */}
-					<div className="flex-1 overflow-y-auto p-2">
-						{isLoading ? (
-							<div className="flex items-center justify-center py-8">
-								<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-								<span className="ml-2 text-sm text-muted-foreground">
-									Loading agents...
-								</span>
-							</div>
-						) : error ? (
-							<div className="flex items-center justify-center py-8 text-destructive">
-								<span className="text-sm">
-									Failed to load agents
-								</span>
-							</div>
-						) : filteredAgents.length === 0 ? (
-							<div className="flex items-center justify-center py-8 text-muted-foreground">
-								<span className="text-sm">
-									{searchQuery
-										? "No agents match your search"
-										: "No agents available"}
-								</span>
-							</div>
-						) : (
-							<div className="space-y-1">
-								{filteredAgents.map((agent) => (
-									<AgentListItem
-										key={agent.id}
-										agent={agent}
-										isSelected={
-											localSelection === agent.id
-										}
-										onToggle={() =>
-											setLocalSelection(agent.id)
-										}
-										orgName={getOrgName(
-											agent.organization_id,
-										)}
-									/>
-								))}
-							</div>
-						)}
+			<div className="flex-1 min-h-0 flex flex-col rounded-[var(--bf-radius-surface)] border border-border overflow-hidden">
+				{/* Search */}
+				<div className="p-3 border-b bg-muted/20">
+					<div className="relative">
+						<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+						<Input
+							aria-label="Search agents"
+							placeholder="Search agents..."
+							value={searchQuery}
+							onChange={(e) => setSearchQuery(e.target.value)}
+							className="min-h-11 pl-9"
+						/>
 					</div>
 				</div>
 
-				<DialogFooter>
-					<Button
-						variant="outline"
-						onClick={() => handleOpenChange(false)}
-					>
-						Cancel
-					</Button>
-					<Button
-						onClick={handleConfirm}
-						disabled={!localSelection}
-					>
-						Select
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
+				{/* Agent list */}
+				<div className="max-h-[45dvh] overflow-y-auto p-2">
+					{isLoading ? (
+						<div className="flex items-center justify-center py-8">
+							<Loader2 className="h-6 w-6 motion-safe:animate-spin text-muted-foreground" />
+							<span className="ml-2 text-sm text-muted-foreground">
+								Loading agents...
+							</span>
+						</div>
+					) : error ? (
+						<Alert variant="destructive">
+							<AlertTitle>Failed to load agents</AlertTitle>
+							<AlertDescription>
+								<Button
+									type="button"
+									variant="outline"
+									className="mt-2 min-h-11"
+									disabled={isFetching}
+									onClick={() => {
+										void refetch();
+									}}
+								>
+									Retry
+								</Button>
+							</AlertDescription>
+						</Alert>
+					) : filteredAgents.length === 0 ? (
+						<div className="flex items-center justify-center py-8 text-muted-foreground">
+							<span className="text-sm">
+								{searchQuery
+									? "No agents match your search"
+									: "No agents available"}
+							</span>
+						</div>
+					) : (
+						<div className="space-y-1">
+							{filteredAgents.map((agent) => (
+								<AgentListItem
+									key={agent.id}
+									agent={agent}
+									isSelected={localSelection === agent.id}
+									onToggle={() => setLocalSelection(agent.id)}
+									orgName={getOrgName(agent.organization_id)}
+								/>
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+
+			<DialogFooter>
+				<Button
+					type="button"
+					className="min-h-11"
+					variant="outline"
+					onClick={() => handleOpenChange(false)}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					className="min-h-11"
+					onClick={handleConfirm}
+					disabled={
+						isLoading ||
+						!!error ||
+						!agents?.some(
+							(agent) =>
+								agent.id === localSelection && agent.is_active,
+						)
+					}
+				>
+					Select
+				</Button>
+			</DialogFooter>
+		</>
 	);
 }
 
@@ -212,9 +237,10 @@ function AgentListItem({
 	return (
 		<button
 			type="button"
+			aria-pressed={isSelected}
 			onClick={onToggle}
 			className={cn(
-				"w-full text-left p-3 rounded-lg border transition-colors",
+				"min-h-11 min-w-0 w-full text-left p-3 rounded-[var(--bf-radius-control)] border transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 				"hover:bg-accent/50",
 				isSelected
 					? "border-primary bg-primary/5"
@@ -233,7 +259,7 @@ function AgentListItem({
 						)}
 					>
 						{isSelected && (
-							<div className="h-1.5 w-1.5 rounded-full bg-white" />
+							<div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
 						)}
 					</div>
 				</div>
@@ -241,14 +267,15 @@ function AgentListItem({
 				{/* Agent info */}
 				<div className="flex-1 min-w-0">
 					<div className="flex items-center gap-2 flex-wrap">
-						<Bot className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-						<span className="font-medium">{agent.name}</span>
+						<span className="min-w-0 font-medium [overflow-wrap:anywhere]">
+							{agent.name}
+						</span>
 						{orgName ? (
 							<Badge
 								variant="outline"
-								className="text-xs px-1.5 py-0 h-5 text-muted-foreground"
+								className="text-xs px-1.5 py-1 h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] text-muted-foreground"
 							>
-								<Building2 className="h-3 w-3 mr-1" />
+								<Building2 className="h-3 w-3 mr-1 shrink-0" />
 								{orgName}
 							</Badge>
 						) : (
@@ -256,15 +283,17 @@ function AgentListItem({
 								variant="default"
 								className="text-xs px-1.5 py-0 h-5"
 							>
-								<Globe className="h-3 w-3 mr-1" />
+								<Globe className="h-3 w-3 mr-1 shrink-0" />
 								Global
 							</Badge>
 						)}
 					</div>
-					<p className={cn(
-						"text-sm text-muted-foreground mt-0.5 line-clamp-2",
-						!agent.description && "italic",
-					)}>
+					<p
+						className={cn(
+							"text-sm text-muted-foreground mt-0.5 [overflow-wrap:anywhere]",
+							!agent.description && "italic",
+						)}
+					>
 						{agent.description || "No description"}
 					</p>
 				</div>

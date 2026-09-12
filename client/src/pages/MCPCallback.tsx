@@ -1,3 +1,5 @@
+import { AuthTransition } from "@/components/auth/AuthTransition";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 /**
  * MCP OAuth Callback Page
  *
@@ -15,7 +17,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -34,7 +36,9 @@ export function MCPCallback() {
 			const internalState = searchParams.get("internal_state");
 
 			if (!internalState) {
-				setError("Missing internal_state parameter");
+				setError(
+					"This authorization link is incomplete. Start the connection again from your app.",
+				);
 				return;
 			}
 
@@ -88,51 +92,51 @@ export function MCPCallback() {
 
 	if (error) {
 		return (
-			<div className="min-h-screen flex items-center justify-center bg-background p-4">
-				<div className="w-full max-w-md space-y-4">
-					<Alert variant="destructive">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							OAuth callback failed: {error}
-						</AlertDescription>
-					</Alert>
-					<Button
-						className="w-full"
-						onClick={() => (window.location.href = "/")}
-					>
-						Return to Home
-					</Button>
-				</div>
+			<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+				<Card className="w-full max-w-md rounded-[var(--bf-radius-feature)]">
+					<CardHeader>
+						<h1 className="font-display text-2xl font-semibold tracking-tight">
+							Authorization could not be completed
+						</h1>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<Alert variant="destructive">
+							<AlertCircle className="size-4" />
+							<AlertDescription className="[overflow-wrap:anywhere]">
+								{error}
+							</AlertDescription>
+						</Alert>
+						<Button
+							className="min-h-11 w-full"
+							onClick={() => {
+								window.location.href = "/";
+							}}
+						>
+							Return to Home
+						</Button>
+					</CardContent>
+				</Card>
 			</div>
 		);
 	}
 
 	if (success) {
 		return (
-			<div className="min-h-screen flex items-center justify-center bg-background p-4">
-				<div className="w-full max-w-md space-y-4 text-center">
-					<CheckCircle2 className="h-12 w-12 mx-auto text-green-500" />
-					<h2 className="text-xl font-semibold">
+			<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+				<div className="w-full max-w-md space-y-4 rounded-[var(--bf-radius-feature)] border border-border bg-card p-6 text-center">
+					<CheckCircle2 className="h-12 w-12 mx-auto text-[var(--bf-success)]" />
+					<h1 className="font-display text-2xl font-semibold">
 						Authorization Complete
-					</h2>
+					</h1>
 					<p className="text-muted-foreground">
-						You can close this tab and return to Claude Desktop.
+						You can close this tab and return to your app.
 					</p>
 				</div>
 			</div>
 		);
 	}
 
-	return (
-		<div className="min-h-screen flex items-center justify-center bg-background">
-			<div className="text-center">
-				<Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-				<p className="text-muted-foreground">
-					Completing MCP authorization...
-				</p>
-			</div>
-		</div>
-	);
+	return <AuthTransition message="Completing MCP authorization…" />;
 }
 
 export default MCPCallback;

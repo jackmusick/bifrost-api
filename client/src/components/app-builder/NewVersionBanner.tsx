@@ -6,7 +6,7 @@
  * - Calls onRefresh to do a soft refresh (invalidate queries, reset store)
  */
 
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -27,27 +27,30 @@ interface NewVersionBannerProps {
  * />
  */
 export function NewVersionBanner({ isVisible, onRefresh }: NewVersionBannerProps) {
+	const reduceMotion = useReducedMotion();
+
 	return (
 		<AnimatePresence>
 			{isVisible && (
 				<motion.div
 					key="new-version-banner"
-					initial={{ opacity: 0, scale: 0.95 }}
-					animate={{ opacity: 1, scale: 1 }}
-					exit={{ opacity: 0, scale: 0.95 }}
-					transition={{ duration: 0.15 }}
-					className="flex items-center gap-2"
+					initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+					animate={reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+					exit={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+					transition={{ duration: reduceMotion ? 0 : 0.15 }}
+					className="flex min-h-11 flex-wrap items-center gap-2 rounded-[var(--bf-radius-control)] border border-[color:var(--bf-info-soft)] bg-[color:var(--bf-info-soft)]/20 px-3 py-2 text-sm"
+					aria-live="polite"
 				>
-					<span className="text-sm text-amber-600 dark:text-amber-500 font-medium">
+					<span className="font-medium text-[var(--bf-info)]">
 						New version available
 					</span>
 					<Button
 						variant="ghost"
 						size="sm"
-						className="h-7 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-500 dark:hover:text-amber-400 dark:hover:bg-amber-900/20"
+						className="min-h-11 px-3 text-[var(--bf-info)] hover:bg-[color:var(--bf-info-soft)]/30 hover:text-[var(--bf-info)]"
 						onClick={onRefresh}
 					>
-						<RefreshCw className="h-3.5 w-3.5 mr-1" />
+						<RefreshCw className="mr-1 h-3.5 w-3.5" />
 						Refresh
 					</Button>
 				</motion.div>

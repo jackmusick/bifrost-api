@@ -1541,6 +1541,11 @@ class TestManifestSchemaCoverage:
     INTEGRATION_IGNORED = {
         "id",            # manifest uses UUID dict key; id is a field inside
         "is_deleted",    # soft-delete flag, internal
+        "logo_data",     # uploaded UI chrome, not portable manifest content
+        "logo_content_type",
+        "logo_thumbnail_data",
+        "logo_thumbnail_content_type",
+        "logo_thumbnail_version",
         "created_at",
         "updated_at",
     }

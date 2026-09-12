@@ -61,3 +61,12 @@ describe("FormConfirmation", () => {
 		expect(screen.getByRole("list")).toHaveTextContent("First Second");
 	});
 });
+
+it("avoids animated scrolling for reduced motion", () => {
+	vi.spyOn(window, "matchMedia").mockReturnValue({
+		matches: true,
+	} as MediaQueryList);
+	const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+	render(<FormConfirmation formId="reduced" markdown="Thank you" />);
+	expect(scroll).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+});

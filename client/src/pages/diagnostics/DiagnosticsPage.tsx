@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { AlertCircle } from "lucide-react";
 import { WorkersTab } from "./components/WorkersTab";
 import { SchedulerTab } from "./components/SchedulerTab";
@@ -21,7 +22,11 @@ export function DiagnosticsPage() {
 						administrator access is required.
 					</AlertDescription>
 				</Alert>
-				<Button onClick={() => navigate("/")} className="mt-4">
+				<Button
+					type="button"
+					onClick={() => navigate("/")}
+					className="mt-4 min-h-11"
+				>
 					Return to Dashboard
 				</Button>
 			</div>
@@ -29,27 +34,30 @@ export function DiagnosticsPage() {
 	}
 
 	return (
-		<div className="h-full flex flex-col space-y-6">
-			<div className="max-w-[1100px] mx-auto w-full">
-				<h1 className="text-4xl font-extrabold tracking-tight">
-					Diagnostics
-				</h1>
-				<p className="mt-2 text-muted-foreground">
-					Monitor system health, process pools, and troubleshoot issues
-				</p>
-			</div>
+		<div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-col gap-6 lg:h-full lg:min-h-0">
+			<ListPageHeader
+				title="Diagnostics"
+				description="Monitor system health, process pools, and troubleshoot issues"
+			/>
 
-			<Tabs defaultValue="workers" className="flex min-h-0 flex-1 flex-col">
-				<div className="max-w-[1100px] mx-auto w-full">
-					<TabsList>
-						<TabsTrigger value="workers">Workers</TabsTrigger>
-						<TabsTrigger value="scheduler">Scheduler</TabsTrigger>
+			<Tabs defaultValue="workers" className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+				<div className="max-w-[1100px] mx-auto w-full shrink-0">
+					<TabsList
+						aria-label="Diagnostics views"
+						className="w-full sm:w-auto"
+					>
+						<TabsTrigger className="min-h-11" value="workers">
+							Workers
+						</TabsTrigger>
+						<TabsTrigger className="min-h-11" value="scheduler">
+							Scheduler
+						</TabsTrigger>
 					</TabsList>
 				</div>
-				<TabsContent value="workers" className="min-h-0 flex-1 overflow-auto pt-4">
+				<TabsContent value="workers" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					<WorkersTab />
 				</TabsContent>
-				<TabsContent value="scheduler" className="min-h-0 flex-1 overflow-auto pt-4">
+				<TabsContent value="scheduler" className="min-w-0 pt-4 lg:min-h-0 lg:flex-1 lg:overflow-auto">
 					<SchedulerTab />
 				</TabsContent>
 			</Tabs>

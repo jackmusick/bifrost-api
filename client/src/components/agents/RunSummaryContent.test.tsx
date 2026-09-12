@@ -39,6 +39,24 @@ describe("RunSummaryContent", () => {
 		expect(screen.getByText("428950")).toBeInTheDocument();
 	});
 
+	it("renders markdown previews without showing formatting markers", () => {
+		renderWithProviders(
+			<RunSummaryContent
+				run={{
+					...run,
+					asked: "**Triage** ticket 428950",
+					did: "Routed to **Support**",
+				}}
+			/>,
+		);
+
+		expect(screen.getByText("Triage").tagName.toLowerCase()).toBe("strong");
+		expect(screen.getByText("Support").tagName.toLowerCase()).toBe(
+			"strong",
+		);
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
 	it("falls back to the run error when no did summary exists", () => {
 		renderWithProviders(
 			<RunSummaryContent
@@ -57,8 +75,7 @@ describe("RunSummaryContent", () => {
 			<RunSummaryContent
 				run={{
 					...run,
-					parent_run_id:
-						"00000000-0000-0000-0000-000000000003",
+					parent_run_id: "00000000-0000-0000-0000-000000000003",
 				}}
 			/>,
 		);

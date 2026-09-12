@@ -78,15 +78,9 @@ describe("DocumentQueryPanel", () => {
 		await user.click(screen.getByRole("button", { name: /add filter/i }));
 		expect(screen.getByPlaceholderText(/field name/i)).toBeInTheDocument();
 
-		// Find the trash button — it's an icon-only button in the row.
-		// Buttons without names: filter to icon-only ones near the input.
-		const iconButtons = screen.getAllByRole("button");
-		// The last button added after "Add Filter" is the delete (Trash2 icon).
-		const deleteBtn = iconButtons.find(
-			(b) => b.querySelector("svg.lucide-trash2") !== null,
+		await user.click(
+			screen.getByRole("button", { name: /remove filter/i }),
 		);
-		expect(deleteBtn).toBeTruthy();
-		await user.click(deleteBtn!);
 
 		expect(
 			screen.queryByPlaceholderText(/field name/i),
@@ -103,4 +97,14 @@ describe("DocumentQueryPanel", () => {
 
 		expect(onClearFilters).toHaveBeenCalled();
 	});
+	it.each(["is null", "has field"])("applies the displayed default true for %s", async (label) => {
+		const { user, onApplyFilters } = renderPanel();
+		await user.click(screen.getByRole("button", { name: /add filter/i }));
+		await user.type(screen.getByRole("textbox", { name: "Field name" }), "status");
+		await user.click(screen.getByRole("combobox", { name: "Filter operator" }));
+		await user.click(screen.getByRole("option", { name: label }));
+		await user.click(screen.getByRole("button", { name: /apply filters/i }));
+		expect(onApplyFilters).toHaveBeenLastCalledWith({ status: { [label === "is null" ? "is_null" : "has_key"]: true } });
+	});
+
 });

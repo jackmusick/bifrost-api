@@ -75,36 +75,44 @@ export function FilterPopover({
 		{ value: "all", label: "All Usage" },
 		{ value: "unused", label: "Unused (0 refs)" },
 		{ value: "in_use", label: "In Use" },
+		{
+			value: "related_mismatch",
+			label: "Related scope/access mismatch",
+		},
 	];
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" size="icon" className="h-9 w-9 relative">
-					<Filter className="h-4 w-4" />
+				<Button type="button" variant="outline" className="min-h-11" aria-label={`Filters${activeFilterCount ? ` (${activeFilterCount} active)` : ""}`}>
+					<Filter aria-hidden="true" className="size-4" />
+					Filters
 					{activeFilterCount > 0 && (
 						<Badge
 							variant="secondary"
-							className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+							className="min-w-5 justify-center"
 						>
 							{activeFilterCount}
 						</Badge>
 					)}
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-80 p-0" align="start">
-				<Command>
-					<CommandInput placeholder="Search filters..." />
-					<CommandList className="max-h-80">
+			<PopoverContent aria-label="Entity filters" className="flex max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden p-0" align="start">
+				<Command label="Search filters" className="min-h-0 flex-1">
+					<CommandInput aria-label="Search filters" placeholder="Search filters…" />
+					<CommandList className="min-h-0 max-h-[min(24rem,55dvh)] flex-1">
 						<CommandGroup heading="Entity Type">
 							{typeOptions.map((option) => (
 								<CommandItem
 									key={option.value}
-									value={option.label}
+									value={`type:${option.value}`}
+									keywords={[option.label]}
+									className="min-h-11 lg:min-h-11 whitespace-normal [overflow-wrap:anywhere]"
 									data-checked={typeFilter === option.value}
 									onSelect={() => setTypeFilter(option.value)}
 								>
-									{option.label}
+									<span className="min-w-0 flex-1">{option.label}</span>
+									{typeFilter === option.value && <><span className="sr-only">Current filter</span></>}
 								</CommandItem>
 							))}
 						</CommandGroup>
@@ -113,11 +121,14 @@ export function FilterPopover({
 							{orgOptions.map((option) => (
 								<CommandItem
 									key={option.value}
-									value={option.label}
+									value={`org:${option.value}`}
+									keywords={[option.label]}
+									className="min-h-11 lg:min-h-11 whitespace-normal [overflow-wrap:anywhere]"
 									data-checked={orgFilter === option.value}
 									onSelect={() => setOrgFilter(option.value)}
 								>
-									{option.label}
+									<span className="min-w-0 flex-1">{option.label}</span>
+									{orgFilter === option.value && <><span className="sr-only">Current filter</span></>}
 								</CommandItem>
 							))}
 						</CommandGroup>
@@ -126,24 +137,34 @@ export function FilterPopover({
 							{accessOptions.map((option) => (
 								<CommandItem
 									key={option.value}
-									value={option.label}
+									value={`access:${option.value}`}
+									keywords={[option.label]}
+									className="min-h-11 lg:min-h-11 whitespace-normal [overflow-wrap:anywhere]"
 									data-checked={accessFilter === option.value}
 									onSelect={() => setAccessFilter(option.value)}
 								>
-									{option.label}
+									<span className="min-w-0 flex-1">{option.label}</span>
+									{accessFilter === option.value && <><span className="sr-only">Current filter</span></>}
 								</CommandItem>
 							))}
 						</CommandGroup>
 						<CommandSeparator />
 						<CommandGroup heading="Usage">
+							<p className="px-2 pb-1 text-xs leading-5 text-muted-foreground">
+								Related mismatch uses only relationships loaded
+								in the expanded directory view.
+							</p>
 							{usageOptions.map((option) => (
 								<CommandItem
 									key={option.value}
-									value={option.label}
+									value={`usage:${option.value}`}
+									keywords={[option.label]}
+									className="min-h-11 lg:min-h-11 whitespace-normal [overflow-wrap:anywhere]"
 									data-checked={usageFilter === option.value}
 									onSelect={() => setUsageFilter(option.value)}
 								>
-									{option.label}
+									<span className="min-w-0 flex-1">{option.label}</span>
+									{usageFilter === option.value && <><span className="sr-only">Current filter</span></>}
 								</CommandItem>
 							))}
 						</CommandGroup>
@@ -151,11 +172,12 @@ export function FilterPopover({
 					</CommandList>
 				</Command>
 				{activeFilterCount > 0 && (
-					<div className="p-2 border-t">
+					<div className="shrink-0 p-2 border-t">
 						<Button
 							variant="ghost"
 							size="sm"
-							className="w-full"
+							type="button"
+							className="min-h-11 w-full"
 							onClick={() => {
 								onClearFilters();
 								setOpen(false);

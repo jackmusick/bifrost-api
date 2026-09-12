@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +18,11 @@ interface RequiredInstructionsSettingsProps {
 	embedded?: boolean;
 }
 
-export function RequiredInstructionsSettings({
+export function RequiredInstructionsSettings(props: RequiredInstructionsSettingsProps) {
+	return <RequiredInstructionsForm key={props.organizationId ?? "global"} {...props} />;
+}
+
+function RequiredInstructionsForm({
 	organizationId,
 	embedded = false,
 }: RequiredInstructionsSettingsProps) {
@@ -30,6 +34,11 @@ export function RequiredInstructionsSettings({
 	const [savedInstructions, setSavedInstructions] = useState("");
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
+	const [loadError, setLoadError] = useState(false);
+	const [saveError, setSaveError] = useState(false);
+	const [attempt, setAttempt] = useState(0);
+	const activeForm = useRef(true);
+	useEffect(() => { activeForm.current = true; return () => { activeForm.current = false; }; }, []);
 
 	useEffect(() => {
 		let active = true;
@@ -39,33 +48,32 @@ export function RequiredInstructionsSettings({
 				setInstructions(settings.instructions);
 				setSavedInstructions(settings.instructions);
 			})
-			.catch(() => toast.error(`Failed to load ${title.toLowerCase()}`))
+			.catch(() => { if (active) setLoadError(true); })
 			.finally(() => {
 				if (active) setLoading(false);
 			});
 		return () => {
 			active = false;
 		};
-	}, [organizationId, title]);
+	}, [organizationId, title, attempt]);
 
 	const handleSave = async () => {
+		if (loading || saving || loadError) return;
 		setSaving(true);
+		setSaveError(false);
 		try {
 			const settings = await updateRequiredInstructionsSettings(
 				instructions,
 				organizationId,
 			);
+			if (!activeForm.current) return;
 			setInstructions(settings.instructions);
 			setSavedInstructions(settings.instructions);
 			toast.success(`${title} saved`);
-		} catch (error) {
-			toast.error(
-				error instanceof Error
-					? error.message
-					: `Failed to save ${title.toLowerCase()}`,
-			);
+		} catch {
+			if (activeForm.current) setSaveError(true);
 		} finally {
-			setSaving(false);
+			if (activeForm.current) setSaving(false);
 		}
 	};
 
@@ -74,7 +82,7 @@ export function RequiredInstructionsSettings({
 			<div className="space-y-1">
 				<div className="flex items-center gap-2">
 					<FileText className="h-5 w-5" />
-					<h3 className="font-semibold leading-none tracking-tight">
+					<h3 className="font-display text-xl font-semibold leading-tight tracking-tight">
 						{title}
 					</h3>
 				</div>
@@ -85,24 +93,32 @@ export function RequiredInstructionsSettings({
 				</p>
 			</div>
 			{loading ? (
-				<div className="flex min-h-[200px] items-center justify-center rounded-md border">
-					<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+				<div role="status" aria-label={`Loading ${title.toLowerCase()}`} className="flex min-h-[200px] items-center justify-center rounded-[var(--bf-radius-control)] border">
+					<Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none text-muted-foreground" />
+				</div>
+			) : loadError ? (
+				<div role="alert" className="space-y-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-4 text-sm">
+					<p>Could not load {title.toLowerCase()}. Retry before editing.</p>
+					<Button variant="outline" className="min-h-11" onClick={() => { setLoading(true); setLoadError(false); setAttempt(value => value + 1); }}>Retry instructions</Button>
 				</div>
 			) : (
 				<TiptapEditor
 					content={instructions}
+					readOnly={saving}
 					onChange={setInstructions}
 					placeholder="Add instructions in Markdown..."
 					ariaLabel={`${title} editor`}
 					editorClassName="min-h-[220px]"
 				/>
 			)}
-			<div className="flex justify-end">
+			{saveError && <p role="alert" className="text-sm text-destructive">Could not save instructions. Your draft is preserved; try again.</p>}
+			<div className="flex flex-wrap justify-end gap-3">
 				<Button
 					onClick={handleSave}
-					disabled={loading || saving || instructions === savedInstructions}
+					className="min-h-11 w-full sm:w-auto"
+					disabled={loadError || loading || saving || instructions === savedInstructions}
 				>
-					{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+					{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />}
 					Save Instructions
 				</Button>
 			</div>
@@ -110,11 +126,11 @@ export function RequiredInstructionsSettings({
 	);
 
 	if (embedded) {
-		return <div className="space-y-4">{content}</div>;
+		return <div className="min-w-0 space-y-4">{content}</div>;
 	}
 
 	return (
-		<Card>
+		<Card className="min-w-0">
 			<CardContent className="space-y-4 pt-6">{content}</CardContent>
 		</Card>
 	);

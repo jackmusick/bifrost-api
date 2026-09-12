@@ -8,7 +8,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { useId } from "react";
+import { cn } from "@/lib/utils";
 
 interface FormInfoPanelProps {
 	formName: string;
@@ -31,86 +32,102 @@ export function FormInfoPanel({
 	isGlobal,
 	setIsGlobal,
 }: FormInfoPanelProps) {
+	const id = useId();
 	return (
-		<Card>
+		<Card className="@container min-w-0">
 			<CardHeader>
 				<CardTitle>Form Information</CardTitle>
 				<CardDescription>
 					Basic details about the form and linked workflow
 				</CardDescription>
 			</CardHeader>
-			<CardContent className="space-y-4">
-				<div className="grid grid-cols-2 gap-4">
-					<div className="space-y-2">
-						<Label htmlFor="formName">Form Name *</Label>
+			<CardContent className="min-w-0 space-y-5">
+				<div className="grid min-w-0 gap-4 @min-[28rem]:grid-cols-2">
+					<div className="min-w-0 space-y-2">
+						<Label htmlFor={`${id}-formName`}>Form Name *</Label>
 						<Input
-							id="formName"
+							className="min-h-11"
+							id={`${id}-formName`}
 							placeholder="User Onboarding Form"
 							value={formName}
 							onChange={(e) => setFormName(e.target.value)}
 						/>
 					</div>
 
-					<div className="space-y-2">
-						<Label htmlFor="linkedWorkflow">
+					<div className="min-w-0 space-y-2">
+						<Label htmlFor={`${id}-linkedWorkflow`}>
 							Linked Workflow *
 						</Label>
 						<Input
-							id="linkedWorkflow"
+							className="min-h-11 font-mono"
+							id={`${id}-linkedWorkflow`}
 							placeholder="user_onboarding"
 							value={linkedWorkflow}
 							onChange={(e) => setLinkedWorkflow(e.target.value)}
-							className="font-mono"
 						/>
 					</div>
 				</div>
 
-				<div className="space-y-2">
-					<Label htmlFor="formDescription">Description</Label>
+				<div className="min-w-0 space-y-2">
+					<Label htmlFor={`${id}-formDescription`}>Description</Label>
 					<Textarea
-						id="formDescription"
+						className="min-h-28"
+						id={`${id}-formDescription`}
 						placeholder="Describe what this form does..."
 						value={formDescription}
 						onChange={(e) => setFormDescription(e.target.value)}
 					/>
 				</div>
 
-				<div className="space-y-2">
-					<Label>Scope</Label>
-					<div className="flex gap-2">
-						<button
-							onClick={() => setIsGlobal(true)}
-							className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-								isGlobal
-									? "border-primary bg-primary/5 text-primary"
-									: "border-border hover:bg-accent"
-							}`}
-						>
-							<Badge variant={isGlobal ? "default" : "outline"}>
-								Global
-							</Badge>
-							<p className="mt-1 text-xs text-muted-foreground">
-								Available to all organizations
-							</p>
-						</button>
-						<button
-							onClick={() => setIsGlobal(false)}
-							className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-								!isGlobal
-									? "border-primary bg-primary/5 text-primary"
-									: "border-border hover:bg-accent"
-							}`}
-						>
-							<Badge variant={!isGlobal ? "default" : "outline"}>
-								Organization-Specific
-							</Badge>
-							<p className="mt-1 text-xs text-muted-foreground">
-								Specific to one organization
-							</p>
-						</button>
+				<fieldset className="min-w-0 space-y-3">
+					<legend className="text-sm font-medium">Scope</legend>
+					<div className="grid min-w-0 gap-3 @min-[28rem]:grid-cols-2">
+						<ScopeChoice
+							title="Global"
+							description="Available to all organizations"
+							selected={isGlobal}
+							onSelect={() => setIsGlobal(true)}
+						/>
+						<ScopeChoice
+							title="Organization-Specific"
+							description="Specific to one organization"
+							selected={!isGlobal}
+							onSelect={() => setIsGlobal(false)}
+						/>
 					</div>
-				</div>
+				</fieldset>
 			</CardContent>
 		</Card>
+	);
+}
+
+function ScopeChoice({
+	title,
+	description,
+	selected,
+	onSelect,
+}: {
+	title: string;
+	description: string;
+	selected: boolean;
+	onSelect: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			aria-pressed={selected}
+			onClick={onSelect}
+			className={cn(
+				"min-h-11 min-w-0 rounded-[var(--bf-radius-control)] border p-3 text-left text-sm motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [overflow-wrap:anywhere]",
+				selected
+					? "border-primary bg-accent text-accent-foreground"
+					: "border-border hover:bg-muted",
+			)}
+		>
+			<span className="font-medium">{title}</span>
+			<span className="mt-1 block text-sm leading-6 text-muted-foreground">
+				{description}
+			</span>
+		</button>
 	);
 }

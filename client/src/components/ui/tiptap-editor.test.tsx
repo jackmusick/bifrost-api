@@ -39,7 +39,7 @@ import { TiptapEditor } from "./tiptap-editor";
 
 describe("TiptapEditor", () => {
 	it("applies the shared TipTap editor class used by global markdown spacing rules", () => {
-		render(
+		const { container } = render(
 			<TiptapEditor
 				content="# Hello"
 				readOnly
@@ -49,14 +49,19 @@ describe("TiptapEditor", () => {
 		);
 
 		expect(mockUseEditor).toHaveBeenCalledWith(
-				expect.objectContaining({
-					editorProps: expect.objectContaining({
-						attributes: expect.objectContaining({
-							class: expect.stringMatching(/tiptap-editor.*min-h-0/),
-							"aria-label": "Confirmation Message editor",
-						}),
+			expect.objectContaining({
+				editorProps: expect.objectContaining({
+					attributes: expect.objectContaining({
+						class: expect.stringMatching(/tiptap-editor.*min-h-0/),
+						"aria-label": "Confirmation Message editor",
 					}),
 				}),
+			}),
+		);
+
+		expect(container.firstChild).toHaveClass(
+			"rounded-[var(--bf-radius-surface)]",
+			"border-border/70",
 		);
 	});
 });

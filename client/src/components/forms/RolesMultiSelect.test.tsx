@@ -39,7 +39,9 @@ import { RolesMultiSelect } from "./RolesMultiSelect";
 
 describe("RolesMultiSelect", () => {
 	it("shows the placeholder when nothing is selected", () => {
-		renderWithProviders(<RolesMultiSelect value={[]} onChange={() => {}} />);
+		renderWithProviders(
+			<RolesMultiSelect value={[]} onChange={() => {}} />,
+		);
 		expect(screen.getByText(/select roles/i)).toBeInTheDocument();
 	});
 
@@ -60,7 +62,9 @@ describe("RolesMultiSelect", () => {
 
 	it("fires onChange with the new selection when an option is clicked", () => {
 		const onChange = vi.fn();
-		renderWithProviders(<RolesMultiSelect value={[]} onChange={onChange} />);
+		renderWithProviders(
+			<RolesMultiSelect value={[]} onChange={onChange} />,
+		);
 
 		// Open popover
 		fireEvent.click(screen.getByRole("combobox"));
@@ -82,4 +86,21 @@ describe("RolesMultiSelect", () => {
 
 		expect(onChange).toHaveBeenCalledWith(["r2"]);
 	});
+});
+
+it("selects the correct role when names are duplicated", () => {
+	mockRoles.push({ ...mockRoles[0]!, id: "r3" });
+	try {
+		const onChange = vi.fn();
+		renderWithProviders(
+			<RolesMultiSelect value={[]} onChange={onChange} />,
+		);
+		fireEvent.click(screen.getByRole("combobox"));
+		const duplicates = screen.getAllByRole("option", { name: /Auditor/ });
+		expect(duplicates).toHaveLength(2);
+		fireEvent.click(duplicates[1]!);
+		expect(onChange).toHaveBeenCalledWith(["r3"]);
+	} finally {
+		mockRoles.pop();
+	}
 });

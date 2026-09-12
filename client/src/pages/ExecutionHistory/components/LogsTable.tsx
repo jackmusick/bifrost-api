@@ -1,172 +1,156 @@
 import {
-    DataTable,
-    DataTableBody,
-    DataTableCell,
-    DataTableFooter,
-    DataTableHead,
-    DataTableHeader,
-    DataTableRow,
+	DataTable,
+	DataTableBody,
+	DataTableCell,
+	DataTableFooter,
+	DataTableHead,
+	DataTableHeader,
+	DataTableRow,
 } from "@/components/ui/data-table";
-import { Badge } from "@/components/ui/badge";
-import {
-    Pagination,
-    PaginationContent,
-    PaginationItem,
-    PaginationLink,
-    PaginationNext,
-    PaginationPrevious,
-} from "@/components/ui/pagination";
+import { LogLevel, LogRecord } from "./LogRecord";
+import { PaginationFooter } from "@/components/pagination/PaginationFooter";
+import { useIsDesktop } from "@/hooks/useMediaQuery";
 import type { components } from "@/lib/v1";
 import { formatDate } from "@/lib/utils";
 
 type LogListEntry = components["schemas"]["LogListEntry"];
 
 interface LogsTableProps {
-    logs: LogListEntry[];
-    isLoading: boolean;
-    continuationToken?: string | null;
-    onNextPage: () => void;
-    onPrevPage: () => void;
-    canGoBack: boolean;
-    currentPage: number;
-    onLogClick: (log: LogListEntry) => void;
-}
-
-function getLevelBadgeVariant(
-    level: string,
-): "default" | "secondary" | "destructive" | "outline" | "warning" {
-    switch (level.toUpperCase()) {
-        case "ERROR":
-        case "CRITICAL":
-            return "destructive";
-        case "WARNING":
-            return "warning";
-        case "DEBUG":
-            return "outline";
-        default:
-            return "default";
-    }
+	logs: LogListEntry[];
+	isLoading: boolean;
+	isFetching?: boolean;
+	continuationToken?: string | null;
+	onNextPage: () => void;
+	onPrevPage: () => void;
+	canGoBack: boolean;
+	currentPage: number;
+	onLogClick: (log: LogListEntry) => void;
 }
 
 export function LogsTable({
-    logs,
-    isLoading,
-    continuationToken,
-    onNextPage,
-    onPrevPage,
-    canGoBack,
-    currentPage,
-    onLogClick,
+	logs,
+	isLoading,
+	isFetching = false,
+	continuationToken,
+	onNextPage,
+	onPrevPage,
+	canGoBack,
+	currentPage,
+	onLogClick,
 }: LogsTableProps) {
-    return (
-        <DataTable>
-            <DataTableHeader>
-                <DataTableRow>
-                    <DataTableHead className="w-[150px]">
-                        Organization
-                    </DataTableHead>
-                    <DataTableHead className="w-[180px]">
-                        Workflow
-                    </DataTableHead>
-                    <DataTableHead className="w-[100px]">Level</DataTableHead>
-                    <DataTableHead>Message</DataTableHead>
-                    <DataTableHead className="w-[180px]">
-                        Timestamp
-                    </DataTableHead>
-                </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-                {isLoading ? (
-                    <DataTableRow>
-                        <DataTableCell colSpan={5} className="text-center py-8">
-                            Loading logs...
-                        </DataTableCell>
-                    </DataTableRow>
-                ) : logs.length === 0 ? (
-                    <DataTableRow>
-                        <DataTableCell
-                            colSpan={5}
-                            className="text-center py-8 text-muted-foreground"
-                        >
-                            No logs found matching your filters.
-                        </DataTableCell>
-                    </DataTableRow>
-                ) : (
-                    logs.map((log) => (
-                        <DataTableRow
-                            key={log.id}
-                            clickable
-                            href={`/history/${log.execution_id}`}
-                            onClick={() => onLogClick(log)}
-                            className="cursor-pointer"
-                        >
-                            <DataTableCell className="font-medium">
-                                {log.organization_name || "\u2014"}
-                            </DataTableCell>
-                            <DataTableCell>{log.workflow_name}</DataTableCell>
-                            <DataTableCell>
-                                <Badge
-                                    variant={getLevelBadgeVariant(log.level)}
-                                    className="font-mono text-xs uppercase"
-                                >
-                                    {log.level}
-                                </Badge>
-                            </DataTableCell>
-                            <DataTableCell className="max-w-md truncate">
-                                {log.message}
-                            </DataTableCell>
-                            <DataTableCell className="text-muted-foreground text-sm">
-                                {formatDate(log.timestamp)}
-                            </DataTableCell>
-                        </DataTableRow>
-                    ))
-                )}
-            </DataTableBody>
-            <DataTableFooter>
-                <DataTableRow>
-                    <DataTableCell colSpan={5} className="p-0">
-                        <div className="px-6 py-4 flex items-center justify-center">
-                            <Pagination>
-                                <PaginationContent>
-                                    <PaginationItem>
-                                        <PaginationPrevious
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                onPrevPage();
-                                            }}
-                                            className={
-                                                !canGoBack
-                                                    ? "pointer-events-none opacity-50"
-                                                    : "cursor-pointer"
-                                            }
-                                            aria-disabled={!canGoBack}
-                                        />
-                                    </PaginationItem>
-                                    <PaginationItem>
-                                        <PaginationLink isActive>
-                                            {currentPage}
-                                        </PaginationLink>
-                                    </PaginationItem>
-                                    <PaginationItem>
-                                        <PaginationNext
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                onNextPage();
-                                            }}
-                                            className={
-                                                !continuationToken
-                                                    ? "pointer-events-none opacity-50"
-                                                    : "cursor-pointer"
-                                            }
-                                            aria-disabled={!continuationToken}
-                                        />
-                                    </PaginationItem>
-                                </PaginationContent>
-                            </Pagination>
-                        </div>
-                    </DataTableCell>
-                </DataTableRow>
-            </DataTableFooter>
-        </DataTable>
-    );
+	const isDesktop = useIsDesktop();
+	if (isLoading)
+		return (
+			<div
+				role="status"
+				aria-busy="true"
+				className="rounded-[var(--bf-radius-surface)] border border-border bg-card p-6 text-sm text-muted-foreground"
+			>
+				Loading logs…
+			</div>
+		);
+
+	const paginationFooter = (className?: string) => (
+		<PaginationFooter
+			aria-label="Log pages"
+			className={className}
+			summary={`Page ${currentPage}`}
+			pending={isFetching}
+			previousDisabled={!canGoBack || isFetching}
+			nextDisabled={!continuationToken || isFetching}
+			onPrevious={onPrevPage}
+			onNext={onNextPage}
+		/>
+	);
+
+	return (
+		<div className="flex min-h-0 min-w-0 flex-col gap-4 lg:flex-1">
+			{logs.length === 0 ? (
+				<div
+					className="rounded-[var(--bf-radius-surface)] border border-border bg-card p-6 text-center text-sm text-muted-foreground"
+					aria-live="polite"
+				>
+					No logs found matching your filters.
+				</div>
+			) : !isDesktop ? (
+				<ul
+					aria-label="Log records"
+					className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-card lg:min-h-0 lg:flex-1 lg:overflow-auto xl:overflow-visible"
+				>
+					{logs.map((log) => (
+						<LogRecord key={log.id} log={log} onOpen={onLogClick} />
+					))}
+				</ul>
+			) : (
+				<DataTable
+					className="[&_table]:table-fixed"
+					aria-busy={isFetching ? "true" : undefined}
+				>
+					<DataTableHeader>
+						<DataTableRow>
+							<DataTableHead className="w-[150px]">
+								Organization
+							</DataTableHead>
+							<DataTableHead className="w-[180px]">
+								Workflow
+							</DataTableHead>
+							<DataTableHead className="w-[120px]">
+								Level
+							</DataTableHead>
+							<DataTableHead>Message</DataTableHead>
+							<DataTableHead className="w-[220px]">
+								Timestamp
+							</DataTableHead>
+						</DataTableRow>
+					</DataTableHeader>
+					<DataTableBody>
+						{logs.map((log) => (
+							<DataTableRow
+								key={log.id}
+								clickable
+								href={`/history/${log.execution_id}`}
+								onClick={(event) => {
+									if (
+										event.metaKey ||
+										event.ctrlKey ||
+										event.shiftKey ||
+										event.altKey ||
+										event.button !== 0
+									)
+										return;
+									onLogClick(log);
+								}}
+							>
+								<DataTableCell className="font-medium [overflow-wrap:anywhere]">
+									{log.organization_name || "—"}
+								</DataTableCell>
+								<DataTableCell className="[overflow-wrap:anywhere]">
+									{log.workflow_name}
+								</DataTableCell>
+								<DataTableCell>
+									<LogLevel level={log.level} />
+								</DataTableCell>
+								<DataTableCell title={log.message}>
+									<p className="line-clamp-3 whitespace-pre-wrap font-mono text-sm leading-relaxed [overflow-wrap:anywhere]">
+										{log.message}
+									</p>
+								</DataTableCell>
+								<DataTableCell className="text-sm text-muted-foreground">
+									{formatDate(log.timestamp)}
+								</DataTableCell>
+							</DataTableRow>
+						))}
+					</DataTableBody>
+					<DataTableFooter>
+						<DataTableRow>
+							<DataTableCell colSpan={5} className="p-0">
+								{paginationFooter("px-6")}
+							</DataTableCell>
+						</DataTableRow>
+					</DataTableFooter>
+				</DataTable>
+			)}
+			{(logs.length === 0 || !isDesktop) && paginationFooter()}
+		</div>
+	);
 }

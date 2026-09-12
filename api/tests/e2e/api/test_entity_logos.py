@@ -6,6 +6,10 @@ import uuid
 
 import pytest
 from PIL import Image
+from sqlalchemy import update
+
+from src.models.orm.forms import Form
+from src.models.orm.solutions import Solution
 
 
 _png_buffer = io.BytesIO()
@@ -236,3 +240,122 @@ class TestAgentLogo:
             assert got.headers["content-type"].startswith("image/webp")
         finally:
             _delete_agent(e2e_client, platform_admin.headers, agent["id"])
+
+
+def _create_form(e2e_client, headers, name, organization_id=None):
+    payload = {
+        "name": name,
+        "description": "Logo form",
+        "form_schema": {"fields": []},
+        "access_level": "authenticated",
+    }
+    if organization_id is not None:
+        payload["organization_id"] = organization_id
+    resp = e2e_client.post("/api/forms", headers=headers, json=payload)
+    assert resp.status_code == 201, f"create form failed: {resp.text}"
+    return resp.json()
+
+
+def _delete_form(e2e_client, headers, form_id):
+    e2e_client.delete(f"/api/forms/{form_id}", headers=headers)
+
+
+@pytest.mark.e2e
+class TestFormLogo:
+    def test_upload_fetch_delete_png_with_org_access(
+        self,
+        e2e_client,
+        platform_admin,
+        org1,
+        org1_user,
+        org2_user,
+    ):
+        form = _create_form(
+            e2e_client,
+            platform_admin.headers,
+            f"logo-form-{uuid.uuid4().hex[:8]}",
+            organization_id=org1["id"],
+        )
+        form_id = form["id"]
+        try:
+            upload = e2e_client.post(
+                f"/api/forms/{form_id}/logo",
+                headers=_upload_headers(platform_admin.headers),
+                files={"file": ("logo.png", CLEAN_PNG, "image/png")},
+            )
+            assert upload.status_code == 200, f"upload failed: {upload.text}"
+
+            got = e2e_client.get(
+                f"/api/forms/{form_id}/logo",
+                headers=org1_user.headers,
+            )
+            assert got.status_code == 200
+            assert got.headers["content-type"].startswith("image/webp")
+            assert got.headers["cache-control"] == "private, max-age=31536000, immutable"
+
+            denied = e2e_client.get(
+                f"/api/forms/{form_id}/logo",
+                headers=org2_user.headers,
+            )
+            assert denied.status_code == 404
+
+            listed = e2e_client.get("/api/forms", headers=platform_admin.headers)
+            assert listed.status_code == 200
+            listed_form = next(row for row in listed.json() if row["id"] == form_id)
+            assert listed_form["logo"] is None
+            assert listed_form["logo_url"].startswith(f"/api/forms/{form_id}/logo?v=")
+            assert listed_form["logo_version"]
+
+            detail = e2e_client.get(
+                f"/api/forms/{form_id}",
+                headers=platform_admin.headers,
+            )
+            assert detail.status_code == 200
+            assert detail.json()["logo"].startswith("data:image/webp;base64,")
+
+            deleted = e2e_client.delete(
+                f"/api/forms/{form_id}/logo",
+                headers=platform_admin.headers,
+            )
+            assert deleted.status_code == 204
+        finally:
+            _delete_form(e2e_client, platform_admin.headers, form_id)
+
+    @pytest.mark.asyncio
+    async def test_solution_managed_form_rejects_logo_writes(
+        self,
+        e2e_client,
+        platform_admin,
+        db_session,
+    ):
+        form = _create_form(
+            e2e_client,
+            platform_admin.headers,
+            f"solution-logo-form-{uuid.uuid4().hex[:8]}",
+        )
+        form_id = form["id"]
+        solution = Solution(
+            slug=f"form-logo-{uuid.uuid4().hex[:8]}",
+            name="Form Logo Solution",
+        )
+        db_session.add(solution)
+        await db_session.flush()
+        await db_session.execute(
+            update(Form)
+            .where(Form.id == uuid.UUID(form_id))
+            .values(solution_id=solution.id)
+        )
+        await db_session.commit()
+
+        upload = e2e_client.post(
+            f"/api/forms/{form_id}/logo",
+            headers=_upload_headers(platform_admin.headers),
+            files={"file": ("logo.png", CLEAN_PNG, "image/png")},
+        )
+        assert upload.status_code == 409
+
+        delete = e2e_client.delete(
+            f"/api/forms/{form_id}/logo",
+            headers=platform_admin.headers,
+        )
+        assert delete.status_code == 409

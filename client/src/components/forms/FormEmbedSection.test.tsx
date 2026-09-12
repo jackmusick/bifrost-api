@@ -130,3 +130,12 @@ describe("FormEmbedSection — create secret", () => {
 		expect(screen.getByText("sekret-ABC")).toBeInTheDocument();
 	});
 });
+
+it("recovers a failed secret lookup without showing a false empty state", async () => {
+	mockAuthFetch.mockResolvedValueOnce(jsonResponse({ detail: "Unavailable" }, false)).mockResolvedValueOnce(jsonResponse([]));
+	const { user } = renderWithProviders(<FormEmbedSection formId="form-retry" />);
+	expect(await screen.findByRole("alert")).toHaveTextContent("Embed secrets could not be loaded");
+	expect(screen.queryByText("No embed secrets configured.")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry embed secrets" }));
+	expect(await screen.findByText("No embed secrets configured.")).toBeInTheDocument();
+});

@@ -72,6 +72,8 @@ from src.models.orm.policy_rule import PolicyRule
 from src.models.orm.worker_metric import WorkerMetric
 
 __all__ = [
+    "HomeCollection",
+    "HomeResourcePreference",
     # Base
     "Base",
     # Organizations
@@ -194,3 +196,5 @@ __all__ = [
     # Custom Claims
     "CustomClaim",
 ]
+
+from src.models.orm.home import HomeCollection, HomeResourcePreference

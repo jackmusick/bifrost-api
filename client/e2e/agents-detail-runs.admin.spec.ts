@@ -105,6 +105,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 	const parentId = "91000000-0000-4000-8000-000000000001";
 	const childId = "91000000-0000-4000-8000-000000000002";
 	const grandchildId = "91000000-0000-4000-8000-000000000003";
+	const ticketExecutionId = "92000000-0000-4000-8000-000000000001";
 	const createdAt = new Date().toISOString();
 	const step = (
 		runId: string,
@@ -136,7 +137,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 		agent_name: agentName,
 		asked,
 		did,
-		answered: "Work completed successfully.",
+		answered: "### Outcome\n\nWork **completed** successfully.",
 		input: { ticket_id: 428950, request: asked },
 		output: { ticket_id: 428950, completed: true },
 		steps,
@@ -169,7 +170,7 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 					}),
 					step(parentId, 4, "tool_result", {
 						tool_name: "ai_ticketing_get_ticket_details",
-						execution_id: "92000000-0000-4000-8000-000000000001",
+						execution_id: ticketExecutionId,
 						result: {
 							ticket_id: 428950,
 							status: "open",
@@ -277,6 +278,33 @@ async function mockHierarchicalRun(page: Page, agentId: string) {
 		await route.fallback();
 	});
 
+	await page.route(/\/api\/executions\/[^/?]+(?:\?.*)?$/, async (route) => {
+		const request = route.request();
+		const executionId = new URL(request.url()).pathname.split("/").at(-1);
+		if (request.method() !== "GET" || executionId !== ticketExecutionId) {
+			await route.fallback();
+			return;
+		}
+
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				execution_id: ticketExecutionId,
+				workflow_name: "Ticket details",
+				status: "completed",
+				created_at: createdAt,
+				started_at: createdAt,
+				completed_at: createdAt,
+				result: {
+					ticket_id: 428950,
+					status: "open",
+					matched: true,
+				},
+			}),
+		});
+	});
+
 	await page.route(/\/api\/agent-runs\/[^/?]+(?:\?.*)?$/, async (route) => {
 		if (route.request().method() !== "GET") {
 			await route.fallback();
@@ -321,35 +349,167 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 
 		try {
 			await page.setViewportSize({ width: 1440, height: 1000 });
+
+			await page.goto("/history?type=agents");
+			await page
+				.getByRole("combobox", { name: "Agent", exact: true })
+				.click();
+			await page
+				.getByRole("option", { name: agent.name, exact: true })
+				.click();
+			await expect(
+				page.getByRole("navigation", { name: "Agent run pages" }),
+			).toBeVisible();
+			await page
+				.getByRole("combobox", { name: "Run status", exact: true })
+				.click();
+			await page
+				.getByRole("option", { name: "Completed", exact: true })
+				.click();
+			await expect(
+				page.getByRole("navigation", { name: "Agent run pages" }),
+			).toContainText("Page 1");
 			await page.goto(`/agents/${agent.id}/runs/${parentId}`);
+			await expect(
+				page.getByRole("button", { name: "Copy run ID" }),
+			).toBeVisible();
+			const answerHeading = page.getByRole("heading", {
+				name: "Outcome",
+				exact: true,
+			});
+			await expect(answerHeading).toBeVisible();
+			expect(
+				await answerHeading.evaluate((element) =>
+					parseFloat(getComputedStyle(element).fontSize),
+				),
+			).toBeLessThanOrEqual(14);
+			await expect(
+				page.getByText("### Outcome", { exact: true }),
+			).toHaveCount(0);
+			await expect(
+				page.getByText("AI Usage", { exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByText("gpt-5.2", { exact: true }),
+			).toHaveCount(0);
+			await page.getByRole("button", { name: /ai usage/i }).click();
+			await expect(
+				page.getByText("gpt-5.2", { exact: true }),
+			).toBeVisible();
+			await page.getByRole("button", { name: /ai usage/i }).click();
+
+			// Browsing stays compact; inspecting a call opens a useful workspace
+			// without discarding the overview or reserving an empty gutter.
+			const browsingCalls = page.getByRole("region", {
+				name: "Activity calls",
+			});
+			const browsingHeight = await browsingCalls.evaluate(
+				(element) => element.clientHeight,
+			);
+			await browsingCalls
+				.getByRole("button", { name: /ticket details/i })
+				.click();
+			const browsingDetails = page.getByRole("region", {
+				name: "Selected call details",
+			});
+			await expect(browsingDetails).toBeVisible();
+			await expect
+				.poll(() =>
+					browsingCalls.evaluate((element) => element.clientHeight),
+				)
+				.toBeGreaterThan(browsingHeight + 50);
+			await expect(page).toHaveURL(
+				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
+			);
+			await expect(answerHeading).toBeVisible();
+			await expect
+				.poll(() =>
+					page
+						.getByRole("heading", { name: "Activity", exact: true })
+						.evaluate(
+							(element) =>
+								element.getBoundingClientRect().top -
+								(element
+									.closest("[data-page-scroll]")
+									?.getBoundingClientRect().top ?? 0),
+						),
+				)
+				.toBeLessThan(60);
+			await page
+				.getByRole("button", { name: "Close call details" })
+				.click();
+			await expect
+				.poll(() =>
+					browsingCalls.evaluate((element) => element.clientHeight),
+				)
+				.toBeLessThanOrEqual(browsingHeight + 1);
+			await page.emulateMedia({ reducedMotion: "reduce" });
+			await browsingCalls
+				.getByRole("button", { name: /ticket details/i })
+				.click();
+			await expect
+				.poll(() =>
+					page
+						.getByRole("heading", { name: "Activity", exact: true })
+						.evaluate(
+							(element) =>
+								element.getBoundingClientRect().top -
+								(element
+									.closest("[data-page-scroll]")
+									?.getBoundingClientRect().top ?? 0),
+						),
+				)
+				.toBeLessThan(60);
+			await page
+				.getByRole("button", { name: "Close call details" })
+				.click();
+			await page.emulateMedia({ reducedMotion: "no-preference" });
+			await page
+				.getByRole("button", { name: "Advanced", exact: true })
+				.click();
+			const advancedRegion = page.getByRole("region", {
+				name: "Advanced activity",
+			});
+			await expect
+				.poll(() =>
+					advancedRegion.evaluate((element) => element.clientHeight),
+				)
+				.toBeGreaterThan(100);
+			await expect(
+				advancedRegion.getByText("Raw executor trace", { exact: true }),
+			).toBeVisible();
+			await page
+				.getByRole("button", { name: "Advanced", exact: true })
+				.click();
+
+			const ticketReference = page.getByRole("link", {
+				name: "Show Looked up ticket details in Activity",
+			});
+			await expect(ticketReference).toBeVisible();
+			await ticketReference.hover();
+			await ticketReference.click();
+			await expect(page).toHaveURL(
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
+			);
 			const activity = page.locator('[data-slot="run-activity"]');
 			await expect(activity).toBeVisible();
 			await expect(
-				activity.getByText("Looked up ticket details", { exact: true }),
+				activity.getByRole("region", { name: "Activity calls" }),
+			).toBeVisible();
+			await expect(
+				activity.getByText("Ticket details", { exact: true }),
 			).toBeVisible();
 			await expect(
 				activity.getByText(
 					"Ticket: 428950 · Status: Open · Match found",
 				),
 			).toBeVisible();
+
 			const ticketAction = activity
 				.locator('[data-activity-kind="action"]')
-				.filter({ hasText: "Looked up ticket details" });
-			const ticketReference = page.getByRole("link", {
-				name: "Show Looked up ticket details in Activity",
-			});
-			await expect(ticketReference).toBeVisible();
-			await ticketReference.hover();
-			await expect(ticketAction).toHaveAttribute(
-				"data-highlighted",
-				"true",
-			);
-			await page.getByText("What was asked", { exact: true }).hover();
-			await expect(ticketAction).toHaveAttribute(
-				"data-highlighted",
-				"false",
-			);
-			await ticketReference.click();
+				.filter({ hasText: "Ticket details" });
 			await expect(ticketAction).toBeInViewport();
 			await expect(ticketAction).toBeFocused();
 			await page.mouse.move(1, 1);
@@ -357,23 +517,34 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"data-highlighted",
 				"false",
 			);
+
+			const selectedDetails = page.getByRole("region", {
+				name: "Selected call details",
+			});
+			await ticketAction
+				.getByRole("button", { name: /ticket details/i })
+				.click();
+			await expect(selectedDetails).toContainText("Ticket details");
 			await expect(
-				ticketAction.getByRole("link", { name: "Execution" }),
+				selectedDetails.getByRole("link", { name: "View execution" }),
 			).toHaveAttribute(
 				"href",
 				"/history/92000000-0000-4000-8000-000000000001",
 			);
+			await selectedDetails.getByRole("tab", { name: "Input" }).click();
 			await expect(
-				page.getByText("Troubleshooting Specialist", { exact: true }),
-			).toHaveCount(2);
+				selectedDetails.getByText("ticket_id:", { exact: true }),
+			).toBeVisible();
+			await selectedDetails.getByRole("tab", { name: "Result" }).click();
 			await expect(
-				activity.getByRole("link", {
-					name: "Open Troubleshooting Specialist run",
+				selectedDetails.getByText("status:", { exact: true }),
+			).toBeVisible();
+
+			await expect(
+				activity.getByText("Troubleshooting Specialist", {
+					exact: true,
 				}),
-			).toHaveAttribute(
-				"href",
-				`/agents/${agent.id}/runs/91000000-0000-4000-8000-000000000002`,
-			);
+			).toHaveCount(1);
 			const delegatedActivity = activity
 				.locator("[data-activity-kind='delegation']")
 				.filter({ hasText: "Troubleshooting Specialist" })
@@ -386,125 +557,183 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				"Delegated run status: Completed",
 			);
 			await expect(delegatedStatus).toBeVisible();
-			const delegatedTitleBox = await delegatedTitle.boundingBox();
-			const delegatedStatusBox = await delegatedStatus.boundingBox();
-			expect(
-				Math.abs(
-					(delegatedTitleBox?.y ?? 0) +
-						(delegatedTitleBox?.height ?? 0) / 2 -
-						((delegatedStatusBox?.y ?? 0) +
-							(delegatedStatusBox?.height ?? 0) / 2),
-				),
-			).toBeLessThanOrEqual(4);
+			await expect(delegatedTitle).toBeVisible();
 			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toHaveCount(0);
-			await expect(
-				page.getByText("Called ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).not.toBeVisible();
-			await expect(page.getByText("Run ID", { exact: true })).toHaveCount(
-				0,
+
+			await delegatedActivity
+				.getByRole("button", {
+					name: /troubleshooting specialist collect endpoint evidence/i,
+				})
+				.click();
+			await expect(selectedDetails).toContainText(
+				"Troubleshooting Specialist",
+			);
+			await expect(selectedDetails).toContainText(
+				"Resolved the device and checked disk space and alerts.",
 			);
 			await expect(
-				page.getByText("gpt-5.2", { exact: true }),
-			).toHaveCount(0);
+				selectedDetails.getByRole("link", { name: "View run" }),
+			).toHaveAttribute(
+				"href",
+				`/agents/${agent.id}/runs/91000000-0000-4000-8000-000000000002`,
+			);
 
-			await delegatedTitle.click();
+			await activity.getByRole("button", { name: "Expand all" }).click();
 			await expect(
 				delegatedActivity.getByRole("button", {
 					name: /hide details for troubleshooting specialist/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
 			await expect(
-				page.getByText(
-					"Resolved the device and checked disk space and alerts.",
-				),
+				activity.getByText("Looked up device details", { exact: true }),
 			).toBeVisible();
-			const nestedDelegation = delegatedActivity
+			const nestedDelegation = activity
 				.locator("[data-activity-kind='delegation']")
-				.filter({ hasText: "Asset Resolver" });
-			await nestedDelegation
-				.getByText("Confirm the managed asset", { exact: true })
-				.click();
-			await expect(
-				page.getByText("Asset Resolver", {
-					exact: true,
-				}),
-			).toBeVisible();
-			await expect(
-				page.getByText("Matched the requester to ELIJAH-LT."),
-			).toBeVisible();
+				.filter({ hasText: "Asset Resolver" })
+				.last();
 			await expect(
 				nestedDelegation.getByRole("button", {
 					name: /hide details for asset resolver/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
-
 			await nestedDelegation
-				.getByRole("link", { name: "Open Asset Resolver run" })
+				.getByRole("button", {
+					name: /asset resolver confirm the managed asset/i,
+				})
+				.click();
+			await expect(selectedDetails).toContainText("Asset Resolver");
+			const nestedHighlight = nestedDelegation
+				.locator(":scope > div")
+				.first();
+			await page.mouse.move(1, 1);
+			await nestedHighlight.evaluate(async (element) => {
+				await Promise.all(
+					element
+						.getAnimations()
+						.map((animation) => animation.finished),
+				);
+			});
+			const selectedColor = await nestedHighlight.evaluate(
+				(element) => getComputedStyle(element).backgroundColor,
+			);
+			await nestedHighlight.hover();
+			await expect
+				.poll(() =>
+					nestedHighlight.evaluate(
+						(element) => getComputedStyle(element).backgroundColor,
+					),
+				)
+				.toBe(selectedColor);
+			const treeGeometry = await nestedDelegation.evaluate((element) => ({
+				row: element.firstElementChild?.getBoundingClientRect().left,
+				guide: element.closest('[aria-label="Run activity"]')?.getBoundingClientRect().left,
+				rowRight: element.firstElementChild?.getBoundingClientRect().right,
+				listRight: element.closest('[aria-label="Run activity"]')?.getBoundingClientRect().right,
+				branchWidth: parseFloat(
+					getComputedStyle(element, "::after").width,
+				),
+			}));
+			expect(treeGeometry.row).toBe(treeGeometry.guide);
+			expect(treeGeometry.rowRight).toBe(treeGeometry.listRight);
+			expect(treeGeometry.branchWidth).toBeGreaterThan(0);
+			await expect.poll(() => nestedDelegation.evaluate((element) => getComputedStyle(element, "::after").opacity)).toBe("0");
+			const detailTabs = selectedDetails.getByRole("tablist");
+			await expect.poll(() => detailTabs.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
+			await expect(selectedDetails).toContainText(
+				"Matched the requester to ELIJAH-LT.",
+			);
+
+			await selectedDetails
+				.getByRole("link", { name: "View run" })
 				.click();
 			await expect(page).toHaveURL(
 				new RegExp(`/agents/${agent.id}/runs/${grandchildId}$`),
 			);
-			const contextualBack = page.getByTestId("run-context-back");
+			const contextualBack = page.getByRole("link", {
+				name: "Back to Service Desk Triage run",
+				exact: true,
+			});
 			await expect(contextualBack).toHaveText(
 				"Back to Service Desk Triage run",
 			);
 			await expect(contextualBack).toHaveAttribute(
 				"href",
-				`/agents/${agent.id}/runs/${parentId}`,
+				`/agents/${agent.id}/runs/${parentId}?tab=activity`,
 			);
 			await contextualBack.click();
 			await expect(page).toHaveURL(
-				new RegExp(`/agents/${agent.id}/runs/${parentId}$`),
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
 			);
 			await expect(
-				delegatedActivity.getByRole("button", {
-					name: /hide details for troubleshooting specialist/i,
-				}),
-			).toHaveAttribute("aria-expanded", "true");
+				page.getByRole("region", { name: "Selected call details" }),
+			).toContainText("Asset Resolver");
 			await expect(
-				nestedDelegation.getByRole("button", {
-					name: /hide details for asset resolver/i,
-				}),
-			).toHaveAttribute("aria-expanded", "true");
+				page.getByRole("region", { name: "Selected call details" }),
+			).toContainText("Matched the requester to ELIJAH-LT.");
 			await expect(nestedDelegation).toBeInViewport();
+			// The Activity workspace owns scrolling; inspecting a call must not
+			// move the run header or the neighboring inspector.
+			await page.setViewportSize({ width: 1440, height: 650 });
+			const calls = activity.getByRole("region", {
+				name: "Activity calls",
+			});
+			const runHeading = page.getByRole("heading", {
+				name: "Service Desk Triage",
+				exact: true,
+			});
+			const headerBefore = await runHeading.boundingBox();
+			const inspectorBefore = await selectedDetails.boundingBox();
+			await calls.evaluate((element) => {
+				element.scrollTop = element.scrollHeight;
+			});
+			await expect
+				.poll(() => calls.evaluate((element) => element.scrollTop))
+				.toBeGreaterThan(0);
+			expect(
+				await page
+					.locator("main")
+					.evaluate((element) => element.scrollTop),
+			).toBe(0);
+			expect((await runHeading.boundingBox())?.y).toBe(headerBefore?.y);
+			expect((await selectedDetails.boundingBox())?.y).toBe(
+				inspectorBefore?.y,
+			);
+			await page.setViewportSize({ width: 1440, height: 1000 });
+			await page
+				.getByRole("button", { name: "Close call details" })
+				.click();
 
 			await page
 				.getByRole("button", { name: "Advanced", exact: true })
 				.click();
 			await expect(
-				page.getByText("Called ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).not.toBeVisible();
-			await ticketAction.getByText("Details", { exact: true }).click();
-			await expect(
-				ticketAction.getByText("ai_ticketing_get_ticket_details", {
-					exact: true,
-				}),
-			).toBeVisible();
-			await expect(
 				page.getByText("Raw input", { exact: true }),
 			).toBeVisible();
-			await expect(page.getByText(/\{"ticket_id"/)).toHaveCount(0);
 			await expect(
-				ticketAction.getByText("ticket_id:", { exact: true }),
-			).toHaveCount(2);
-			await page.getByText("Raw executor trace", { exact: true }).click();
+				page.getByText("Raw executor trace", { exact: true }),
+			).toBeVisible();
 			await expect(
 				page.getByText("Called ai_ticketing_get_ticket_details", {
 					exact: true,
 				}),
 			).toBeVisible();
+			await page.getByRole("button", { name: "Show overview" }).click();
 			await expect(
-				page.getByText("Run ID", { exact: true }),
+				page.getByRole("button", { name: "Copy run ID" }),
 			).toBeVisible();
 			await expect(
-				page.getByText("gpt-5.2", { exact: true }),
+				page.getByText("AI Usage", { exact: true }),
 			).toBeVisible();
+			await page.getByRole("button", { name: "Focus activity" }).click();
+			await expect(page).toHaveURL(
+				new RegExp(
+					`/agents/${agent.id}/runs/${parentId}\\?tab=activity$`,
+				),
+			);
 
 			await page.setViewportSize({ width: 390, height: 844 });
 			await page.reload();
@@ -514,28 +743,34 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 					(element) => element.scrollWidth - element.clientWidth,
 				),
 			).toBeLessThanOrEqual(1);
-			const mobileOpenRun = activity.getByRole("link", {
-				name: "Open Troubleshooting Specialist run",
+			const mobileDetails = page.getByRole("region", {
+				name: "Selected call details",
 			});
-			const mobileShowDetails = activity.getByRole("button", {
-				name: "Show details for Troubleshooting Specialist",
+			await expect(mobileDetails).toContainText("Asset Resolver");
+			const mobileOpenRun = mobileDetails.getByRole("link", {
+				name: "View run",
 			});
+
 			await expect(mobileOpenRun).toBeVisible();
-			await expect(mobileShowDetails).toBeVisible();
 			const mobileOpenRunBox = await mobileOpenRun.boundingBox();
-			const mobileShowDetailsBox = await mobileShowDetails.boundingBox();
 			expect(mobileOpenRunBox?.height).toBeGreaterThanOrEqual(44);
-			expect(mobileOpenRunBox?.height).toBeLessThanOrEqual(60);
-			expect(mobileShowDetailsBox?.height).toBeGreaterThanOrEqual(44);
-			expect(mobileShowDetailsBox?.width).toBeGreaterThan(
-				mobileOpenRunBox?.width ?? 0,
-			);
-			await mobileShowDetails
-				.getByText("Collect endpoint evidence", { exact: true })
+			await page
+				.getByRole("dialog")
+				.getByRole("button", { name: "Close", exact: true })
+				.click();
+			await activity
+				.getByRole("button", { name: "Collapse all" })
 				.click();
 			await expect(
 				activity.getByRole("button", {
-					name: "Hide details for Troubleshooting Specialist",
+					name: /show details for troubleshooting specialist/i,
+				}),
+			).toBeVisible();
+
+			await activity.getByRole("button", { name: "Expand all" }).click();
+			await expect(
+				activity.getByRole("button", {
+					name: /hide details for troubleshooting specialist/i,
 				}),
 			).toHaveAttribute("aria-expanded", "true");
 		} finally {
@@ -580,7 +815,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				activity.getByRole("heading", { name: "Activity" }),
 			).toBeVisible();
 			await expect(
-				activity.getByText("Looked up ticket details", {
+				activity.getByText("Ticket details", {
 					exact: true,
 				}),
 			).toBeVisible();
@@ -594,7 +829,9 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			).toHaveCount(0);
 
 			await activity
-				.getByText("Collect endpoint evidence", { exact: true })
+				.getByRole("button", {
+					name: /show details for troubleshooting specialist/i,
+				})
 				.click();
 			await expect(
 				activity.getByText("Looked up device details", {
@@ -748,7 +985,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const main = page.locator("main");
 			const heading = page.getByRole("heading", { name: agent.name });
 			const tabs = page.getByRole("tablist");
-			const activityHeading = page.getByText(/Activity — last 7 days/i);
+			const contentRegion = page.getByRole("region", {
+				name: "Page content",
+				exact: true,
+			});
 			const recentRegion = page.getByRole("region", {
 				name: "Recent activity",
 			});
@@ -767,7 +1007,7 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			});
 			expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
 
-			const desktopMetrics = await recentRegion.evaluate((element) => ({
+			const desktopMetrics = await contentRegion.evaluate((element) => ({
 				overflowY: getComputedStyle(element).overflowY,
 				clientHeight: element.clientHeight,
 				scrollHeight: element.scrollHeight,
@@ -780,18 +1020,17 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const contextBefore = await Promise.all([
 				heading.boundingBox(),
 				tabs.boundingBox(),
-				activityHeading.boundingBox(),
 			]);
 			if (contextBefore.some((bounds) => bounds === null)) {
 				throw new Error("Expected Overview context to be visible");
 			}
 
-			await recentRegion.evaluate((element) => {
+			await contentRegion.evaluate((element) => {
 				element.scrollTop = element.scrollHeight;
 			});
 			await expect
 				.poll(() =>
-					recentRegion.evaluate((element) => element.scrollTop),
+					contentRegion.evaluate((element) => element.scrollTop),
 				)
 				.toBeGreaterThan(0);
 			expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
@@ -799,7 +1038,6 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			const contextAfter = await Promise.all([
 				heading.boundingBox(),
 				tabs.boundingBox(),
-				activityHeading.boundingBox(),
 			]);
 			for (let index = 0; index < contextBefore.length; index += 1) {
 				expect(
@@ -840,12 +1078,26 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 							fallbackMetrics.clientHeight,
 					),
 				).toBeLessThanOrEqual(1);
+				const scrollOwner =
+					viewport.width >= 1024 ? contentRegion : main;
 				expect(
-					await main.evaluate(
+					await scrollOwner.evaluate(
 						(element) =>
 							element.scrollHeight - element.clientHeight,
 					),
 				).toBeGreaterThan(0);
+				await scrollOwner.evaluate((element) => {
+					element.scrollTop = element.scrollHeight;
+				});
+				await expect
+					.poll(() =>
+						scrollOwner.evaluate((element) => element.scrollTop),
+					)
+					.toBeGreaterThan(0);
+				if (viewport.width >= 1024) {
+					await expect(heading).toBeInViewport();
+					await expect(tabs).toBeInViewport();
+				}
 				expect(
 					await main.evaluate(
 						(element) => element.scrollWidth - element.clientWidth,
@@ -877,6 +1129,11 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 		try {
 			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.goto(`/agents/${agent.id}?tab=runs`);
+			// Check containment during the entrance animation, not only after it settles.
+			await page.addStyleTag({
+				content:
+					".route-ready-reveal { animation-duration: 10s; animation-delay: -5s; animation-play-state: paused; }",
+			});
 
 			const main = page.locator("main");
 			const heading = page.getByRole("heading", { name: agent.name });
@@ -980,7 +1237,10 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 			for (let index = 0; index < 6; index += 1) {
 				await addCapturedDataFilter.click();
 			}
-			const filterRegion = page.locator(".agent-runs-filter-region");
+			const filterRegion = page.getByRole("region", {
+				name: "Run filter controls",
+				exact: true,
+			});
 			const filterMetrics = await filterRegion.evaluate((element) => ({
 				overflowY: getComputedStyle(element).overflowY,
 				clientHeight: element.clientHeight,
@@ -1007,10 +1267,28 @@ test.describe("Agent Detail — Runs Tab (admin)", () => {
 				)
 				.toBeGreaterThan(0);
 
-			for (const viewport of [
-				{ width: 390, height: 844 },
-				{ width: 1440, height: 650 },
-			]) {
+			// Short desktop scrolls the workspace as one pane so filters cannot
+			// reduce a run to an unreadable sliver. Header and tabs remain fixed.
+			await page.setViewportSize({ width: 1440, height: 650 });
+			const contentRegion = page.getByRole("region", {
+				name: "Page content",
+				exact: true,
+			});
+			await expect
+				.poll(() =>
+					contentRegion.evaluate(
+						(element) =>
+							element.scrollHeight - element.clientHeight,
+					),
+				)
+				.toBeGreaterThan(0);
+			const lastRunTitle = page.getByText(/Mock run 24:/).first();
+			await lastRunTitle.scrollIntoViewIfNeeded();
+			await expect(lastRunTitle).toBeInViewport();
+			await expect(heading).toBeInViewport();
+			await expect(tabs).toBeInViewport();
+
+			for (const viewport of [{ width: 390, height: 844 }]) {
 				await page.setViewportSize(viewport);
 				await page.reload();
 				await expect(runRegion).toBeVisible();

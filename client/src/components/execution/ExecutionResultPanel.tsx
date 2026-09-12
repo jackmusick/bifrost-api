@@ -1,4 +1,6 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { TextExecutionResult } from "./TextExecutionResult";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PrettyInputDisplay } from "./PrettyInputDisplay";
 import { SafeHTMLRenderer } from "./SafeHTMLRenderer";
@@ -23,6 +25,9 @@ export function ExecutionResultPanel({
 	isLoading = false,
 	className,
 }: ExecutionResultPanelProps) {
+	const reduceMotion = useReducedMotion();
+	const fadeTransition = reduceMotion ? { duration: 0 } : { duration: 0.2 };
+
 	const renderResult = () => {
 		// JSON result type
 		if (
@@ -34,7 +39,9 @@ export function ExecutionResultPanel({
 				<PrettyInputDisplay
 					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
+					showDescription={false}
 					defaultView="pretty"
+					context="result"
 				/>
 			);
 		}
@@ -55,11 +62,7 @@ export function ExecutionResultPanel({
 
 		// Text result type
 		if (resultType === "text" && typeof result === "string") {
-			return (
-				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
-					{result}
-				</pre>
-			);
+			return <TextExecutionResult value={result} />;
 		}
 
 		// Auto-detect: object without explicit type
@@ -68,27 +71,21 @@ export function ExecutionResultPanel({
 				<PrettyInputDisplay
 					inputData={result as Record<string, unknown> | unknown[]}
 					showToggle={true}
+					showDescription={false}
 					defaultView="pretty"
+					context="result"
 				/>
 			);
 		}
 
 		// String without explicit type
 		if (!resultType && typeof result === "string") {
-			return (
-				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
-					{result}
-				</pre>
-			);
+			return <TextExecutionResult value={result} />;
 		}
 
 		// Primitive values
 		if (result !== null && result !== undefined) {
-			return (
-				<pre className="whitespace-pre-wrap font-mono text-xs rounded-lg bg-muted/50 ring-1 ring-foreground/5 px-3 py-2.5">
-					{String(result)}
-				</pre>
-			);
+			return <TextExecutionResult value={String(result)} />;
 		}
 
 		return null;
@@ -97,51 +94,44 @@ export function ExecutionResultPanel({
 	const body = (
 		<AnimatePresence mode="wait">
 			{isLoading ? (
-						<motion.div
-							key="loading"
-							initial={{ opacity: 0 }}
-							animate={{ opacity: 1 }}
-							exit={{ opacity: 0 }}
-							transition={{ duration: 0.2 }}
-							className="space-y-3"
-						>
-							<Skeleton className="h-4 w-full" />
-							<Skeleton className="h-4 w-3/4" />
-							<Skeleton className="h-4 w-5/6" />
-						</motion.div>
-					) : result === null || result === undefined ? (
-						<motion.div
-							key="empty"
-							initial={{ opacity: 0 }}
-							animate={{ opacity: 1 }}
-							exit={{ opacity: 0 }}
-							transition={{ duration: 0.2 }}
-							className="text-center text-muted-foreground py-8"
-						>
-							No result returned
-						</motion.div>
-					) : (
-						<motion.div
-							key="content"
-							initial={{ opacity: 0 }}
-							animate={{ opacity: 1 }}
-							exit={{ opacity: 0 }}
-							transition={{ duration: 0.2 }}
-						>
-							{renderResult()}
-						</motion.div>
-					)}
+				<motion.div
+					key="loading"
+					role="status"
+					aria-label="Loading execution result"
+					initial={reduceMotion ? false : { opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={fadeTransition}
+					className="space-y-3"
+				>
+					<Skeleton className="h-4 w-full" />
+					<Skeleton className="h-4 w-3/4" />
+					<Skeleton className="h-4 w-5/6" />
+				</motion.div>
+			) : result === null || result === undefined ? (
+				<motion.div
+					key="empty"
+					initial={reduceMotion ? false : { opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={fadeTransition}
+					className="text-center text-muted-foreground py-8"
+				>
+					No result returned
+				</motion.div>
+			) : (
+				<motion.div
+					key="content"
+					initial={reduceMotion ? false : { opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					transition={fadeTransition}
+				>
+					{renderResult()}
+				</motion.div>
+			)}
 		</AnimatePresence>
 	);
 
-	// Inspector section idiom: compact small-caps header, content carries its
-	// own single step-1 surface (PrettyInputDisplay group / pre block).
-	return (
-		<section className={className}>
-			<h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-				Result
-			</h4>
-			{body}
-		</section>
-	);
+	return <section className={cn("min-w-0", className)}>{body}</section>;
 }

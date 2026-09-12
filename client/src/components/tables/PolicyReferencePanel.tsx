@@ -388,13 +388,13 @@ function RefSection({ title, rows }: { title: string; rows: RefRow[] }) {
 	return (
 		<section className="space-y-2">
 			<h4 className="text-sm font-semibold">{title}</h4>
-			<dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-sm">
+			<dl className="grid grid-cols-1 gap-x-3 gap-y-1 sm:grid-cols-[max-content_minmax(0,1fr)] text-sm">
 				{rows.map((r) => (
 					<div key={r.term} className="contents">
 						<dt className="font-mono text-xs pt-0.5 text-muted-foreground">
 							{r.term}
 						</dt>
-						<dd>{r.def}</dd>
+						<dd className="mb-3 min-w-0 [overflow-wrap:anywhere] sm:mb-0">{r.def}</dd>
 					</div>
 				))}
 			</dl>

@@ -39,16 +39,21 @@ async function createShare(page: Page, name: string) {
 test.describe("Files Explorer (desktop)", () => {
 	test.use({ viewport: { width: 1440, height: 900 } });
 
-	test("create share, upload, preview, open Test Access", async ({ page }) => {
+	test("create share, upload, preview, open Test Access", async ({
+		page,
+	}) => {
 		await gotoFiles(page);
 		await createShare(page, SHARE);
 
 		// Select the share in the tree.
 		await page.getByText(SHARE, { exact: false }).first().click();
 
-		// Upload a text file via the hidden input behind the Upload button.
+		// Upload from the selected share menu, committing its destination first.
 		const fileChooserPromise = page.waitForEvent("filechooser");
-		await page.getByRole("button", { name: /upload/i }).first().click();
+		await page
+			.getByRole("button", { name: /upload/i })
+			.first()
+			.click();
 		const chooser = await fileChooserPromise;
 		await chooser.setFiles({
 			name: "hello.txt",
@@ -78,10 +83,97 @@ test.describe("Files Explorer (desktop)", () => {
 			timeout: 15000,
 		});
 
-		// Open Test Access from the effective-access panel.
-		await page.getByRole("button", { name: /test access/i }).first().click();
+		// Details belong to the Files workspace at every breakpoint.
+		const inspector = page.getByRole("region", {
+			name: "File details",
+			exact: true,
+		});
+		const workspace = page.getByRole("region", {
+			name: "Files explorer",
+			exact: true,
+		});
+		for (const width of [1440, 1100, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await expect(inspector).toBeVisible();
+			await expect(async () => {
+				const pane = await inspector.boundingBox();
+				const bounds = await workspace.boundingBox();
+				expect(pane).not.toBeNull();
+				expect(bounds).not.toBeNull();
+				expect(pane!.y).toBeGreaterThanOrEqual(bounds!.y);
+				expect(pane!.x).toBeGreaterThanOrEqual(bounds!.x);
+				expect(pane!.x + pane!.width).toBeLessThanOrEqual(
+					bounds!.x + bounds!.width + 1,
+				);
+			}).toPass();
+			expect(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth - innerWidth,
+				),
+			).toBeLessThanOrEqual(1);
+		}
+		await page.keyboard.press("Escape");
+		await expect(inspector).toBeHidden();
 		await expect(
-			page.getByRole("dialog").getByText(/test access/i).first(),
+			page.getByRole("button", { name: "hello.txt", exact: true }),
+		).toBeFocused();
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page
+			.getByRole("button", { name: "hello.txt", exact: true })
+			.click();
+
+		// Access edits the selected path directly; Test has its own tab.
+		await page.getByRole("tab", { name: "Access", exact: true }).click();
+		await expect(
+			inspector.getByRole("heading", {
+				name: "Manage Policy",
+				exact: true,
+			}),
+		).toBeVisible();
+		await page.getByRole("tab", { name: "Test", exact: true }).click();
+		await expect(
+			inspector.getByRole("heading", {
+				name: "Test Access",
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+		await inspector
+			.getByRole("combobox", { name: "User", exact: true })
+			.click();
+		await page.getByRole("option").first().click();
+		await expect(inspector.getByText(/^(Allowed|Denied)$/)).toHaveCount(4);
+		await inspector
+			.getByRole("tab", { name: "Access", exact: true })
+			.click();
+		await expect(
+			inspector.getByRole("tab", { name: "Access", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await inspector
+			.getByRole("button", { name: "Close file details" })
+			.click();
+		await page
+			.getByRole("tab", { name: "Access Policies", exact: true })
+			.click();
+		await page.getByText(SHARE, { exact: true }).first().click();
+		await expect(
+			page.getByRole("tab", { name: "Access Policies", exact: true }),
+		).toHaveAttribute("aria-selected", "true");
+		await page
+			.getByRole("button", {
+				name: `Manage policy for ${SHARE}/`,
+				exact: true,
+			})
+			.click();
+		await expect(
+			inspector.getByRole("heading", {
+				name: "Manage Policy",
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByRole("dialog")).toHaveCount(0);
+		await expect(
+			inspector.getByRole("button", { name: /save policy/i }),
 		).toBeVisible();
 	});
 });
@@ -97,7 +189,10 @@ test.describe("Files Explorer (narrow)", () => {
 		// The tree is behind a hamburger sheet at this width.
 		await page.getByRole("button", { name: /open shares/i }).click();
 		await expect(
-			page.getByRole("dialog").getByText(/shares/i).first(),
+			page
+				.getByRole("dialog")
+				.getByText(/shares/i)
+				.first(),
 		).toBeVisible();
 		// Close the sheet.
 		await page.keyboard.press("Escape");

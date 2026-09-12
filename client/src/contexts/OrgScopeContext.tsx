@@ -84,13 +84,8 @@ export function OrgScopeProvider({ children }: { children: ReactNode }) {
 		const requestId = ++loadingRequestRef.current;
 
 		async function loadBrandingAndLogo() {
-			// Reset state at start of async operation
-			setBrandingLoaded(false);
-			setLogoLoaded(false);
-			setSquareLogoUrl(null);
-			setRectangleLogoUrl(null);
-			setApplicationName(null);
-			setTerminology(DEFAULT_TERMINOLOGY);
+			// Keep the current page and branding mounted during refreshes.
+			// Initial state already gates the first load; clearing it here loses drafts.
 
 			try {
 				// Fetch branding data (public endpoint, always GLOBAL)

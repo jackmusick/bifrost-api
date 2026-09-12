@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef } from "react";
 import { useEditorStore } from "@/stores/editorStore";
 import { useSaveQueue } from "./useSaveQueue";
 import { fileService, FileConflictError } from "@/services/fileService";
-import type { ConflictReason } from "@/stores/editorStore";
+import type { ConflictReason, FileDiagnostic } from "@/stores/editorStore";
 import { useReloadWorkflowFile } from "./useWorkflows";
 
 /**
@@ -16,6 +16,23 @@ import { useReloadWorkflowFile } from "./useWorkflows";
  * - Triggers indexing with index=true parameter
  * - Updates editor with indexed content
  */
+function isFileStillOpen(filePath: string) {
+	return useEditorStore
+		.getState()
+		.tabs.some((tab) => tab.file.path === filePath);
+}
+
+function getTabForPath(filePath: string) {
+	const tabs = useEditorStore.getState().tabs;
+	const tabIndex = tabs.findIndex((tab) => tab.file.path === filePath);
+
+	if (tabIndex < 0) {
+		return null;
+	}
+
+	return { tabIndex, tab: tabs[tabIndex] };
+}
+
 export function useAutoSave() {
 	// Subscribe to tabs and activeTabIndex directly (not getters!)
 	const tabs = useEditorStore((state) => state.tabs);
@@ -45,7 +62,7 @@ export function useAutoSave() {
 	const currentEtag = activeTab?.etag;
 	const saveState = activeTab?.saveState;
 
-	const { enqueueSave, waitForPendingSaves } = useSaveQueue();
+	const { enqueueSave, waitForPendingSaves } = useSaveQueue(isFileStillOpen);
 	const { mutate: reloadWorkflowFile } = useReloadWorkflowFile();
 
 	// Track if we're currently indexing to prevent re-triggering
@@ -58,14 +75,23 @@ export function useAutoSave() {
 			return;
 		}
 
+		const saveFilePath = openFile.path;
+		const initialTabState = getTabForPath(saveFilePath);
+		if (!initialTabState) {
+			return;
+		}
+
 		// Set dirty state immediately (prevent infinite loop by checking current state)
 		if (saveState !== "dirty") {
-			setSaveState(activeTabIndex, "dirty");
+			setSaveState(initialTabState.tabIndex, "dirty");
 		}
 
 		// Update save state to saving after 950ms (visual feedback before save)
 		const savingTimer = setTimeout(() => {
-			setSaveState(activeTabIndex, "saving");
+			const latestTabState = getTabForPath(saveFilePath);
+			if (latestTabState) {
+				setSaveState(latestTabState.tabIndex, "saving");
+			}
 		}, 950);
 
 		const isPythonFile = openFile.name.endsWith(".py");
@@ -73,24 +99,31 @@ export function useAutoSave() {
 		// Enqueue save with completion and conflict callbacks
 		// index=false: detect if IDs needed, don't inject yet
 		enqueueSave(
-			openFile.path,
+			saveFilePath,
 			fileContent,
 			encoding,
 			currentEtag,
 			async (newEtag, newContent, needsIndexing, diagnostics) => {
+				const currentTabState = getTabForPath(saveFilePath);
+				if (!currentTabState) {
+					return;
+				}
+
+				const { tabIndex: currentTabIndex } = currentTabState;
+
 				// Store diagnostics in tab state for CodeEditor to display
-				setDiagnostics(activeTabIndex, diagnostics);
+				setDiagnostics(currentTabIndex, diagnostics);
 
 				// If server modified content (e.g., injected IDs), update editor buffer
 				if (newContent) {
-					updateTabContent(activeTabIndex, newContent, newEtag);
+					updateTabContent(currentTabIndex, newContent, newEtag);
 				} else {
 					// No content modification, just update etag and state
 					const state = useEditorStore.getState();
 					const newTabs = [...state.tabs];
-					if (newTabs[activeTabIndex]) {
-						newTabs[activeTabIndex] = {
-							...newTabs[activeTabIndex]!,
+					if (newTabs[currentTabIndex]) {
+						newTabs[currentTabIndex] = {
+							...newTabs[currentTabIndex]!,
 							etag: newEtag,
 							unsavedChanges: false,
 							saveState: "saved",
@@ -111,10 +144,8 @@ export function useAutoSave() {
 						// This protects user data - don't index until latest changes are saved
 						await waitForPendingSaves();
 
-						// Get current content and etag from editor store
-						const currentState = useEditorStore.getState();
-						const currentTab = currentState.tabs[activeTabIndex];
-						if (!currentTab) {
+						const latestTabState = getTabForPath(saveFilePath);
+						if (!latestTabState) {
 							setIndexing(false);
 							indexingRef.current = false;
 							return;
@@ -122,12 +153,19 @@ export function useAutoSave() {
 
 						// Trigger indexing with index=true
 						const indexResponse = await fileService.writeFile(
-							openFile.path,
-							currentTab.content,
-							currentTab.encoding || "utf-8",
-							currentTab.etag,
+							saveFilePath,
+							latestTabState.tab.content,
+							latestTabState.tab.encoding || "utf-8",
+							latestTabState.tab.etag,
 							true, // index=true: inject IDs
 						);
+
+						const indexedTabState = getTabForPath(saveFilePath);
+						if (!indexedTabState) {
+							setIndexing(false);
+							indexingRef.current = false;
+							return;
+						}
 
 						// Check for workflow ID conflicts
 						if (
@@ -138,11 +176,11 @@ export function useAutoSave() {
 							setIndexing(false);
 							setPendingWorkflowConflict({
 								conflicts: indexResponse.workflow_id_conflicts,
-								filePath: openFile.path,
-								content: currentTab.content,
-								encoding: currentTab.encoding || "utf-8",
-								etag: currentTab.etag,
-								tabIndex: activeTabIndex,
+								filePath: saveFilePath,
+								content: latestTabState.tab.content,
+								encoding: latestTabState.tab.encoding || "utf-8",
+								etag: latestTabState.tab.etag,
+								tabIndex: indexedTabState.tabIndex,
 							});
 							indexingRef.current = false;
 							return;
@@ -154,7 +192,7 @@ export function useAutoSave() {
 							indexResponse.content
 						) {
 							updateTabContent(
-								activeTabIndex,
+								indexedTabState.tabIndex,
 								indexResponse.content,
 								indexResponse.etag,
 							);
@@ -172,10 +210,9 @@ export function useAutoSave() {
 
 				// Show green cloud for 2.5 seconds, but only transition if still "saved"
 				setTimeout(() => {
-					const currentState = useEditorStore.getState();
-					const currentTab = currentState.tabs[activeTabIndex];
-					if (currentTab?.saveState === "saved") {
-						setSaveState(activeTabIndex, "clean");
+					const latestTabState = getTabForPath(saveFilePath);
+					if (latestTabState?.tab.saveState === "saved") {
+						setSaveState(latestTabState.tabIndex, "clean");
 					}
 				}, 2500);
 
@@ -187,6 +224,13 @@ export function useAutoSave() {
 				}
 			},
 			(reason, conflictData) => {
+				const currentTabState = getTabForPath(saveFilePath);
+				if (!currentTabState) {
+					return;
+				}
+
+				const { tabIndex } = currentTabState;
+
 				// This runs when a conflict is detected
 				if (
 					reason === "workflows_would_deactivate" &&
@@ -198,19 +242,25 @@ export function useAutoSave() {
 							conflictData.pending_deactivations,
 						availableReplacements:
 							conflictData.available_replacements ?? [],
-						filePath: openFile?.path ?? "",
+						filePath: saveFilePath,
 						content: fileContent,
 						encoding,
 						etag: currentEtag,
-						tabIndex: activeTabIndex,
+						tabIndex,
 					});
 					// Reset save state to dirty (not conflict)
-					setSaveState(activeTabIndex, "dirty");
+					setSaveState(tabIndex, "dirty");
 				} else {
-					setConflictState(activeTabIndex, reason);
+					setConflictState(tabIndex, reason);
 				}
 			},
 			false, // index=false: detect only, don't inject
+			() => {
+				const latestTabState = getTabForPath(saveFilePath);
+				if (latestTabState) {
+					setSaveState(latestTabState.tabIndex, "dirty");
+				}
+			},
 		);
 
 		return () => clearTimeout(savingTimer);
@@ -235,42 +285,45 @@ export function useAutoSave() {
 		}
 
 		const isPythonFile = openFile.name.endsWith(".py");
-
-		// Force immediate save (bypasses debounce)
-		setSaveState(activeTabIndex, "saving");
+		const saveFilePath = openFile.path;
+		const initialTabState = getTabForPath(saveFilePath);
+		if (initialTabState) {
+			setSaveState(initialTabState.tabIndex, "saving");
+		}
 
 		try {
 			// First save without indexing (fast path)
 			const response = await fileService.writeFile(
-				openFile.path,
+				saveFilePath,
 				fileContent,
 				encoding,
 				currentEtag,
 				false, // index=false: detect only
 			);
 
+			const currentTabState = getTabForPath(saveFilePath);
+			if (!currentTabState) {
+				return;
+			}
+
+			const { tabIndex } = currentTabState;
+
 			// Store diagnostics in tab state for CodeEditor to display
 			setDiagnostics(
-				activeTabIndex,
-				response.diagnostics as
-					| import("@/stores/editorStore").FileDiagnostic[]
-					| undefined,
+				tabIndex,
+				response.diagnostics as FileDiagnostic[] | undefined,
 			);
 
 			// If server modified content, update editor buffer
 			if (response.content_modified && response.content) {
-				updateTabContent(
-					activeTabIndex,
-					response.content,
-					response.etag,
-				);
+				updateTabContent(tabIndex, response.content, response.etag);
 			} else {
 				// Update tab with new etag
 				const state = useEditorStore.getState();
 				const newTabs = [...state.tabs];
-				if (newTabs[activeTabIndex]) {
-					newTabs[activeTabIndex] = {
-						...newTabs[activeTabIndex]!,
+				if (newTabs[tabIndex]) {
+					newTabs[tabIndex] = {
+						...newTabs[tabIndex]!,
 						etag: response.etag,
 						unsavedChanges: false,
 						saveState: "saved",
@@ -284,22 +337,26 @@ export function useAutoSave() {
 				setIndexing(true, "Indexing workflow...");
 
 				try {
-					// Get current content and etag from editor store
-					const currentState = useEditorStore.getState();
-					const currentTab = currentState.tabs[activeTabIndex];
-					if (!currentTab) {
+					const latestTabState = getTabForPath(saveFilePath);
+					if (!latestTabState) {
 						setIndexing(false);
 						return;
 					}
 
 					// Trigger indexing with index=true
 					const indexResponse = await fileService.writeFile(
-						openFile.path,
-						currentTab.content,
-						currentTab.encoding || "utf-8",
-						currentTab.etag,
+						saveFilePath,
+						latestTabState.tab.content,
+						latestTabState.tab.encoding || "utf-8",
+						latestTabState.tab.etag,
 						true, // index=true: inject IDs
 					);
+
+					const indexedTabState = getTabForPath(saveFilePath);
+					if (!indexedTabState) {
+						setIndexing(false);
+						return;
+					}
 
 					// Check for workflow ID conflicts
 					if (
@@ -310,11 +367,11 @@ export function useAutoSave() {
 						setIndexing(false);
 						setPendingWorkflowConflict({
 							conflicts: indexResponse.workflow_id_conflicts,
-							filePath: openFile.path,
-							content: currentTab.content,
-							encoding: currentTab.encoding || "utf-8",
-							etag: currentTab.etag,
-							tabIndex: activeTabIndex,
+							filePath: saveFilePath,
+							content: latestTabState.tab.content,
+							encoding: latestTabState.tab.encoding || "utf-8",
+							etag: latestTabState.tab.etag,
+							tabIndex: indexedTabState.tabIndex,
 						});
 						return;
 					}
@@ -325,7 +382,7 @@ export function useAutoSave() {
 						indexResponse.content
 					) {
 						updateTabContent(
-							activeTabIndex,
+							indexedTabState.tabIndex,
 							indexResponse.content,
 							indexResponse.etag,
 						);
@@ -339,10 +396,9 @@ export function useAutoSave() {
 
 			// Show green cloud briefly, but only transition if still "saved"
 			setTimeout(() => {
-				const currentState = useEditorStore.getState();
-				const currentTab = currentState.tabs[activeTabIndex];
-				if (currentTab?.saveState === "saved") {
-					setSaveState(activeTabIndex, "clean");
+				const latestTabState = getTabForPath(saveFilePath);
+				if (latestTabState?.tab.saveState === "saved") {
+					setSaveState(latestTabState.tabIndex, "clean");
 				}
 			}, 2500);
 
@@ -353,6 +409,12 @@ export function useAutoSave() {
 		} catch (error) {
 			if (error instanceof FileConflictError) {
 				const reason = error.conflictData.reason as ConflictReason;
+				const currentTabState = getTabForPath(saveFilePath);
+				if (!currentTabState) {
+					return;
+				}
+
+				const { tabIndex } = currentTabState;
 				if (
 					reason === "workflows_would_deactivate" &&
 					error.conflictData.pending_deactivations
@@ -363,21 +425,24 @@ export function useAutoSave() {
 							error.conflictData.pending_deactivations,
 						availableReplacements:
 							error.conflictData.available_replacements ?? [],
-						filePath: openFile?.path ?? "",
+						filePath: saveFilePath,
 						content: fileContent,
 						encoding,
 						etag: currentEtag,
-						tabIndex: activeTabIndex,
+						tabIndex,
 					});
 					// Reset save state to dirty (not conflict)
-					setSaveState(activeTabIndex, "dirty");
+					setSaveState(tabIndex, "dirty");
 				} else {
 					// Show conflict state for other conflict types
-					setConflictState(activeTabIndex, reason);
+					setConflictState(tabIndex, reason);
 				}
 			} else {
 				console.error("Failed to save:", error);
-				setSaveState(activeTabIndex, "dirty");
+				const latestTabState = getTabForPath(saveFilePath);
+				if (latestTabState) {
+					setSaveState(latestTabState.tabIndex, "dirty");
+				}
 			}
 		}
 	}, [
@@ -386,7 +451,6 @@ export function useAutoSave() {
 		encoding,
 		currentEtag,
 		unsavedChanges,
-		activeTabIndex,
 		setSaveState,
 		setConflictState,
 		setDiagnostics,

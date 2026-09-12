@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 /**
  * AgentReviewPage — focused review queue for an agent's flagged runs.
  *
@@ -18,13 +22,8 @@
  * primitives, Tailwind, no inline styles, real hooks.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-	Link,
-	useLocation,
-	useNavigate,
-	useParams,
-} from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
 	ArrowLeft,
 	CheckCircle,
@@ -36,22 +35,19 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
 	RunReviewPanel,
 	type Verdict,
 } from "@/components/agents/RunReviewPanel";
+import { FleetReadError } from "./FleetReadError";
 import { useAgent } from "@/hooks/useAgents";
 import {
 	useAgentRun,
-	useAgentRuns,
+	useInfiniteAgentRuns,
 	useClearVerdict,
 	useSetVerdict,
 } from "@/services/agentRuns";
@@ -78,7 +74,12 @@ export function AgentReviewPage() {
 	const location = useLocation();
 	const queryClient = useQueryClient();
 
-	const { data: agent } = useAgent(agentId);
+	const {
+		data: agent,
+		isError: agentError,
+		isFetching: agentFetching,
+		refetch: refetchAgent,
+	} = useAgent(agentId);
 	const runNavigationOrigin: AgentRunNavigationOrigin = {
 		href: getLocationHref(location),
 		label: `Back to ${agent?.name ?? "agent"} review queue`,
@@ -86,87 +87,158 @@ export function AgentReviewPage() {
 
 	// Queue: flagged runs for this agent. Backend filter returns only the
 	// completed flagged set we want to walk through.
-	const { data: queueResp, isLoading } = useAgentRuns({
+	const {
+		data: queueResp,
+		isLoading,
+		isError: queueReadError,
+		isFetching: queueFetching,
+		refetch: refetchQueue,
+		hasNextPage,
+		fetchNextPage,
+		isFetchingNextPage,
+		isFetchNextPageError,
+	} = useInfiniteAgentRuns({
 		agentId,
 		verdict: "down",
 	});
 
 	const queue = useMemo<AgentRun[]>(
-		() => (queueResp?.items ?? []) as AgentRun[],
+		() =>
+			(queueResp?.pages.flatMap((page) => page.items) ??
+				[]) as AgentRun[],
 		[queueResp],
 	);
 
-	const [idx, setIdx] = useState(0);
+	const queueError = queueReadError && !isFetchNextPageError;
+	const queueTotal = queueResp?.pages[0]?.total ?? queue.length;
+	const [selectedRunId, setSelectedRunId] = useState<string>();
+	const idx = Math.max(
+		0,
+		queue.findIndex((run) => run.id === selectedRunId),
+	);
+	const savingRef = useRef(false);
+	const [saving, setSaving] = useState(false);
+	const saveErrorRef = useRef<HTMLDivElement>(null);
+	const [saveError, setSaveError] = useState<{
+		runId: string;
+		verdict: Verdict;
+	} | null>(null);
 
-	// Keep idx in bounds when the queue shrinks (e.g. after applying a verdict).
-	// Adjust during render rather than via setState-in-effect.
-	if (queue.length === 0 && idx !== 0) {
-		setIdx(0);
-	} else if (queue.length > 0 && idx >= queue.length) {
-		setIdx(queue.length - 1);
-	}
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+		}
+	}, [saveError]);
 
 	const current = queue[idx];
-	const { data: rawDetail } = useAgentRun(current?.id);
+	const {
+		data: rawDetail,
+		isError: detailError,
+		isFetching: detailFetching,
+		refetch: refetchDetail,
+	} = useAgentRun(current?.id);
 	const detail = rawDetail as unknown as AgentRunDetailResponse | undefined;
 
 	const setVerdict = useSetVerdict();
 	const clearVerdict = useClearVerdict();
-	const [note, setNote] = useState("");
-
-	// Reset the note whenever we move to a new run. Adjust during render
-	// rather than via a setState-in-effect cycle.
-	const detailKey = `${detail?.id ?? ""}:${detail?.verdict_note ?? ""}`;
-	const [prevDetailKey, setPrevDetailKey] = useState(detailKey);
-	if (prevDetailKey !== detailKey) {
-		setPrevDetailKey(detailKey);
-		setNote((detail?.verdict_note as string | undefined) ?? "");
-	}
-
-	function invalidate() {
-		queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
-	}
+	const [drafts, setDrafts] = useState<Record<string, string>>({});
+	const note = current
+		? (drafts[current.id] ?? detail?.verdict_note ?? "")
+		: "";
+	const setNote = (value: string) => {
+		if (current)
+			setDrafts((previous) => ({ ...previous, [current.id]: value }));
+	};
 
 	const advance = useCallback(() => {
-		setIdx((i) => Math.min(queue.length - 1, i + 1));
-	}, [queue.length]);
+		if (!savingRef.current)
+			setSelectedRunId(queue[Math.min(queue.length - 1, idx + 1)]?.id);
+	}, [queue, idx]);
 
 	const back = useCallback(() => {
-		setIdx((i) => Math.max(0, i - 1));
-	}, []);
+		if (!savingRef.current)
+			setSelectedRunId(queue[Math.max(0, idx - 1)]?.id);
+	}, [queue, idx]);
 
 	const handleVerdict = useCallback(
 		(next: Verdict) => {
-			if (!current) return;
+			if (!current || !detail || savingRef.current) return;
+			savingRef.current = true;
+			setSaving(true);
+			setSaveError(null);
+			const nextRunId =
+				queue[idx + 1]?.id ??
+				(next === "down"
+					? current.id
+					: (queue[idx - 1]?.id ?? current.id));
 			const onSuccess = () => {
-				invalidate();
-				// On any successful verdict change, advance to the next run.
-				advance();
+				if (next === null)
+					setDrafts((previous) => {
+						const updated = { ...previous };
+						delete updated[current.id];
+						return updated;
+					});
+				setSelectedRunId(nextRunId);
+				void queryClient.invalidateQueries({
+					queryKey: ["agent-runs"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["agent-runs-infinite"],
+				});
+			};
+			const onError = () =>
+				setSaveError({ runId: current.id, verdict: next });
+			const onSettled = () => {
+				savingRef.current = false;
+				setSaving(false);
 			};
 			if (next === null) {
 				clearVerdict.mutate(
 					{ params: { path: { run_id: current.id } } },
-					{ onSuccess },
+					{ onSuccess, onError, onSettled },
 				);
 			} else {
 				setVerdict.mutate(
 					{
 						params: { path: { run_id: current.id } },
-						body: { verdict: next },
+						body: { verdict: next, note },
 					},
-					{ onSuccess },
+					{ onSuccess, onError, onSettled },
 				);
 			}
 		},
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[current, advance],
+		[
+			current,
+			detail,
+			queue,
+			idx,
+			queryClient,
+			clearVerdict,
+			setVerdict,
+			note,
+		],
 	);
 
 	// Keyboard shortcuts
 	useEffect(() => {
 		function onKey(e: KeyboardEvent) {
-			const tag = (e.target as HTMLElement | null)?.tagName;
-			if (tag === "INPUT" || tag === "TEXTAREA") return;
+			if (
+				savingRef.current ||
+				e.defaultPrevented ||
+				e.ctrlKey ||
+				e.metaKey ||
+				e.altKey ||
+				e.isComposing
+			)
+				return;
+			const target = e.target instanceof HTMLElement ? e.target : null;
+			if (
+				target?.closest(
+					'input, textarea, select, button, a, [contenteditable="true"], [role="dialog"], [role="menu"], [role="listbox"], [role="combobox"]',
+				)
+			)
+				return;
 			if (e.key === "ArrowRight" || e.key === "j") {
 				e.preventDefault();
 				advance();
@@ -188,6 +260,20 @@ export function AgentReviewPage() {
 		return () => window.removeEventListener("keydown", onKey);
 	}, [advance, back, handleVerdict, navigate, agentId]);
 
+	const agentHeader = (
+		<>
+			<Breadcrumb agentId={agentId} agentName={agent?.name} />
+			{agentError ? (
+				<FleetReadError
+					resource="agent information"
+					cached={!!agent}
+					pending={agentFetching}
+					onRetry={() => void refetchAgent()}
+				/>
+			) : null}
+		</>
+	);
+
 	if (isLoading) {
 		return (
 			<div className="flex flex-col gap-5 max-w-5xl mx-auto">
@@ -198,19 +284,44 @@ export function AgentReviewPage() {
 		);
 	}
 
+	if (queueError && !queueResp) {
+		return (
+			<div className="mx-auto flex max-w-5xl flex-col gap-4">
+				{agentHeader}
+				<h1 className="font-display text-2xl font-semibold">
+					Review runs
+				</h1>
+				<FleetReadError
+					resource="review queue"
+					cached={false}
+					pending={queueFetching}
+					onRetry={() => void refetchQueue()}
+				/>
+			</div>
+		);
+	}
+
 	if (queue.length === 0) {
 		return (
 			<div
 				className="flex flex-col gap-5 max-w-3xl mx-auto"
 				data-testid="review-empty"
 			>
-				<Breadcrumb agentId={agentId} agentName={agent?.name} />
+				{agentHeader}
+				{queueError ? (
+					<FleetReadError
+						resource="review queue"
+						cached
+						pending={queueFetching}
+						onRetry={() => void refetchQueue()}
+					/>
+				) : null}
 				<Card>
 					<CardContent className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-						<CheckCircle className="h-10 w-10 text-emerald-500" />
-						<div className="text-base font-medium">
+						<CheckCircle className="h-10 w-10 text-[var(--bf-success)]" />
+						<h1 className="font-display text-xl font-semibold">
 							Nothing to review
-						</div>
+						</h1>
 						<p className="text-sm text-muted-foreground">
 							No flagged runs for this agent.
 						</p>
@@ -220,73 +331,137 @@ export function AgentReviewPage() {
 		);
 	}
 
-	const flaggedRemaining = queue.length;
+	const flaggedRemaining = queueTotal;
 
 	return (
-		<div
+		<PageWorkspace
 			className="flex flex-col gap-4 max-w-5xl mx-auto"
 			data-testid="review-flipbook"
 		>
-			<Breadcrumb agentId={agentId} agentName={agent?.name} />
+			<div className="shrink-0 space-y-6">
+				{agentHeader}
 
-			{/* Header */}
-			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-						<Sparkles className="h-5 w-5" />
-						Review runs
-					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						<span data-testid="review-counter">
-							{idx + 1} of {queue.length}
-						</span>{" "}
-						·{" "}
-						<span className="text-rose-600 dark:text-rose-400">
-							{flaggedRemaining} flagged
+				{/* Header */}
+				<div className="flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+							<Sparkles className="h-5 w-5" />
+							Review runs
+						</h1>
+						<p className="mt-1 text-sm text-muted-foreground">
+							<span data-testid="review-counter">
+								{idx + 1} of {queueTotal}
+							</span>{" "}
+							·{" "}
+							<span className="text-[var(--bf-danger)]">
+								{flaggedRemaining} flagged
+							</span>
+						</p>
+					</div>
+					<div className="flex flex-wrap items-center gap-3">
+						<span className="hidden items-center gap-2 text-xs text-muted-foreground sm:inline-flex">
+							<Keyboard className="h-3.5 w-3.5" />
+							<Kbd>←/→</Kbd> navigate
+							<Kbd>U</Kbd>/<Kbd>D</Kbd> verdict
+							<Kbd>Esc</Kbd> exit
 						</span>
-					</p>
-				</div>
-				<div className="flex flex-wrap items-center gap-3">
-					<span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-						<Keyboard className="h-3.5 w-3.5" />
-						<Kbd>←/→</Kbd> navigate
-						<Kbd>U</Kbd>/<Kbd>D</Kbd> verdict
-						<Kbd>Esc</Kbd> exit
-					</span>
-					{flaggedRemaining > 0 ? (
-						<Button asChild>
-							<Link to={`/agents/${agentId}/tune`}>
-								<Sparkles className="h-4 w-4" />
-								Tune with {flaggedRemaining} flagged
-							</Link>
-						</Button>
-					) : null}
+						{flaggedRemaining > 0 ? (
+							<Button asChild>
+								<Link to={`/agents/${agentId}/tune`}>
+									<Sparkles className="h-4 w-4" />
+									Tune with {flaggedRemaining} flagged
+								</Link>
+							</Button>
+						) : null}
+					</div>
 				</div>
 			</div>
 
-			{/* Flipbook card */}
-			{detail ? (
-				<FlipbookCard
-					key={detail.id}
-					run={detail}
-					verdict={
-						((detail.verdict as Verdict | undefined) ?? null) as Verdict
-					}
-					note={note}
-					onVerdict={handleVerdict}
-					onNote={setNote}
-					runNavigationOrigin={runNavigationOrigin}
-				/>
-			) : (
-				<Skeleton className="h-96 w-full" />
-			)}
+			<PageScrollArea className="space-y-6">
+				{queueError ? (
+					<FleetReadError
+						resource="review queue"
+						cached
+						pending={queueFetching}
+						onRetry={() => void refetchQueue()}
+					/>
+				) : null}
+				{detailError ? (
+					<FleetReadError
+						resource="run details"
+						cached={!!detail}
+						pending={detailFetching}
+						onRetry={() => void refetchDetail()}
+					/>
+				) : null}
+
+				{saving ? (
+					<p role="status" className="text-sm text-muted-foreground">
+						Saving review…
+					</p>
+				) : null}
+				{saveError?.runId === current?.id ? (
+					<div
+						role="alert"
+						ref={saveErrorRef}
+						tabIndex={-1}
+						className="space-y-3 rounded-[var(--bf-radius-surface)] border bg-[var(--bf-warning-soft)] p-4 text-sm"
+					>
+						<p>
+							Could not save your review. Your note is still here.
+						</p>
+						<Button
+							variant="outline"
+							onClick={() => handleVerdict(saveError.verdict)}
+						>
+							Retry review
+						</Button>
+					</div>
+				) : null}
+				{/* Flipbook card */}
+				{detail ? (
+					<fieldset
+						disabled={saving}
+						className="min-w-0"
+						aria-label="Run review"
+					>
+						<FlipbookCard
+							key={detail.id}
+							run={detail}
+							verdict={
+								((detail.verdict as Verdict | undefined) ??
+									null) as Verdict
+							}
+							note={note}
+							onVerdict={handleVerdict}
+							onNote={setNote}
+							runNavigationOrigin={runNavigationOrigin}
+						/>
+						{note !== (detail.verdict_note ?? "") &&
+						(detail.verdict === "up" ||
+							detail.verdict === "down") ? (
+							<Button
+								className="mt-3"
+								onClick={() =>
+									handleVerdict(detail.verdict as Verdict)
+								}
+							>
+								Save note and continue
+							</Button>
+						) : null}
+					</fieldset>
+				) : !detailError ? (
+					<Skeleton className="h-96 w-full" />
+				) : null}
+			</PageScrollArea>
 
 			{/* Footer nav */}
-			<div className="flex items-center justify-between gap-3">
+			<div className="flex flex-wrap items-center justify-between gap-3">
 				<Button
 					variant="outline"
 					onClick={back}
-					disabled={idx === 0}
+					disabled={saving || idx === 0}
+					className="min-h-11"
 					data-testid="prev-button"
 				>
 					<ChevronLeft className="h-4 w-4" />
@@ -295,19 +470,49 @@ export function AgentReviewPage() {
 				<ProgressDots
 					queue={queue}
 					idx={idx}
-					onJump={(i) => setIdx(i)}
+					onJump={(i) => {
+						if (!savingRef.current) setSelectedRunId(queue[i]?.id);
+					}}
 				/>
 				<Button
 					variant="outline"
 					onClick={advance}
-					disabled={idx === queue.length - 1}
+					disabled={saving || idx === queue.length - 1}
+					className="min-h-11"
 					data-testid="next-button"
 				>
 					Next
 					<ChevronRight className="h-4 w-4" />
 				</Button>
 			</div>
-		</div>
+			{hasNextPage ? (
+				<div className="space-y-2">
+					{isFetchNextPageError ? (
+						<p
+							role="alert"
+							className="text-sm text-[var(--bf-danger)]"
+						>
+							Could not load more runs. Your loaded reviews are
+							still available.
+						</p>
+					) : null}
+					<Button
+						variant="outline"
+						disabled={saving || queueFetching}
+						onClick={() => void fetchNextPage()}
+					>
+						{isFetchingNextPage
+							? "Loading more runs…"
+							: isFetchNextPageError
+								? "Retry loading more runs"
+								: "Load more flagged runs"}
+					</Button>
+					<p className="text-xs text-muted-foreground">
+						{queue.length} of {queueTotal} runs loaded
+					</p>
+				</div>
+			) : null}
+		</PageWorkspace>
 	);
 }
 
@@ -321,7 +526,7 @@ function Breadcrumb({
 	return (
 		<Link
 			to={agentId ? `/agents/${agentId}` : "/agents"}
-			className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+			className="inline-flex min-h-11 w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
 		>
 			<ArrowLeft className="h-3 w-3" />
 			{agentName ?? "Back to agent"}
@@ -370,7 +575,14 @@ function FlipbookCard({
 								: ""}
 						</div>
 						<CardTitle className="mt-1 text-base">
-							{run.did || run.asked || "Agent run"}
+							{run.did || run.asked ? (
+								<MarkdownContent
+									content={run.did || run.asked || ""}
+									variant="preview"
+								/>
+							) : (
+								"Agent run"
+							)}
 						</CardTitle>
 					</div>
 					<Button asChild variant="ghost" size="sm">
@@ -412,21 +624,32 @@ function ProgressDots({
 	onJump: (i: number) => void;
 }) {
 	return (
-		<div className="flex items-center gap-1" data-testid="progress-dots">
+		<div
+			className="order-last flex w-full items-center overflow-x-auto sm:order-none sm:w-auto sm:max-w-[50%]"
+			data-testid="progress-dots"
+		>
 			{queue.map((r, i) => (
 				<button
 					key={r.id}
 					type="button"
+					aria-current={i === idx ? "step" : undefined}
 					aria-label={`Go to run ${i + 1}`}
-					title={r.did ?? r.asked ?? `Run ${i + 1}`}
 					onClick={() => onJump(i)}
 					className={cn(
-						"h-1.5 rounded-full transition-all",
+						"flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 						i === idx
-							? "w-5 bg-foreground"
-							: "w-2 bg-border hover:bg-muted-foreground",
+							? "text-primary"
+							: "text-muted-foreground hover:text-foreground",
 					)}
-				/>
+				>
+					<span
+						aria-hidden="true"
+						className={cn(
+							"h-1.5 rounded-full bg-current",
+							i === idx ? "w-5" : "w-2",
+						)}
+					/>
+				</button>
 			))}
 		</div>
 	);

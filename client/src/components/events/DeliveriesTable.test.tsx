@@ -20,9 +20,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 vi.mock("@/services/events", async () => {
-	const actual = await vi.importActual<typeof import("@/services/events")>(
-		"@/services/events",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/services/events")>(
+			"@/services/events",
+		);
 	return {
 		...actual,
 		useRetryDelivery: () => ({
@@ -90,7 +91,9 @@ describe("DeliveriesTable — retry", () => {
 		await user.click(screen.getByRole("button", { name: /retry/i }));
 
 		await waitFor(() => expect(mockRetry).toHaveBeenCalledTimes(1));
-		expect(mockRetry.mock.calls[0]![0].params.path.delivery_id).toBe("del-1");
+		expect(mockRetry.mock.calls[0]![0].params.path.delivery_id).toBe(
+			"del-1",
+		);
 	});
 
 	it("hides the retry button for non-admin viewers", () => {
@@ -131,9 +134,9 @@ describe("DeliveriesTable — not_delivered", () => {
 		await waitFor(() =>
 			expect(mockCreateDelivery).toHaveBeenCalledTimes(1),
 		);
-		expect(
-			mockCreateDelivery.mock.calls[0]![0].body.subscription_id,
-		).toBe("sub-1");
+		expect(mockCreateDelivery.mock.calls[0]![0].body.subscription_id).toBe(
+			"sub-1",
+		);
 	});
 
 	it("renders 'Subscription added after this event arrived' copy", () => {
@@ -167,11 +170,86 @@ describe("DeliveriesTable — agent deliveries", () => {
 						target_type: "agent",
 						agent_id: "agent-1",
 						agent_name: "Triage Bot",
+						agent_run_id: "run-1",
 					} as unknown as EventDelivery,
 				]}
 				eventId="evt-1"
 			/>,
 		);
 		expect(screen.getByText(/triage bot/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: /view agent run/i }),
+		).toHaveAttribute("href", "/agents/agent-1/runs/run-1");
+	});
+});
+
+describe("DeliveriesTable — send permissions", () => {
+	it("hides Send for non-admin viewers even when an event ID exists", () => {
+		mockIsPlatformAdmin = false;
+		renderWithProviders(
+			<DeliveriesTable
+				deliveries={[makeDelivery({ status: "not_delivered" })]}
+				eventId="evt-1"
+			/>,
+		);
+		expect(
+			screen.queryByRole("button", { name: "Send" }),
+		).not.toBeInTheDocument();
+	});
+});
+
+describe("DeliveriesTable — recovery", () => {
+	it("keeps a failed retry available and reports the failure beside the record", async () => {
+		mockRetry.mockRejectedValueOnce(new Error("offline"));
+		const { user } = renderWithProviders(
+			<DeliveriesTable
+				deliveries={[makeDelivery({ status: "failed" })]}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Could not queue the retry",
+		);
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		await waitFor(() => expect(mockRetry).toHaveBeenCalledTimes(2));
+		await waitFor(() =>
+			expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+		);
+	});
+	it("reports clipboard failure and copies the full visible error on retry", async () => {
+		const { user } = renderWithProviders(
+			<DeliveriesTable
+				deliveries={[
+					makeDelivery({
+						status: "failed",
+						error_message: "Full failure details",
+					}),
+				]}
+			/>,
+		);
+		const copy = vi
+			.spyOn(navigator.clipboard, "writeText")
+			.mockRejectedValueOnce(new Error("denied"))
+			.mockResolvedValue(undefined);
+		await user.click(screen.getByRole("button", { name: "Copy error" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Could not copy",
+		);
+		await user.click(screen.getByRole("button", { name: "Copy error" }));
+		expect(copy).toHaveBeenLastCalledWith("Full failure details");
+		await waitFor(() =>
+			expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+		);
+		copy.mockRestore();
+	});
+	it("does not offer Send when the event ID is unavailable", () => {
+		renderWithProviders(
+			<DeliveriesTable
+				deliveries={[makeDelivery({ status: "not_delivered" })]}
+			/>,
+		);
+		expect(
+			screen.queryByRole("button", { name: "Send" }),
+		).not.toBeInTheDocument();
 	});
 });

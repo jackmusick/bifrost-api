@@ -48,7 +48,9 @@ describe("IntegrationDefaultsDialog — fields", () => {
 		fireEvent.change(screen.getByLabelText(/tenant_id/i), {
 			target: { value: "acme" },
 		});
-		expect(onFormValuesChange).toHaveBeenLastCalledWith({ tenant_id: "acme" });
+		expect(onFormValuesChange).toHaveBeenLastCalledWith({
+			tenant_id: "acme",
+		});
 	});
 
 	it("bool fields emit proper true/false payloads", () => {
@@ -63,7 +65,9 @@ describe("IntegrationDefaultsDialog — fields", () => {
 describe("IntegrationDefaultsDialog — save", () => {
 	it("calls onSave when the submit button is clicked", async () => {
 		const { user, onSave } = renderDialog();
-		await user.click(screen.getByRole("button", { name: /save defaults/i }));
+		await user.click(
+			screen.getByRole("button", { name: /save defaults/i }),
+		);
 		expect(onSave).toHaveBeenCalledTimes(1);
 	});
 
@@ -71,5 +75,49 @@ describe("IntegrationDefaultsDialog — save", () => {
 		renderDialog({ isSaving: true });
 		expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
 		expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+	});
+});
+
+it("keeps fields disabled and prevents Escape dismissal during saving", async () => {
+	const { user, onOpenChange } = renderDialog({ isSaving: true });
+	expect(screen.getByLabelText(/tenant_id/i)).toBeDisabled();
+	expect(screen.getByLabelText(/enabled/i)).toBeDisabled();
+	await user.keyboard("{Escape}");
+	expect(onOpenChange).not.toHaveBeenCalled();
+});
+
+it("keeps Not set distinct from false", () => {
+	const { onFormValuesChange } = renderDialog({
+		formValues: { enabled: true },
+	});
+	fireEvent.change(screen.getByLabelText(/enabled/i), {
+		target: { value: "" },
+	});
+	expect(onFormValuesChange).toHaveBeenLastCalledWith({ enabled: "" });
+});
+it("preserves zero and invalid integer drafts until save validation", () => {
+	const { onFormValuesChange } = renderDialog({
+		configSchema: [{ key: "count", type: "int" }],
+	});
+	fireEvent.change(screen.getByLabelText(/count/i), {
+		target: { value: "0" },
+	});
+	expect(onFormValuesChange).toHaveBeenLastCalledWith({ count: "0" });
+	fireEvent.change(screen.getByLabelText(/count/i), {
+		target: { value: "12abc" },
+	});
+	expect(onFormValuesChange).toHaveBeenLastCalledWith({ count: "12abc" });
+});
+
+it("renders stored JSON as multiline text and preserves unfinished JSON edits", () => {
+	const { onFormValuesChange } = renderDialog({
+		configSchema: [{ key: "options", type: "json" }],
+		formValues: { options: { enabled: true } },
+	});
+	const input = screen.getByRole("textbox", { name: /options/i });
+	expect(input).toHaveValue(JSON.stringify({ enabled: true }, null, 2));
+	fireEvent.change(input, { target: { value: '{"enabled":' } });
+	expect(onFormValuesChange).toHaveBeenLastCalledWith({
+		options: '{"enabled":',
 	});
 });

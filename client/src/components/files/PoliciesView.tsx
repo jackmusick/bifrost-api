@@ -1,20 +1,40 @@
-import { useEffect, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, ShieldCheck, Trash2, FolderKey, Link2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
-import { listFilePolicies, type FilePolicy } from "@/services/filePolicies";
+	listFilePolicies,
+	type FilePolicy,
+	type PolicyRuleRef,
+} from "@/services/filePolicies";
 import { InlineLoader } from "./InlineLoader";
+
+type PolicyRule = FilePolicy["policies"]["policies"][number];
+
+const formatPath = (path: string) =>
+	path ? (path.startsWith("/") ? path : `/${path}`) : "/";
+const formatIdentity = (policy: FilePolicy) =>
+	`${policy.location}${formatPath(policy.path)}`;
+const isPolicyRuleRef = (rule: PolicyRule): rule is PolicyRuleRef =>
+	"$ref" in rule;
+const readableRuleName = (name: string) =>
+	name === "admin_bypass"
+		? "Administrator Access"
+		: name.replace(/[_-]+/g, " ");
+const describeRule = (rule: PolicyRule) =>
+	isPolicyRuleRef(rule)
+		? `Shared rule: ${readableRuleName(rule.$ref)}`
+		: `${rule.name}${rule.actions.length ? ` - ${rule.actions.join(", ")}` : ""}`;
 
 interface PoliciesViewProps {
 	scope: string | null;
+	location?: string | null;
+	prefix?: string;
 	/** Bump to force a refetch after a policy mutation elsewhere. */
 	refreshKey: number;
 	onEdit: (policy: FilePolicy) => void;
@@ -29,125 +49,241 @@ interface PoliciesViewProps {
  */
 export function PoliciesView({
 	scope,
+	location = null,
+	prefix = "",
 	refreshKey,
 	onEdit,
 	onDelete,
 }: PoliciesViewProps) {
-	const [policies, setPolicies] = useState<FilePolicy[]>([]);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const [query, setQuery] = useState("");
+	const policiesQuery = useQuery({
+		queryKey: ["file-policies", scope, refreshKey],
+		queryFn: () => listFilePolicies({ scope: scope ?? undefined }),
+		retry: false,
+	});
+	const policies = useMemo(
+		() => policiesQuery.data?.policies ?? [],
+		[policiesQuery.data],
+	);
+	const hasData = policiesQuery.data !== undefined;
+	const showInitialLoading = policiesQuery.isPending && !hasData;
+	const showEmptyState =
+		!showInitialLoading && !policiesQuery.isError && policies.length === 0;
+	const showError = policiesQuery.isError && !hasData;
+	const showTransientError = policiesQuery.isError && hasData;
 
-	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			setLoading(true);
-			try {
-				const result = await listFilePolicies({ scope: scope ?? undefined });
-				if (!cancelled) {
-					setPolicies(result.policies ?? []);
-					setError(null);
-				}
-			} catch (err) {
-				if (!cancelled)
-					setError(err instanceof Error ? err.message : String(err));
-			} finally {
-				if (!cancelled) setLoading(false);
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [scope, refreshKey]);
+	const directoryPolicies = useMemo(
+		() =>
+			policies.filter((policy) => {
+				if (location && policy.location !== location) return false;
+				const directory = prefix.replace(/\/$/, "");
+				return (
+					!directory ||
+					policy.path.replace(/\/$/, "") === directory ||
+					policy.path.startsWith(`${directory}/`)
+				);
+			}),
+		[policies, location, prefix],
+	);
+	const filteredPolicies = useMemo(() => {
+		const normalizedQuery = query.trim().toLowerCase();
+		if (!normalizedQuery) return directoryPolicies;
+		return directoryPolicies.filter((policy) => {
+			const haystack = [
+				policy.location,
+				formatPath(policy.path),
+				formatIdentity(policy),
+				...policy.policies.policies.map(describeRule),
+			]
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(normalizedQuery);
+		});
+	}, [directoryPolicies, query]);
+	const renderRule = (rule: PolicyRule, index: number) => {
+		const key = isPolicyRuleRef(rule) ? rule.$ref : `${rule.name}:${index}`;
+		return (
+			<Badge
+				key={key}
+				variant="outline"
+				className="h-auto max-w-full items-start whitespace-normal [overflow-wrap:anywhere] rounded-[var(--bf-radius-control)] px-2 py-1 text-left leading-5"
+			>
+				{"$ref" in rule && (
+					<Link2
+						aria-hidden="true"
+						className="mt-0.5 size-3 shrink-0 text-primary"
+					/>
+				)}
+				{describeRule(rule)}
+			</Badge>
+		);
+	};
+
+	const renderActions = (policy: FilePolicy) => (
+		<RecordActionsMenu label={`Policy ${formatIdentity(policy)} actions`}>
+			<DropdownMenuItem
+				className="min-h-11"
+				onSelect={() => onEdit(policy)}
+			>
+				<ShieldCheck aria-hidden="true" className="size-4" />
+				Manage Policy
+			</DropdownMenuItem>
+			<DropdownMenuItem
+				variant="destructive"
+				className="min-h-11"
+				onSelect={() => onDelete(policy)}
+			>
+				<Trash2 aria-hidden="true" className="size-4" />
+				Delete
+			</DropdownMenuItem>
+		</RecordActionsMenu>
+	);
+
+	const renderPolicy = (policy: FilePolicy) => (
+		<li key={policy.id ?? `${policy.location}:${policy.path}`}>
+			<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 border-b px-4 py-3 hover:bg-muted/20">
+				<button
+					type="button"
+					className="min-h-11 min-w-0 rounded-[var(--bf-radius-control)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					onClick={() => onEdit(policy)}
+					aria-label={`Manage policy for ${formatIdentity(policy)}`}
+				>
+					<span className="flex items-center gap-2 text-sm font-semibold leading-6 [overflow-wrap:anywhere]">
+						<FolderKey
+							aria-hidden="true"
+							className="size-4 shrink-0 text-primary"
+						/>
+						{policy.path
+							? policy.path.replace(/\/$/, "").split("/").at(-1)
+							: policy.location}
+					</span>
+					<span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">
+						{policy.path
+							? `${policy.location}${formatPath(policy.path)}`
+							: "Share-wide policy"}
+					</span>
+				</button>
+				<div className="col-start-1 flex min-w-0 flex-wrap gap-1.5">
+					{policy.policies.policies.length === 0 ? (
+						<span className="text-xs text-muted-foreground">
+							No rules
+						</span>
+					) : (
+						policy.policies.policies.map(renderRule)
+					)}
+				</div>
+				<div className="col-start-2 row-start-1 shrink-0 justify-self-end">
+					{renderActions(policy)}
+				</div>
+			</div>
+		</li>
+	);
+
+	const renderDirectory = () => (
+		<div className="flex h-full min-h-0 flex-col">
+			<div className="shrink-0 border-b px-4 py-3">
+				<p className="mb-3 text-xs leading-5 text-muted-foreground">
+					{location
+						? "Policies attached to this folder and its descendants. Inherited access is shown in Folder Details."
+						: "Policies define access to a share, folder, or file. Select a folder to narrow this list."}
+				</p>
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold leading-5">
+							Access Policies
+						</h2>
+						<p className="text-xs text-muted-foreground">
+							{filteredPolicies.length} of{" "}
+							{directoryPolicies.length}{" "}
+							{directoryPolicies.length === 1
+								? "policy"
+								: "policies"}
+						</p>
+					</div>
+					<label className="relative min-w-0 flex-1 sm:max-w-xs">
+						<span className="sr-only">Search policies</span>
+						<Search
+							aria-hidden="true"
+							className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+						/>
+						<Input
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder="Search policies"
+							className="pl-9"
+						/>
+					</label>
+				</div>
+			</div>
+			{filteredPolicies.length === 0 ? (
+				<p className="p-4 text-sm text-muted-foreground">
+					{query
+						? "No policies match this search."
+						: "No policies are set here. Open Folder Details to see inherited access."}
+				</p>
+			) : (
+				<ul className="min-h-0 flex-1 overflow-auto">
+					{filteredPolicies.map(renderPolicy)}
+				</ul>
+			)}
+		</div>
+	);
 
 	return (
-		<div className="h-full min-h-0 overflow-auto">
-			{loading && policies.length === 0 ? (
+		<section aria-label="Access Policies" className="h-full min-h-0">
+			{showInitialLoading ? (
 				<InlineLoader className="p-4" />
-			) : error ? (
-				<p className="p-4 text-sm text-destructive">{error}</p>
-			) : policies.length === 0 ? (
+			) : showError ? (
+				<Alert
+					variant="destructive"
+					className="mx-4 my-4 w-[calc(100%-2rem)] rounded-[var(--bf-radius-surface)]"
+				>
+					<AlertTitle>File policies could not be loaded</AlertTitle>
+					<AlertDescription>
+						<p>Try again to load the policies for this scope.</p>
+						<Button
+							type="button"
+							variant="outline"
+							className="mt-3 min-h-11"
+							onClick={() => void policiesQuery.refetch()}
+						>
+							Retry policies
+						</Button>
+					</AlertDescription>
+				</Alert>
+			) : showEmptyState ? (
 				<p className="p-4 text-sm text-muted-foreground">
 					No policies in this scope yet.
 				</p>
 			) : (
-				<DataTable>
-					<DataTableHeader>
-						<DataTableRow>
-							{/* Policy sizes to its content; Rules grows to fill. */}
-							<DataTableHead className="w-px whitespace-nowrap">Policy</DataTableHead>
-							<DataTableHead>Rules</DataTableHead>
-							<DataTableHead className="w-px whitespace-nowrap text-right">Actions</DataTableHead>
-						</DataTableRow>
-					</DataTableHeader>
-					<DataTableBody>
-						{policies.map((policy) => (
-							<DataTableRow
-								key={policy.id ?? `${policy.location}:${policy.path}`}
-								clickable
-								onClick={() => onEdit(policy)}
-							>
-								<DataTableCell className="w-px whitespace-nowrap align-middle">
-									<div className="flex flex-col">
-										<span className="font-medium">{policy.location}</span>
-										<span className="font-mono text-xs text-muted-foreground">
-											/{policy.path || ""}
-										</span>
-									</div>
-								</DataTableCell>
-								<DataTableCell className="align-middle">
-									<div className="flex flex-wrap gap-1">
-										{policy.policies.policies.length === 0 ? (
-											<span className="text-xs text-muted-foreground">
-												no rules
-											</span>
-										) : (
-											policy.policies.policies.map((rule, i) => (
-											<Badge
-												key={"$ref" in rule ? rule.$ref : (rule.name ?? i)}
-												variant="secondary"
-												className="font-normal"
-											>
-												{"$ref" in rule ? `ref:${rule.$ref}` : rule.name}
-											</Badge>
-										))
-										)}
-									</div>
-								</DataTableCell>
-								<DataTableCell className="w-px whitespace-nowrap align-middle">
-									<div className="flex items-center justify-end gap-1">
-										<Button
-											type="button"
-											variant="outline"
-											size="icon-xs"
-											title="Edit policy"
-											aria-label={`Edit policy for ${policy.location}/${policy.path}`}
-											onClick={(event) => {
-												event.stopPropagation();
-												onEdit(policy);
-											}}
-										>
-											<Pencil className="h-3 w-3" />
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											size="icon-xs"
-											title="Delete policy"
-											aria-label={`Delete policy for ${policy.location}/${policy.path}`}
-											onClick={(event) => {
-												event.stopPropagation();
-												onDelete(policy);
-											}}
-										>
-											<Trash2 className="h-3 w-3" />
-										</Button>
-									</div>
-								</DataTableCell>
-							</DataTableRow>
-						))}
-					</DataTableBody>
-				</DataTable>
+				<>
+					{showTransientError && (
+						<Alert
+							variant="destructive"
+							className="mx-4 my-4 w-[calc(100%-2rem)] rounded-[var(--bf-radius-surface)]"
+						>
+							<AlertTitle>
+								File policies could not be refreshed
+							</AlertTitle>
+							<AlertDescription>
+								<p>
+									The current list is still shown, but the
+									latest scope refresh failed.
+								</p>
+								<Button
+									type="button"
+									variant="outline"
+									className="mt-3 min-h-11"
+									onClick={() => void policiesQuery.refetch()}
+								>
+									Retry policies
+								</Button>
+							</AlertDescription>
+						</Alert>
+					)}
+					{renderDirectory()}
+				</>
 			)}
-		</div>
+		</section>
 	);
 }

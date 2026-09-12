@@ -18,6 +18,7 @@ export {
 	memo,
 	forwardRef,
 	createContext,
+	createElement,
 	useCallback,
 	useContext,
 	useDebugValue,

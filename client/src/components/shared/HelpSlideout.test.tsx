@@ -61,5 +61,8 @@ describe("HelpSlideout", () => {
 		await waitFor(() => {
 			expect(screen.queryByText(/body content/i)).not.toBeInTheDocument();
 		});
+		expect(
+			screen.getByRole("button", { name: /policy reference/i }),
+		).toHaveFocus();
 	});
 });

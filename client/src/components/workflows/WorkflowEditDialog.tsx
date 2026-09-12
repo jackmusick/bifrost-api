@@ -6,14 +6,14 @@
  * Platform admin only.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	Loader2,
 	Check,
 	ChevronsUpDown,
 	X,
 	Shield,
-	Users,
 	Settings,
 	Timer,
 	DollarSign,
@@ -60,6 +60,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsInput } from "@/components/ui/tags-input";
+import { copyToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useRoles } from "@/hooks/useRoles";
@@ -71,38 +72,13 @@ import {
 } from "@/hooks/useWorkflowRoles";
 import { useWorkflowKeys, useCreateWorkflowKey, useRevokeWorkflowKey } from "@/hooks/useWorkflowKeys";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
+import { AccessLevelSelect } from "@/components/access/AccessLevelSelect";
 import type { components } from "@/lib/v1";
 
 type Workflow = components["schemas"]["WorkflowMetadata"];
 type RolePublic = components["schemas"]["RolePublic"];
 
 type WorkflowAccessLevel = "authenticated" | "everyone" | "role_based";
-
-const ACCESS_LEVELS: {
-	value: WorkflowAccessLevel;
-	label: string;
-	description: string;
-	icon: React.ReactNode;
-}[] = [
-	{
-		value: "authenticated",
-		label: "Everyone except external users",
-		description: "Any signed-in user except external users can execute",
-		icon: <Users className="h-4 w-4" />,
-	},
-	{
-		value: "everyone",
-		label: "Everyone",
-		description: "Any signed-in user, including external users, can execute",
-		icon: <Users className="h-4 w-4" />,
-	},
-	{
-		value: "role_based",
-		label: "Role-Based",
-		description: "Only users with assigned roles can execute",
-		icon: <Shield className="h-4 w-4" />,
-	},
-];
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"] as const;
 
@@ -121,6 +97,7 @@ export function WorkflowEditDialog({
 	onSuccess,
 	initialTab,
 }: WorkflowEditDialogProps) {
+	const prefersReducedMotion = useReducedMotion();
 	const { data: roles } = useRoles();
 	const updateWorkflow = useUpdateWorkflow();
 	const assignRoles = useAssignRolesToWorkflow();
@@ -135,6 +112,10 @@ export function WorkflowEditDialog({
 	const [accessLevel, setAccessLevel] = useState<WorkflowAccessLevel>("role_based");
 	const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 	const [rolesOpen, setRolesOpen] = useState(false);
+	const [rolesReady, setRolesReady] = useState(false);
+	const [rolesLoadError, setRolesLoadError] = useState(false);
+	const [rolesLoadAttempt, setRolesLoadAttempt] = useState(0);
+	const loadedRoleIds = useRef<string[]>([]);
 
 	// General tab state
 	const [workflowName, setWorkflowName] = useState("");
@@ -163,21 +144,59 @@ export function WorkflowEditDialog({
 	const [disableGlobalKey, setDisableGlobalKey] = useState(false);
 	const [executionMode, setExecutionMode] = useState<"sync" | "async">("sync");
 	const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
-	const [copiedCurl, setCopiedCurl] = useState(false);
+	const [keyBusy, setKeyBusy] = useState(false);
+	const keyBusyRef = useRef(false);
+	const [keyRevoked, setKeyRevoked] = useState(false);
+	const [keyError, setKeyError] = useState<string | null>(null);
+	const keyErrorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (keyError) {
+			keyErrorRef.current?.focus();
+			keyErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+		}
+	}, [keyError]);
+	const [curlCopyState, setCurlCopyState] = useState<
+		"idle" | "copying" | "copied" | "error"
+	>("idle");
 	const [activeTab, setActiveTab] = useState("general");
 
 	const [isSaving, setIsSaving] = useState(false);
+	const savingRef = useRef(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const saveErrorRef = useRef<HTMLParagraphElement>(null);
+	useEffect(() => {
+		if (saveError) {
+			saveErrorRef.current?.focus();
+			saveErrorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [saveError]);
+	const copyResetTimerRef = useRef<number | null>(null);
+	const copyMountedRef = useRef(true);
+	const copyErrorRef = useRef<HTMLParagraphElement>(null);
+	useEffect(() => {
+		if (curlCopyState === "error") copyErrorRef.current?.focus();
+	}, [curlCopyState]);
+
+	useEffect(() => {
+		copyMountedRef.current = true;
+		return () => {
+			copyMountedRef.current = false;
+			if (copyResetTimerRef.current !== null) {
+				window.clearTimeout(copyResetTimerRef.current);
+			}
+		};
+	}, []);
 
 	// API key management for endpoint tab
-	const { data: existingKeys, refetch: refetchKeys } = useWorkflowKeys({
+	const { data: existingKeys, refetch: refetchKeys, isLoading: keysLoading, isError: keysError, isFetching: keysFetching } = useWorkflowKeys({
 		workflowId: workflow?.id ?? undefined,
 		includeRevoked: false,
 	});
-	const createKeyMutation = useCreateWorkflowKey();
-	const revokeKeyMutation = useRevokeWorkflowKey();
+	const createKeyMutation = useCreateWorkflowKey({ errorToast: false });
+	const revokeKeyMutation = useRevokeWorkflowKey({ errorToast: false, successToast: false });
 	const workflowKey = existingKeys?.[0];
-	const displayKey = newlyGeneratedKey || workflowKey?.masked_key || "";
-	const hasKey = !!workflowKey || !!newlyGeneratedKey;
+	const displayKey = newlyGeneratedKey || (!keyRevoked && workflowKey?.masked_key) || "";
+	const hasKey = (!keyRevoked && !!workflowKey) || !!newlyGeneratedKey;
 
 	// Fetch current workflow roles
 	const workflowRolesQuery = useWorkflowRoles(workflow?.id);
@@ -194,6 +213,9 @@ export function WorkflowEditDialog({
 		if (workflow && open) {
 			// Access control
 			setOrganizationId(workflow.organization_id ?? null);
+			setSelectedRoleIds([]);
+			setRolesReady(false);
+			setRolesLoadError(false);
 			setAccessLevel((workflow.access_level as WorkflowAccessLevel) || "role_based");
 
 			// General
@@ -223,33 +245,49 @@ export function WorkflowEditDialog({
 			setDisableGlobalKey(workflow.disable_global_key ?? false);
 			setExecutionMode(workflow.execution_mode ?? "sync");
 			setNewlyGeneratedKey(null);
-			setCopiedCurl(false);
+			setKeyRevoked(false);
+			setKeyError(null);
+			setCurlCopyState("idle");
+			setSaveError(null);
 
 			// Set initial tab
 			setActiveTab(initialTab ?? "general");
 		}
 	}
 
-	// Roles fetch is a side effect (network) and is the legitimate place for
-	// useEffect — the resulting setState happens after an awaited query.
+	// Ignore late responses after closing or switching workflows. Parent list
+	// refreshes must not replace a role selection the user is still editing.
+	const workflowId = workflow?.id;
 	useEffect(() => {
-		if (workflow && open) {
-			void workflowRolesQuery.refetch().then((result) => {
-				if (result.data) {
-					setSelectedRoleIds(result.data.role_ids || []);
-				}
-			});
-		}
+		if (!workflowId || !open) return;
+		let cancelled = false;
+		void workflowRolesQuery.refetch().then((result) => {
+			if (cancelled) return;
+			if (!result.data) {
+				setRolesLoadError(true);
+				return;
+			}
+			loadedRoleIds.current = result.data.role_ids || [];
+			setSelectedRoleIds(loadedRoleIds.current);
+			setRolesReady(true);
+		}).catch(() => {
+			if (!cancelled) setRolesLoadError(true);
+		});
+		return () => { cancelled = true; };
+		// The manual query wrapper is recreated each render; identity is the ID.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [workflow, open]);
+	}, [workflowId, open, initialTab, rolesLoadAttempt]);
 
 	const handleClose = () => {
+		if (savingRef.current || keyBusyRef.current) return;
 		onOpenChange(false);
 	};
 
 	const handleSave = async () => {
-		if (!workflow?.id) return;
+		if (!workflow?.id || savingRef.current || keyBusyRef.current || !rolesReady) return;
 
+		savingRef.current = true;
+		setSaveError(null);
 		setIsSaving(true);
 		try {
 			const resolvedWorkflowName =
@@ -277,7 +315,7 @@ export function WorkflowEditDialog({
 			});
 
 			// Handle role changes
-			const currentRoleIds = workflowRolesQuery.data?.role_ids || [];
+			const currentRoleIds = loadedRoleIds.current;
 			const rolesToAdd = selectedRoleIds.filter(
 				(id) => !currentRoleIds.includes(id)
 			);
@@ -287,9 +325,11 @@ export function WorkflowEditDialog({
 
 			if (rolesToAdd.length > 0) {
 				await assignRoles.mutateAsync(workflow.id, rolesToAdd);
+				loadedRoleIds.current = [...loadedRoleIds.current, ...rolesToAdd];
 			}
 			for (const roleId of rolesToRemove) {
 				await removeRole.mutateAsync(workflow.id, roleId);
+				loadedRoleIds.current = loadedRoleIds.current.filter((id) => id !== roleId);
 			}
 
 			toast.success("Workflow updated", {
@@ -297,12 +337,13 @@ export function WorkflowEditDialog({
 			});
 
 			onSuccess?.();
-			handleClose();
+			onOpenChange(false);
 		} catch (error) {
-			toast.error(
+			setSaveError(
 				error instanceof Error ? error.message : "Failed to update workflow"
 			);
 		} finally {
+			savingRef.current = false;
 			setIsSaving(false);
 		}
 	};
@@ -324,11 +365,17 @@ export function WorkflowEditDialog({
 	};
 
 	const handleGenerateKey = async () => {
-		if (!workflow?.id) return;
+		if (!workflow?.id || keyBusyRef.current || savingRef.current || keysLoading || keysError || keysFetching) return;
+		keyBusyRef.current = true;
+		setKeyBusy(true);
+		setKeyError(null);
+		let revoked = keyRevoked;
 		try {
-			// If already has a key, revoke it first
-			if (workflowKey) {
-				await revokeKeyMutation.mutateAsync(workflowKey.id);
+			if ((workflowKey || newlyGeneratedKey) && !revoked) {
+				await revokeKeyMutation.mutateAsync(workflow.id);
+				revoked = true;
+				setKeyRevoked(true);
+				setNewlyGeneratedKey(null);
 			}
 			const result = await createKeyMutation.mutateAsync({
 				workflow_id: workflow.id,
@@ -336,21 +383,40 @@ export function WorkflowEditDialog({
 			});
 			if (result.raw_key) {
 				setNewlyGeneratedKey(result.raw_key);
-				refetchKeys();
+				setKeyRevoked(false);
+				void refetchKeys();
 			}
 		} catch {
-			// Error handled by mutation hook
+			setKeyError(revoked
+				? "The previous API key was revoked, but the replacement could not be created. Generate a new key to restore API access."
+				: "Could not generate the API key. Try again.");
+		} finally {
+			keyBusyRef.current = false;
+			setKeyBusy(false);
 		}
 	};
 
-	const copyToClipboard = async (text: string) => {
-		try {
-			await navigator.clipboard.writeText(text);
-			setCopiedCurl(true);
-			setTimeout(() => setCopiedCurl(false), 2000);
-		} catch {
-			// Silently handle clipboard error
+	const copyCurlExample = async () => {
+		if (curlCopyState === "copying") return;
+		setCurlCopyState("copying");
+		if (copyResetTimerRef.current !== null) {
+			window.clearTimeout(copyResetTimerRef.current);
+			copyResetTimerRef.current = null;
 		}
+		const copied = await copyToClipboard(curlExample);
+		if (!copyMountedRef.current) return;
+		if (copied) {
+			setCurlCopyState("copied");
+			if (copyResetTimerRef.current !== null) {
+				window.clearTimeout(copyResetTimerRef.current);
+			}
+			copyResetTimerRef.current = window.setTimeout(() => {
+				setCurlCopyState("idle");
+				copyResetTimerRef.current = null;
+			}, 2000);
+			return;
+		}
+		setCurlCopyState("error");
 	};
 
 	// Determine which tabs to show based on workflow type
@@ -391,7 +457,7 @@ export function WorkflowEditDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
-			<DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-hidden flex flex-col">
+			<DialogContent className="max-h-[min(90dvh,54rem)] w-[min(calc(100vw-1rem),52rem)] overflow-hidden flex flex-col sm:max-w-none">
 				<DialogHeader>
 					<DialogTitle>Edit Workflow Settings</DialogTitle>
 					<DialogDescription>
@@ -403,37 +469,37 @@ export function WorkflowEditDialog({
 					<SolutionManagedBanner entityLabel="workflow" />
 				)}
 
-				<Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-					<TabsList className="w-full flex-shrink-0">
-						<TabsTrigger value="general" className="gap-1.5">
+				<Tabs inert={isSaving || keyBusy} aria-busy={isSaving || keyBusy} value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+					<TabsList className="w-full min-h-14 shrink-0 flex-nowrap justify-start gap-1 overflow-x-auto overflow-y-hidden group-data-horizontal/tabs:h-auto">
+						<TabsTrigger value="general" className="h-11 min-h-11 flex-none gap-1.5">
 							<Settings className="h-3.5 w-3.5" />
 							General
 						</TabsTrigger>
-						<TabsTrigger value="execution" className="gap-1.5">
+						<TabsTrigger value="execution" className="h-11 min-h-11 flex-none gap-1.5">
 							<Timer className="h-3.5 w-3.5" />
 							Execution
 						</TabsTrigger>
-						<TabsTrigger value="economics" className="gap-1.5">
+						<TabsTrigger value="economics" className="h-11 min-h-11 flex-none gap-1.5">
 							<DollarSign className="h-3.5 w-3.5" />
 							Economics
 						</TabsTrigger>
 						{isToolType && (
-							<TabsTrigger value="tool" className="gap-1.5">
+							<TabsTrigger value="tool" className="h-11 min-h-11 flex-none gap-1.5">
 								<Bot className="h-3.5 w-3.5" />
 								Tool
 							</TabsTrigger>
 						)}
 						{isDataProviderType && (
-							<TabsTrigger value="dataprovider" className="gap-1.5">
+							<TabsTrigger value="dataprovider" className="h-11 min-h-11 flex-none gap-1.5">
 								<Database className="h-3.5 w-3.5" />
 								Cache
 							</TabsTrigger>
 						)}
-						<TabsTrigger value="access" className="gap-1.5">
+						<TabsTrigger value="access" className="h-11 min-h-11 flex-none gap-1.5">
 							<Shield className="h-3.5 w-3.5" />
 							Access
 						</TabsTrigger>
-						<TabsTrigger value="endpoint" className="gap-1.5">
+						<TabsTrigger value="endpoint" className="h-11 min-h-11 flex-none gap-1.5">
 							<Globe className="h-3.5 w-3.5" />
 							Endpoint
 						</TabsTrigger>
@@ -616,31 +682,13 @@ export function WorkflowEditDialog({
 
 							<div className="space-y-2">
 								<Label>Access Level</Label>
-								<Select
+								<AccessLevelSelect
 									value={accessLevel}
 									onValueChange={(v) =>
 										setAccessLevel(v as WorkflowAccessLevel)
 									}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder="Select access level" />
-									</SelectTrigger>
-									<SelectContent>
-										{ACCESS_LEVELS.map((level) => (
-											<SelectItem key={level.value} value={level.value}>
-												<div className="flex items-center gap-2">
-													{level.icon}
-													<div className="flex flex-col">
-														<span>{level.label}</span>
-														<span className="text-xs text-muted-foreground">
-															{level.description}
-														</span>
-													</div>
-												</div>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									className="min-h-11"
+								/>
 							</div>
 
 							{accessLevel === "role_based" && (
@@ -655,7 +703,9 @@ export function WorkflowEditDialog({
 												variant="outline"
 												role="combobox"
 												aria-expanded={rolesOpen}
-												className="w-full justify-between font-normal"
+												aria-label="Assigned roles"
+												disabled={!rolesReady || isSaving}
+												className="min-h-11 w-full justify-between font-normal"
 											>
 												<span className="text-muted-foreground">
 													Select roles...
@@ -663,26 +713,29 @@ export function WorkflowEditDialog({
 												<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent
-											className="w-[var(--radix-popover-trigger-width)] p-0"
+										<PopoverContent variant="picker"
+											className="p-0"
 											align="start"
 										>
 											<Command>
-												<CommandInput placeholder="Search roles..." />
+												<CommandInput
+													placeholder="Search roles..."
+													className="min-h-11"
+												/>
 												<CommandList>
 													<CommandEmpty>No roles found.</CommandEmpty>
 													<CommandGroup>
 														{roles?.map((role: RolePublic) => (
-															<CommandItem
-																key={role.id}
-																value={role.name || ""}
-																data-checked={selectedRoleIds.includes(role.id)}
-																onSelect={() => handleRoleToggle(role.id)}
-															>
-																<div className="flex flex-col flex-1">
-																	<span className="font-medium">
-																		{role.name}
-																	</span>
+													<CommandItem
+														key={role.id}
+														value={role.name || ""}
+														data-checked={selectedRoleIds.includes(role.id)}
+														onSelect={() => handleRoleToggle(role.id)}
+													>
+														<div className="flex flex-1 flex-col">
+															<span className="font-medium">
+																{role.name}
+															</span>
 																	{role.description && (
 																		<span className="text-xs text-muted-foreground">
 																			{role.description}
@@ -698,7 +751,7 @@ export function WorkflowEditDialog({
 									</Popover>
 
 									{selectedRoleIds.length > 0 && (
-										<div className="flex flex-wrap gap-2 rounded-md bg-muted/50 p-2 ring-1 ring-foreground/5">
+										<div className="flex flex-wrap gap-2 rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/50 p-2">
 											{selectedRoleIds.map((roleId) => {
 												const role = roles?.find(
 													(r: RolePublic) => r.id === roleId
@@ -710,10 +763,7 @@ export function WorkflowEditDialog({
 														className="gap-1"
 													>
 														{role?.name || roleId}
-														<X
-															className="h-3 w-3 cursor-pointer"
-															onClick={() => handleRoleToggle(roleId)}
-														/>
+														<Button variant="ghost" size="icon-lg" aria-label={`Remove ${role?.name || roleId} role`} disabled={isSaving || !rolesReady} onClick={() => handleRoleToggle(roleId)}><X className="h-3 w-3" /></Button>
 													</Badge>
 												);
 											})}
@@ -725,8 +775,8 @@ export function WorkflowEditDialog({
 										workflow
 									</p>
 
-									{selectedRoleIds.length === 0 && (
-										<p className="text-xs text-yellow-600 dark:text-yellow-500">
+									{rolesReady && selectedRoleIds.length === 0 && (
+										<p className="text-xs text-[var(--bf-warning)]">
 											No roles assigned - only platform admins can execute this
 											workflow
 										</p>
@@ -737,15 +787,15 @@ export function WorkflowEditDialog({
 
 						{/* Endpoint Tab */}
 						<TabsContent value="endpoint" className="mt-0 space-y-4">
-							<div className="flex items-center justify-between">
+							<div className="flex items-center justify-between gap-4">
 								<div className="space-y-0.5">
-									<Label>Enable HTTP Endpoint</Label>
+									<Label htmlFor="workflow-endpoint-enabled">Enable HTTP Endpoint</Label>
 									<p className="text-xs text-muted-foreground">
 										Expose this workflow as an HTTP API endpoint
 									</p>
 								</div>
 								<Switch
-									checked={endpointEnabled}
+									id="workflow-endpoint-enabled" checked={endpointEnabled}
 									onCheckedChange={setEndpointEnabled}
 								/>
 							</div>
@@ -754,14 +804,14 @@ export function WorkflowEditDialog({
 								<>
 									{/* Execution Mode */}
 									<div className="space-y-2">
-										<Label>Execution Mode</Label>
-										<Select
-											value={executionMode}
-											onValueChange={(v) => setExecutionMode(v as "sync" | "async")}
-										>
-											<SelectTrigger>
-												<SelectValue />
-											</SelectTrigger>
+										<Label htmlFor="workflow-endpoint-mode">Execution Mode</Label>
+								<Select
+									value={executionMode}
+									onValueChange={(v) => setExecutionMode(v as "sync" | "async")}
+								>
+									<SelectTrigger id="workflow-endpoint-mode" className="min-h-11">
+										<SelectValue>{executionMode === "sync" ? "Synchronous" : "Asynchronous"}</SelectValue>
+									</SelectTrigger>
 											<SelectContent>
 												<SelectItem value="sync">
 													<div className="flex flex-col">
@@ -793,6 +843,7 @@ export function WorkflowEditDialog({
 											{HTTP_METHODS.map((method) => (
 												<Button
 													key={method}
+ aria-pressed={allowedMethods.includes(method)} className="min-h-11"
 													type="button"
 													variant={
 														allowedMethods.includes(method)
@@ -808,39 +859,39 @@ export function WorkflowEditDialog({
 										</div>
 									</div>
 
-									<div className="flex items-center justify-between">
+									<div className="flex items-center justify-between gap-4">
 										<div className="space-y-0.5">
-											<Label>Public Endpoint</Label>
+											<Label htmlFor="workflow-endpoint-public">Public Endpoint</Label>
 											<p className="text-xs text-muted-foreground">
 												Skip authentication (use for incoming webhooks)
 											</p>
 										</div>
 										<Switch
-											checked={publicEndpoint}
+											id="workflow-endpoint-public" checked={publicEndpoint}
 											onCheckedChange={setPublicEndpoint}
 										/>
 									</div>
 
-									<div className="flex items-center justify-between">
+									<div className="flex items-center justify-between gap-4">
 										<div className="space-y-0.5">
-											<Label>Disable Global API Key</Label>
+											<Label htmlFor="workflow-endpoint-global-key">Disable Global API Key</Label>
 											<p className="text-xs text-muted-foreground">
 												Only workflow-specific API keys will work
 											</p>
 										</div>
 										<Switch
-											checked={disableGlobalKey}
+											id="workflow-endpoint-global-key" checked={disableGlobalKey}
 											onCheckedChange={setDisableGlobalKey}
 										/>
 									</div>
 
 									{/* Endpoint URL */}
 									<div className="space-y-2">
-										<Label>Endpoint URL</Label>
+										<Label htmlFor="workflow-endpoint-url">Endpoint URL</Label>
 										<Input
-											value={endpointUrl}
+											id="workflow-endpoint-url" value={endpointUrl}
 											readOnly
-											className="font-mono text-xs"
+											className="min-h-11 font-mono text-xs [overflow-wrap:anywhere]"
 										/>
 									</div>
 
@@ -848,22 +899,32 @@ export function WorkflowEditDialog({
 									{!isPublicEndpoint && (
 										<div className="space-y-2">
 											<Label>Workflow API Key</Label>
-											{hasKey ? (
+											{keyError && <div role="alert" ref={keyErrorRef} tabIndex={-1} className="space-y-2 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm text-destructive outline-none"><p>{keyError}</p><Button variant="outline" className="min-h-11" disabled={keysFetching || keysLoading || keysError} onClick={() => void handleGenerateKey()}>Retry key generation</Button></div>}
+											{keysLoading ? <p role="status" className="text-sm text-muted-foreground">Loading API keys…</p> : keysError ? <div role="alert" className="space-y-2 text-sm"><p>Could not load workflow API keys.</p><Button variant="outline" className="min-h-11" disabled={keysFetching} onClick={() => void refetchKeys()}>Retry API keys</Button></div> : hasKey ? (
 												<div className="flex items-center gap-2">
 													<Input
 														type="text"
-														value={displayKey}
+														aria-label="Workflow API key" value={displayKey}
 														readOnly
-														className="font-mono text-xs flex-1"
+														className="min-h-11 flex-1 font-mono text-xs [overflow-wrap:anywhere]"
 													/>
 													<Button
 														variant="outline"
 														size="sm"
+														className="min-h-11"
 														onClick={handleGenerateKey}
-														disabled={createKeyMutation.isPending || revokeKeyMutation.isPending}
+														disabled={keysFetching || createKeyMutation.isPending || revokeKeyMutation.isPending}
 														title="Regenerate API key"
 													>
-														<RefreshCw className={cn("h-4 w-4", (createKeyMutation.isPending || revokeKeyMutation.isPending) && "animate-spin")} />
+														<RefreshCw
+															className={cn(
+																"h-4 w-4",
+																(createKeyMutation.isPending ||
+																	revokeKeyMutation.isPending) &&
+																	!prefersReducedMotion &&
+																	"motion-safe:animate-spin",
+															)}
+														/>
 													</Button>
 												</div>
 											) : (
@@ -874,12 +935,19 @@ export function WorkflowEditDialog({
 													<Button
 														variant="default"
 														size="sm"
+														className="min-h-11"
 														onClick={handleGenerateKey}
-														disabled={createKeyMutation.isPending}
+														disabled={keysFetching || createKeyMutation.isPending}
 													>
 														{createKeyMutation.isPending ? (
 															<>
-																<RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+																<RefreshCw
+																	className={cn(
+																		"mr-2 h-4 w-4",
+																		!prefersReducedMotion &&
+																			"motion-safe:animate-spin",
+																	)}
+																/>
 																Generating...
 															</>
 														) : (
@@ -889,7 +957,7 @@ export function WorkflowEditDialog({
 												</div>
 											)}
 											<p className="text-xs text-muted-foreground">
-												{hasKey
+												{keysLoading || keysError ? "Load existing keys before generating or regenerating a key." : hasKey
 													? "This key is specific to this workflow. Click refresh to regenerate."
 													: "Generate a workflow-specific API key for authenticating HTTP requests."}
 											</p>
@@ -900,36 +968,93 @@ export function WorkflowEditDialog({
 									<div className="space-y-2">
 										<Label>Example Request</Label>
 										<div className="relative">
-											<pre className="rounded-md bg-muted p-4 text-xs overflow-x-auto ring-1 ring-foreground/5">
-												<code>{curlExample}</code>
+											<pre className="rounded-[var(--bf-radius-control)] bg-muted p-4 pr-16 text-xs overflow-x-auto ring-1 ring-foreground/5">
+												<code className="[overflow-wrap:anywhere] whitespace-pre-wrap">
+													{curlExample}
+												</code>
 											</pre>
 											<Button
 												variant="ghost"
 												size="sm"
-												className="absolute top-2 right-2"
-												onClick={() => copyToClipboard(curlExample)}
+												className="absolute right-2 top-2 min-h-11 bg-muted"
+												aria-label={
+													curlCopyState === "copying"
+														? "Copying cURL example"
+														: curlCopyState === "copied"
+															? "Copied cURL example"
+															: curlCopyState === "error"
+																? "Retry cURL example copy"
+																: "Copy cURL example"
+												}
+												title={
+													curlCopyState === "copying"
+														? "Copying cURL example"
+														: curlCopyState === "copied"
+															? "Copied cURL example"
+															: curlCopyState === "error"
+																? "Retry cURL example copy"
+																: "Copy cURL example"
+												}
+												disabled={curlCopyState === "copying"}
+												onClick={() => void copyCurlExample()}
 											>
-												{copiedCurl ? (
+												{curlCopyState === "copied" ? (
 													<Check className="h-3 w-3" />
 												) : (
 													<Copy className="h-3 w-3" />
 												)}
 											</Button>
 										</div>
+										{curlCopyState === "error" ? (
+											<p role="alert" ref={copyErrorRef} tabIndex={-1} className="text-xs leading-5 text-[var(--bf-danger)]">
+												Could not copy the cURL example. Try again, or select the request text and copy it manually.
+											</p>
+										) : curlCopyState === "copied" ? (
+											<p role="status" className="text-xs leading-5 text-muted-foreground">
+												cURL example copied
+											</p>
+										) : null}
 									</div>
 								</>
 							)}
 						</TabsContent>
 					</div>
 				</Tabs>
+				{keyBusy && <p role="status" className="shrink-0 text-sm text-muted-foreground">Updating API key…</p>}
 
-				<DialogFooter>
-					<Button variant="outline" onClick={handleClose} disabled={isSaving}>
+				{!rolesReady && (
+					<div role={rolesLoadError ? "alert" : "status"} className="shrink-0 text-sm text-muted-foreground">
+						{rolesLoadError ? <><p>Could not load assigned roles. Load them before saving to preserve access settings.</p><Button variant="outline" className="mt-2 min-h-11" onClick={() => { setRolesLoadError(false); setRolesLoadAttempt((attempt) => attempt + 1); }}>Retry loading roles</Button></> : "Loading access settings…"}
+					</div>
+				)}
+				{saveError && (
+					<p ref={saveErrorRef} role="alert" tabIndex={-1} className="max-h-24 shrink-0 overflow-y-auto rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm text-destructive outline-none [overflow-wrap:anywhere]">
+						{saveError}
+					</p>
+				)}
+				<DialogFooter className="shrink-0 gap-2 border-t border-border/70 pt-4">
+					<Button
+						variant="outline"
+						className="min-h-11"
+						onClick={handleClose}
+						disabled={isSaving || keyBusy}
+					>
 						Cancel
 					</Button>
-					<Button onClick={handleSave} disabled={isSaving || isSolutionManaged}>
-						{isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-						{isSaving ? "Saving..." : "Save Changes"}
+					<Button
+						className="min-h-11"
+						onClick={handleSave}
+						disabled={isSaving || keyBusy || isSolutionManaged || !rolesReady}
+					>
+						{isSaving && (
+							<Loader2
+								className={cn(
+									"mr-2 h-4 w-4",
+									!prefersReducedMotion && "motion-safe:animate-spin",
+								)}
+							/>
+						)}
+						{isSaving ? "Saving..." : saveError ? "Retry save" : "Save Changes"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

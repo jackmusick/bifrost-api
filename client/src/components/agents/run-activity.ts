@@ -167,7 +167,7 @@ export function humanizeToolAction(toolName: string): string {
 	const tokens = identifierTokens(toolName);
 	const verbIndex = tokens.findIndex((token) => token in ACTION_VERBS);
 	if (verbIndex === -1) {
-		return "Completed an action";
+		return sentenceCase(tokens) || "Agent action";
 	}
 
 	const verb = ACTION_VERBS[tokens[verbIndex]];
@@ -194,7 +194,7 @@ export function humanizeToolReference(toolName: string): string {
 
 	const tokens = identifierTokens(toolName);
 	const verbIndex = tokens.findIndex((token) => token in ACTION_VERBS);
-	const meaningful = verbIndex >= 0 ? tokens.slice(verbIndex) : [];
+	const meaningful = verbIndex >= 0 ? tokens.slice(verbIndex) : tokens;
 	return sentenceCase(meaningful.length ? meaningful : ["agent", "action"]);
 }
 

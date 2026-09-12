@@ -7,6 +7,10 @@ import {
 	useState,
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { navigationSelectionClasses } from "@/components/layout/navigationStyles";
+import { PageWorkspace } from "@/components/layout/PageWorkspace";
+import { Button } from "@/components/ui/button";
 import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
 import { Branding } from "@/pages/settings/Branding";
 import { OAuth } from "@/pages/settings/OAuth";
@@ -153,27 +157,39 @@ function findActiveSectionId(currentTab: string) {
 	);
 }
 
-function findActiveContent(currentTab: string) {
-	return (
-		settingsSections
-			.flatMap((section) => section.items)
-			.find((item) => item.value === currentTab)?.content ??
-		AIModelSettings
-	);
-}
-
 export function Settings() {
 	const navigate = useNavigate();
 	const location = useLocation();
 
 	// Parse the current tab from the URL path
-	const currentTab = location.pathname.split("/settings/")[1] || "ai";
+	const requestedTab = location.pathname.split("/settings/")[1];
+	const currentTab = settingsSections.some((section) =>
+		section.items.some((item) => item.value === requestedTab),
+	)
+		? requestedTab
+		: "ai";
 	const activeSectionId = findActiveSectionId(currentTab);
-	const ActiveContent = findActiveContent(currentTab);
 	const [expandedSections, setExpandedSections] = useState<string[]>(() => [
 		activeSectionId,
 	]);
-	const contentRef = useRef<HTMLElement>(null);
+	const [visitedTabs, setVisitedTabs] = useState(() => new Set([currentTab]));
+	const [previousTab, setPreviousTab] = useState(currentTab);
+	if (previousTab !== currentTab) {
+		setPreviousTab(currentTab);
+		setVisitedTabs((tabs) => new Set([...tabs, currentTab]));
+		setExpandedSections((sections) =>
+			sections.includes(activeSectionId)
+				? sections
+				: [...sections, activeSectionId],
+		);
+	}
+	const contentRef = useRef<HTMLDivElement>(null);
+	const mobileNavigationRef = useRef<HTMLButtonElement>(null);
+	const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+	const activeLabel =
+		settingsSections
+			.flatMap((section) => section.items)
+			.find((item) => item.value === currentTab)?.label ?? "Models";
 
 	const sectionState = useMemo(
 		() => new Set(expandedSections),
@@ -187,6 +203,8 @@ export function Settings() {
 				? sections
 				: [...sections, destinationSection],
 		);
+		if (mobileNavigationOpen) mobileNavigationRef.current?.focus();
+		setMobileNavigationOpen(false);
 		navigate(`/settings/${value}`);
 	};
 
@@ -200,113 +218,156 @@ export function Settings() {
 
 	// Redirect /settings to /settings/ai (first tab)
 	useEffect(() => {
-		if (location.pathname === "/settings") {
-			navigate("/settings/ai", { replace: true });
+		if (requestedTab !== currentTab) {
+			navigate(`/settings/${currentTab}`, { replace: true });
 		}
-	}, [location.pathname, navigate]);
+	}, [requestedTab, currentTab, navigate]);
 
 	useEffect(() => {
 		if (contentRef.current) contentRef.current.scrollTop = 0;
 	}, [currentTab]);
 
 	return (
-		<div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col space-y-6 px-4 sm:px-6 lg:px-8">
-			<div className="max-w-3xl">
-				<h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-					Settings
-				</h1>
-				<p className="mt-2 text-muted-foreground">
-					Manage platform settings and configuration
-				</p>
-			</div>
-
-			<div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
-				<nav
-					aria-label="Settings sections"
-					className="min-h-0 rounded-lg border bg-card p-2 lg:max-h-[calc(100vh-13rem)] lg:overflow-auto"
+		<PageWorkspace className="mx-auto w-full max-w-7xl">
+			<ListPageHeader
+				title="Settings"
+				description="Manage platform settings and configuration"
+			/>
+			<div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card lg:flex-1">
+				<Button
+					variant="ghost"
+					className="h-auto min-h-12 w-full shrink-0 justify-between gap-3 rounded-none border-b border-border/70 bg-muted/20 whitespace-normal px-4 py-3 text-left lg:hidden"
+					aria-label={`Settings navigation: ${activeLabel}`}
+					aria-expanded={mobileNavigationOpen}
+					ref={mobileNavigationRef}
+					aria-controls="settings-navigation"
+					onClick={() => setMobileNavigationOpen((open) => !open)}
 				>
-					{settingsSections.map((section) => {
-						const SectionIcon = section.icon;
-						const isExpanded = sectionState.has(section.id);
-						const containsActive = section.id === activeSectionId;
+					<span className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
+						<span className="block text-xs font-normal text-muted-foreground">
+							Settings navigation
+						</span>
+						<span className="block">{activeLabel}</span>
+					</span>
+					<ChevronDown
+						className={cn(
+							"size-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
+							mobileNavigationOpen && "rotate-180",
+						)}
+					/>
+				</Button>
 
-						return (
-							<div key={section.id} className="space-y-1">
-								<button
-									type="button"
-									aria-expanded={isExpanded}
-									aria-controls={`settings-section-${section.id}`}
-									onClick={() => toggleSection(section.id)}
-									className={cn(
-										"flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-										containsActive && "text-foreground",
-										!containsActive &&
-											"text-muted-foreground",
-									)}
-								>
-									<SectionIcon className="h-4 w-4 shrink-0" />
-									<span className="flex-1">
-										{section.label}
-									</span>
-									<ChevronDown
+				<div className="grid min-h-0 lg:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+					<nav
+						id="settings-navigation"
+						aria-label="Settings sections"
+						className={cn(
+							"min-h-0 space-y-2 border-b border-border/70 bg-muted/20 p-3 lg:block lg:overflow-auto lg:border-b-0 lg:border-r",
+							!mobileNavigationOpen && "hidden",
+						)}
+					>
+						{settingsSections.map((section) => {
+							const SectionIcon = section.icon;
+							const isExpanded = sectionState.has(section.id);
+							const containsActive =
+								section.id === activeSectionId;
+
+							return (
+								<div key={section.id} className="space-y-1">
+									<button
+										type="button"
+										aria-expanded={isExpanded}
+										aria-controls={`settings-section-${section.id}`}
+										onClick={() =>
+											toggleSection(section.id)
+										}
 										className={cn(
-											"h-4 w-4 shrink-0 transition-transform",
-											!isExpanded && "-rotate-90",
+											"flex min-h-11 w-full items-center gap-2 rounded-none border-l-2 border-transparent px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+											containsActive && "text-primary",
+											!containsActive &&
+												"text-muted-foreground",
 										)}
-										aria-hidden="true"
-									/>
-								</button>
-
-								{isExpanded && (
-									<div
-										id={`settings-section-${section.id}`}
-										className="space-y-1 pb-2 pl-3"
 									>
-										{section.items.map((item) => {
-											const ItemIcon = item.icon;
-											const isActive =
-												item.value === currentTab;
+										<SectionIcon className="h-4 w-4 shrink-0" />
+										<span className="flex-1">
+											{section.label}
+										</span>
+										<ChevronDown
+											className={cn(
+												"h-4 w-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
+												!isExpanded && "-rotate-90",
+											)}
+											aria-hidden="true"
+										/>
+									</button>
 
-											return (
-												<button
-													key={item.value}
-													type="button"
-													aria-current={
-														isActive
-															? "page"
-															: undefined
-													}
-													onClick={() =>
-														handleRouteChange(
-															item.value,
-														)
-													}
-													className={cn(
-														"flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-														isActive
-															? "bg-accent font-medium text-accent-foreground"
-															: "text-muted-foreground",
-													)}
-												>
-													<ItemIcon className="h-4 w-4 shrink-0" />
-													<span>{item.label}</span>
-												</button>
-											);
-										})}
+									{isExpanded && (
+										<div
+											id={`settings-section-${section.id}`}
+											className="space-y-1 pb-2"
+										>
+											{section.items.map((item) => {
+												const ItemIcon = item.icon;
+												const isActive =
+													item.value === currentTab;
+
+												return (
+													<button
+														key={item.value}
+														type="button"
+														aria-current={
+															isActive
+																? "page"
+																: undefined
+														}
+														onClick={() =>
+															handleRouteChange(
+																item.value,
+															)
+														}
+														className={cn(
+															"flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+															navigationSelectionClasses(
+																isActive,
+															),
+															"font-medium",
+														)}
+													>
+														<ItemIcon className="h-4 w-4 shrink-0" />
+														<span>
+															{item.label}
+														</span>
+													</button>
+												);
+											})}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</nav>
+
+					<section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+						<div
+							ref={contentRef}
+							data-page-scroll
+							className="min-w-0 p-4 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-auto"
+						>
+							{settingsSections
+								.flatMap((section) => section.items)
+								.filter((item) => visitedTabs.has(item.value))
+								.map((item) => (
+									<div
+										key={item.value}
+										hidden={item.value !== currentTab}
+									>
+										{createElement(item.content)}
 									</div>
-								)}
-							</div>
-						);
-					})}
-				</nav>
-
-				<section
-					ref={contentRef}
-					className="min-h-0 overflow-auto px-1 pb-6 pr-3 sm:px-2 sm:pr-4"
-				>
-					{createElement(ActiveContent)}
-				</section>
+								))}
+						</div>
+					</section>
+				</div>
 			</div>
-		</div>
+		</PageWorkspace>
 	);
 }

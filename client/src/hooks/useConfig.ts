@@ -40,7 +40,9 @@ export function useConfigs(filterScope?: string | null) {
 	});
 }
 
-export function useSetConfig() {
+export function useSetConfig({
+	showErrorToast = true,
+}: { showErrorToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("post", "/api/config", {
@@ -51,6 +53,7 @@ export function useSetConfig() {
 			});
 		},
 		onError: (error) => {
+			if (!showErrorToast) return;
 			const errorMessage =
 				typeof error === "object" && error && "detail" in error
 					? String((error as Record<string, unknown>)["detail"])
@@ -62,7 +65,9 @@ export function useSetConfig() {
 	});
 }
 
-export function useUpdateConfig() {
+export function useUpdateConfig({
+	showErrorToast = true,
+}: { showErrorToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("put", "/api/config/{config_id}", {
@@ -73,6 +78,7 @@ export function useUpdateConfig() {
 			});
 		},
 		onError: (error) => {
+			if (!showErrorToast) return;
 			const errorMessage =
 				typeof error === "object" && error && "detail" in error
 					? String((error as Record<string, unknown>)["detail"])
@@ -84,7 +90,9 @@ export function useUpdateConfig() {
 	});
 }
 
-export function useDeleteConfig() {
+export function useDeleteConfig({
+	showErrorToast = true,
+}: { showErrorToast?: boolean } = {}) {
 	const queryClient = useQueryClient();
 
 	return $api.useMutation("delete", "/api/config/{config_id}", {
@@ -93,6 +101,7 @@ export function useDeleteConfig() {
 			toast.success("Configuration deleted");
 		},
 		onError: (error) => {
+			if (!showErrorToast) return;
 			const errorMessage =
 				typeof error === "object" && error && "detail" in error
 					? String((error as Record<string, unknown>)["detail"])

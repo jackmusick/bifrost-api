@@ -80,7 +80,7 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
 		<FormItemContext.Provider value={{ id }}>
 			<div
 				data-slot="form-item"
-				className={cn("grid gap-2", className)}
+				className={cn("grid min-w-0 gap-2", className)}
 				{...props}
 			/>
 		</FormItemContext.Provider>
@@ -130,7 +130,7 @@ function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
 		<p
 			data-slot="form-description"
 			id={formDescriptionId}
-			className={cn("text-muted-foreground text-sm", className)}
+			className={cn("min-w-0 text-muted-foreground text-sm leading-5 [overflow-wrap:anywhere]", className)}
 			{...props}
 		/>
 	);
@@ -147,8 +147,9 @@ function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
 	return (
 		<p
 			data-slot="form-message"
+			role="alert"
 			id={formMessageId}
-			className={cn("text-destructive text-sm", className)}
+			className={cn("min-w-0 text-destructive text-sm leading-5 [overflow-wrap:anywhere]", className)}
 			{...props}
 		>
 			{body}

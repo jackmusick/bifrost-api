@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId, useRef, useEffect } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -45,13 +45,12 @@ interface WorkflowDeactivationDialogProps {
 	onResolve: (
 		replacements: Record<string, string>,
 		workflowsToDeactivate: string[],
-	) => void;
+	) => void | Promise<void>;
 	onCancel: () => void;
 }
 
 type WorkflowAction =
-	| { type: "map"; functionName: string }
-	| { type: "deactivate" };
+	{ type: "map"; functionName: string } | { type: "deactivate" };
 
 function getEntityIcon(entityType: string) {
 	switch (entityType) {
@@ -86,7 +85,7 @@ function AffectedEntitiesSection({ entities }: { entities: AffectedEntity[] }) {
 
 	return (
 		<Collapsible open={isOpen} onOpenChange={setIsOpen}>
-			<CollapsibleTrigger className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline">
+			<CollapsibleTrigger className="flex min-h-11 items-center gap-1 text-sm text-[var(--bf-warning)] hover:underline">
 				{isOpen ? (
 					<ChevronDown className="h-3 w-3" />
 				) : (
@@ -99,7 +98,7 @@ function AffectedEntitiesSection({ entities }: { entities: AffectedEntity[] }) {
 				{entities.map((entity, idx) => (
 					<div
 						key={`${entity.entity_type}-${entity.id}-${idx}`}
-						className="flex items-center gap-2 text-xs text-muted-foreground"
+						className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground [overflow-wrap:anywhere]"
 					>
 						{getEntityIcon(entity.entity_type)}
 						<span className="font-medium">{entity.name}</span>
@@ -122,13 +121,30 @@ function AffectedEntitiesSection({ entities }: { entities: AffectedEntity[] }) {
  *
  * The user must choose an action for every pending deactivation before applying.
  */
-export function WorkflowDeactivationDialog({
+export function WorkflowDeactivationDialog(
+	props: WorkflowDeactivationDialogProps,
+) {
+	return props.open ? <WorkflowDeactivationSession {...props} /> : null;
+}
+
+function WorkflowDeactivationSession({
 	pendingDeactivations,
 	availableReplacements,
 	open,
 	onResolve,
 	onCancel,
 }: WorkflowDeactivationDialogProps) {
+	const formId = useId();
+	const busy = useRef(false);
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const errorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (error) {
+			errorRef.current?.focus();
+			errorRef.current?.scrollIntoView({ block: "nearest" });
+		}
+	}, [error]);
 	// Track per-workflow action: "map" with a function name, or "deactivate"
 	const [actions, setActions] = useState<Record<string, WorkflowAction>>({});
 
@@ -166,7 +182,11 @@ export function WorkflowDeactivationDialog({
 		setActions((prev) => ({ ...prev, [workflowId]: action }));
 	};
 
-	const handleApply = () => {
+	const handleApply = async () => {
+		if (busy.current || !allResolved) return;
+		busy.current = true;
+		setPending(true);
+		setError(null);
 		const replacements: Record<string, string> = {};
 		const toDeactivate: string[] = [];
 
@@ -181,7 +201,18 @@ export function WorkflowDeactivationDialog({
 			}
 		}
 
-		onResolve(replacements, toDeactivate);
+		try {
+			await onResolve(replacements, toDeactivate);
+		} catch (error) {
+			setError(
+				error instanceof Error
+					? error.message
+					: "Changes could not be applied. Try again.",
+			);
+		} finally {
+			busy.current = false;
+			setPending(false);
+		}
 	};
 
 	// Count how many have affected entities (for warning emphasis)
@@ -190,19 +221,25 @@ export function WorkflowDeactivationDialog({
 	);
 
 	return (
-		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-			<DialogContent className="z-[100] sm:max-w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
+		<Dialog
+			open={open}
+			onOpenChange={(isOpen) => !isOpen && !busy.current && onCancel()}
+		>
+			<DialogContent
+				showCloseButton={!pending}
+				className="z-[100] max-h-[90dvh] overflow-y-auto sm:max-w-[700px]"
+			>
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
-						<AlertTriangle className="h-5 w-5 text-amber-500" />
-						Workflows Would Be Deactivated
+					<DialogTitle className="flex min-w-0 flex-wrap items-center gap-2">
+						<AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--bf-warning)]" />
+						Review workflow changes
 					</DialogTitle>
 					<DialogDescription>
 						{pendingDeactivations.length === 1
 							? "This change would deactivate a workflow that may have execution history or dependencies."
 							: `This change would deactivate ${pendingDeactivations.length} workflows that may have execution history or dependencies.`}
 						{deactivationsWithDependencies.length > 0 && (
-							<span className="text-amber-600 dark:text-amber-400 font-medium">
+							<span className="text-[var(--bf-warning)] font-medium">
 								{" "}
 								{deactivationsWithDependencies.length}{" "}
 								{deactivationsWithDependencies.length === 1
@@ -217,7 +254,7 @@ export function WorkflowDeactivationDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="flex-1 overflow-y-auto space-y-4 py-4">
+				<div className="min-w-0 space-y-4">
 					{pendingDeactivations.map((pd) => {
 						const compatibleReplacements =
 							getCompatibleReplacements(pd);
@@ -231,16 +268,16 @@ export function WorkflowDeactivationDialog({
 						return (
 							<div
 								key={pd.id}
-								className={`rounded-lg ring-1 p-4 space-y-3 ${
+								className={`min-w-0 rounded-[var(--bf-radius-surface)] border p-3 space-y-3 [overflow-wrap:anywhere] ${
 									currentAction
-										? "ring-primary/30 bg-primary/5"
-										: "ring-foreground/5"
+										? "border-primary/30 bg-primary/5"
+										: "border-border"
 								}`}
 							>
 								{/* Header row */}
-								<div className="flex items-start justify-between gap-4">
-									<div className="space-y-1">
-										<div className="flex items-center gap-2">
+								<div className="flex min-w-0 flex-col items-start justify-between gap-3 sm:flex-row">
+									<div className="min-w-0 space-y-1">
+										<div className="flex min-w-0 flex-wrap items-center gap-2">
 											<span className="font-medium">
 												{pd.name}
 											</span>
@@ -259,7 +296,7 @@ export function WorkflowDeactivationDialog({
 									</div>
 
 									{/* Metadata badges */}
-									<div className="flex flex-wrap gap-1 justify-end">
+									<div className="flex flex-wrap gap-1 sm:justify-end">
 										{pd.has_executions && (
 											<Badge
 												variant="secondary"
@@ -290,12 +327,16 @@ export function WorkflowDeactivationDialog({
 
 								{/* Action selector — single dropdown with replacements + deactivate */}
 								<div className="pt-2 border-t">
-									<label className="text-sm font-medium mb-1.5 block">
+									<label
+										htmlFor={`${formId}-${pd.id}`}
+										className="text-sm font-medium mb-1.5 block"
+									>
 										{hasReplacements
 											? "Transfer identity or deactivate:"
 											: "Action:"}
 									</label>
 									<Select
+										disabled={pending}
 										value={
 											currentAction?.type === "map"
 												? currentAction.functionName
@@ -317,10 +358,23 @@ export function WorkflowDeactivationDialog({
 											}
 										}}
 									>
-										<SelectTrigger className="w-full">
-											<SelectValue placeholder="Choose action..." />
+										<SelectTrigger
+											id={`${formId}-${pd.id}`}
+											className="min-h-11 data-[size=default]:h-auto w-full min-w-0 whitespace-normal [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:line-clamp-none"
+										>
+											<SelectValue
+												className="min-w-0 flex-1 text-left [overflow-wrap:anywhere]"
+												placeholder="Choose action…"
+											>
+												{currentAction?.type === "map"
+													? currentAction.functionName
+													: currentAction?.type ===
+														  "deactivate"
+														? "Deactivate"
+														: undefined}
+											</SelectValue>
 										</SelectTrigger>
-										<SelectContent className="z-[101]">
+										<SelectContent className="z-[101] max-w-[calc(100vw-2rem)]">
 											{compatibleReplacements
 												.filter(
 													(r) =>
@@ -341,8 +395,9 @@ export function WorkflowDeactivationDialog({
 													<SelectItem
 														key={r.function_name}
 														value={r.function_name}
+														className="min-h-11 [overflow-wrap:anywhere]"
 													>
-														<div className="flex items-center gap-2">
+														<div className="flex min-w-0 flex-wrap items-center gap-2">
 															<span className="font-mono">
 																{
 																	r.function_name
@@ -373,16 +428,19 @@ export function WorkflowDeactivationDialog({
 													<div className="border-t w-full" />
 												</SelectItem>
 											)}
-											<SelectItem value="__deactivate__">
+											<SelectItem
+												value="__deactivate__"
+												className="min-h-11"
+											>
 												<div className="flex items-center gap-2 text-destructive">
 													<XCircle className="h-3 w-3" />
 													Deactivate
 													{hasDependencies && (
 														<Badge
 															variant="destructive"
-															className="text-[10px] px-1 py-0"
+															className="h-auto whitespace-normal text-xs px-1 py-0"
 														>
-															has deps
+															Has dependencies
 														</Badge>
 													)}
 												</div>
@@ -408,12 +466,33 @@ export function WorkflowDeactivationDialog({
 					</p>
 				</div>
 
+				{error && (
+					<div
+						role="alert"
+						tabIndex={-1}
+						ref={errorRef}
+						className="rounded-[var(--bf-radius-control)] border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive [overflow-wrap:anywhere]"
+					>
+						{error}
+					</div>
+				)}
 				<DialogFooter className="flex gap-2 pt-2">
-					<Button variant="outline" onClick={onCancel}>
+					<Button
+						type="button"
+						className="min-h-11 h-auto whitespace-normal"
+						variant="outline"
+						onClick={onCancel}
+						disabled={pending}
+					>
 						Cancel
 					</Button>
-					<Button onClick={handleApply} disabled={!allResolved}>
-						Apply{" "}
+					<Button
+						type="button"
+						className="min-h-11 h-auto whitespace-normal"
+						onClick={handleApply}
+						disabled={!allResolved || pending}
+					>
+						{pending ? "Applying…" : error ? "Retry" : "Apply"}{" "}
 						{allResolved
 							? `(${pendingDeactivations.length} resolved)`
 							: `(${Object.keys(actions).length}/${pendingDeactivations.length} resolved)`}

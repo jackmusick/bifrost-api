@@ -7,9 +7,10 @@
  * 3. Enables field visibility based on workflow results
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFormContext } from "@/contexts/FormContext";
 import { executeFormStartup } from "@/hooks/useForms";
+import { getErrorMessage } from "@/lib/api-error";
 import type { components } from "@/lib/v1";
 
 type Form =
@@ -29,6 +30,8 @@ export function useLaunchWorkflow({
 	form,
 	workflowParams = {},
 }: UseLaunchWorkflowOptions) {
+	const [error, setError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
 	const {
 		context,
 		setWorkflowResults,
@@ -53,11 +56,15 @@ export function useLaunchWorkflow({
 	useEffect(() => {
 		// Only execute if form has a launch workflow configured
 		if (!hasStartup) {
+			setIsLoadingLaunchWorkflow(false);
+			setStartupHandle(null);
 			return;
 		}
 
+		let cancelled = false;
 		const executeLaunchWorkflow = async () => {
 			try {
+				setError(null);
 				setIsLoadingLaunchWorkflow(true);
 
 				// The server owns default parameters. The browser may send only the
@@ -69,6 +76,7 @@ export function useLaunchWorkflow({
 
 				// Execute the startup workflow
 				const response = await executeFormStartup(form.id, inputData);
+				if (cancelled) return;
 
 				// Set workflow results in context (or empty object if no result)
 				setWorkflowResults(
@@ -76,19 +84,24 @@ export function useLaunchWorkflow({
 				);
 				setStartupHandle(response.startup_handle || null);
 			} catch (error) {
-				console.error("Failed to execute launch workflow:", error);
-				// Set empty results on error so form still works
+				if (cancelled) return;
+				setError(getErrorMessage(error, "Please try again."));
+				// Do not leave stale startup data available after a failed reload.
 				setWorkflowResults({});
 				setStartupHandle(null);
 			} finally {
-				setIsLoadingLaunchWorkflow(false);
+				if (!cancelled) setIsLoadingLaunchWorkflow(false);
 			}
 		};
 
-		executeLaunchWorkflow();
+		void executeLaunchWorkflow();
+		return () => {
+			cancelled = true;
+		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
 		form.id,
+		attempt,
 		hasStartup,
 		serializedQuery,
 		serializedParams, // Serialized to track changes without object identity issues
@@ -96,4 +109,11 @@ export function useLaunchWorkflow({
 		setStartupHandle,
 		setIsLoadingLaunchWorkflow,
 	]);
+	return {
+		error: hasStartup ? error : null,
+		retry: () => {
+			setError(null);
+			setAttempt((current) => current + 1);
+		},
+	};
 }

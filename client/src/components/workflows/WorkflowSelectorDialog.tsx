@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	AlertTriangle,
 	Building2,
@@ -105,6 +106,7 @@ export function WorkflowSelectorDialog({
 		new Map(),
 	);
 	const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+	const prefersReducedMotion = useReducedMotion();
 
 	// Reset local selection when dialog opens. Use the "adjusting state on
 	// prop change" idiom: track the previous open state and reset during
@@ -133,11 +135,7 @@ export function WorkflowSelectorDialog({
 	}, [organizationId, workflowType]);
 
 	// Fetch workflows
-	const {
-		data: workflows,
-		isLoading: isLoadingWorkflows,
-		error,
-	} = $api.useQuery(
+	const workflowsQuery = $api.useQuery(
 		"get",
 		"/api/workflows",
 		{
@@ -150,6 +148,12 @@ export function WorkflowSelectorDialog({
 		},
 		{ enabled: open },
 	);
+	const {
+		data: workflows,
+		isLoading: isLoadingWorkflows,
+		error,
+		refetch: refetchWorkflows,
+	} = workflowsQuery;
 
 	// Fetch roles for all workflows when dialog opens
 	useEffect(() => {
@@ -274,152 +278,186 @@ export function WorkflowSelectorDialog({
 	);
 
 	const isLoading = isLoadingWorkflows || isLoadingRoles;
+	const handleRetry = useCallback(() => {
+		void refetchWorkflows();
+	}, [refetchWorkflows]);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
-				<DialogHeader>
-					<DialogTitle>
-						{title ||
-							(mode === "single" ? "Select Workflow" : "Select Workflows")}
-					</DialogTitle>
-					<DialogDescription>
-						{description ||
-							(entityRoles.length > 0
-								? "Select workflows that should be accessible to users with the entity's roles."
-								: "Select workflows to use with this entity.")}
-					</DialogDescription>
-				</DialogHeader>
-
-				<div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
-					{/* Left panel: Entity roles (context) */}
-					{entityRoles.length > 0 && (
-						<div className="w-48 flex-shrink-0 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
-							<div className="flex items-center gap-2 mb-3">
-								<Shield className="h-4 w-4 text-muted-foreground" />
-								<span className="text-sm font-medium">Entity Roles</span>
-							</div>
-							<div className="space-y-1.5">
-								{entityRoles.map((role) => (
-									<div
-										key={role.id}
-										className="flex items-center gap-2 text-sm"
-									>
-										<div className="h-2 w-2 rounded-full bg-primary" />
-										<span className="truncate">{role.name}</span>
-									</div>
-								))}
-							</div>
-							<div className="mt-4 pt-3 border-t">
-								<p className="text-xs text-muted-foreground">
-									These roles determine who can access the parent entity.
-									Workflows should have matching roles for proper access
-									control.
-								</p>
-							</div>
-						</div>
-					)}
-
-					{/* Right panel: Workflow list */}
-					<div className="flex-1 min-w-0 flex flex-col rounded-lg overflow-hidden ring-1 ring-foreground/5">
-						{/* Search */}
-						<div className="p-3 border-b bg-muted/20">
-							<div className="relative">
-								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-								<Input
-									placeholder="Search workflows..."
-									value={searchQuery}
-									onChange={(e) => setSearchQuery(e.target.value)}
-									className="pl-9"
-								/>
-							</div>
-						</div>
-
-						{/* Workflow list */}
-						<div className="flex-1 overflow-y-auto p-2">
-							{isLoading ? (
-								<div className="flex items-center justify-center py-8">
-									<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-									<span className="ml-2 text-sm text-muted-foreground">
-										Loading workflows...
-									</span>
-								</div>
-							) : error ? (
-								<div className="flex items-center justify-center py-8 text-destructive">
-									<span className="text-sm">Failed to load workflows</span>
-								</div>
-							) : filteredWorkflows.length === 0 ? (
-								<div className="flex items-center justify-center py-8 text-muted-foreground">
-									<span className="text-sm">
-										{searchQuery
-											? "No workflows match your search"
-											: "No workflows available"}
-									</span>
-								</div>
-							) : (
-								<div className="space-y-1">
-									{filteredWorkflows.map((workflow) => {
-										const isSelected = localSelection.has(workflow.id);
-										return (
-											<WorkflowListItem
-												key={workflow.id}
-												workflow={workflow}
-												isSelected={isSelected}
-												onToggle={() => handleWorkflowToggle(workflow.id)}
-												mode={mode}
-												showRoleBadges={entityRoles.length > 0}
-												orgName={getOrgName(workflow.organization_id)}
-											/>
-										);
-									})}
-								</div>
-							)}
-						</div>
+			<DialogContent className="max-h-[min(90vh,52rem)] w-[min(calc(100vw-1rem),72rem)] overflow-hidden p-0 sm:max-w-none">
+				<div className="flex max-h-[min(90vh,52rem)] min-h-0 flex-col overflow-hidden">
+					<div className="border-b border-border/70 bg-muted/20 p-4 sm:p-6">
+						<DialogHeader>
+							<DialogTitle className="text-left">
+								{title ||
+									(mode === "single"
+										? "Select Workflow"
+										: "Select Workflows")}
+							</DialogTitle>
+							<DialogDescription className="max-w-prose leading-6">
+								{description ||
+									(entityRoles.length > 0
+										? "Select workflows that should be accessible to users with the entity's roles."
+										: "Select workflows to use with this entity.")}
+							</DialogDescription>
+						</DialogHeader>
 					</div>
-				</div>
 
-				{/* Footer */}
-				<DialogFooter className="flex-shrink-0 flex-col sm:flex-row gap-2 items-start sm:items-center">
-					{/* Auto-assign checkbox (only shown when there are entity roles and mismatches) */}
-					{entityRoles.length > 0 && selectedMismatchCount > 0 && (
-						<div className="flex-1 flex items-start gap-3 p-3 rounded-lg bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800 mr-auto">
-							<AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-							<div className="flex-1 min-w-0">
-								<p className="text-sm text-amber-800 dark:text-amber-200">
-									{selectedMismatchCount} selected workflow
-									{selectedMismatchCount !== 1 ? "s have" : " has"} role
-									mismatches
-								</p>
-								<label className="flex items-center gap-2 mt-1.5 cursor-pointer">
-									<Checkbox
-										checked={assignRolesOnSelect}
-										onCheckedChange={(checked) =>
-											setAssignRolesOnSelect(checked === true)
-										}
+					<div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden p-4 sm:p-6 lg:flex-row">
+						{/* Left panel: Entity roles (context) */}
+						{entityRoles.length > 0 && (
+							<div className="w-full flex-shrink-0 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3 shadow-sm lg:w-60">
+								<div className="mb-3 flex items-center gap-2">
+									<Shield className="h-4 w-4 shrink-0 text-muted-foreground" />
+									<span className="text-sm font-medium leading-6">
+										Entity Roles
+									</span>
+								</div>
+								<div className="space-y-1.5">
+									{entityRoles.map((role) => (
+										<div
+											key={role.id}
+											className="flex items-center gap-2 text-sm leading-6"
+										>
+											<div className="h-2 w-2 rounded-full bg-primary" />
+											<span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+												{role.name}
+											</span>
+										</div>
+									))}
+								</div>
+								<div className="mt-4 border-t border-border/70 pt-3">
+									<p className="text-xs leading-5 text-muted-foreground">
+										These roles determine who can access the parent entity.
+										Workflows should have matching roles for proper access
+										control.
+									</p>
+								</div>
+							</div>
+						)}
+
+						{/* Right panel: Workflow list */}
+						<div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card shadow-sm">
+							{/* Search */}
+							<div className="border-b border-border/70 bg-muted/20 p-3">
+								<div className="relative">
+									<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+									<Input
+										placeholder="Search workflows..."
+										value={searchQuery}
+										onChange={(e) => setSearchQuery(e.target.value)}
+										className="min-h-11 pl-9"
 									/>
-									<span className="text-xs text-amber-700 dark:text-amber-300">
-										Auto-assign missing roles on save
-									</span>
-								</label>
+								</div>
+							</div>
+
+							{/* Workflow list */}
+							<div className="flex-1 overflow-y-auto p-2">
+								{isLoading ? (
+									<div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+										<Loader2
+											className={cn(
+												"h-6 w-6",
+												!prefersReducedMotion &&
+													"motion-safe:animate-spin",
+											)}
+										/>
+										<span className="text-sm leading-6">
+											Loading workflows...
+										</span>
+									</div>
+								) : error ? (
+									<div className="space-y-3 rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-4 text-[var(--bf-danger)]">
+										<p className="text-sm leading-6">
+											Failed to load workflows
+										</p>
+										<Button
+											type="button"
+											variant="outline"
+											className="min-h-11"
+											onClick={handleRetry}
+										>
+											Retry
+										</Button>
+									</div>
+								) : filteredWorkflows.length === 0 ? (
+									<div className="flex items-center justify-center py-8 text-center text-muted-foreground">
+										<span className="text-sm leading-6">
+											{searchQuery
+												? "No workflows match your search"
+												: "No workflows available"}
+										</span>
+									</div>
+								) : (
+									<div className="space-y-1">
+										{filteredWorkflows.map((workflow) => {
+											const isSelected = localSelection.has(workflow.id);
+											return (
+												<WorkflowListItem
+													key={workflow.id}
+													workflow={workflow}
+													isSelected={isSelected}
+													onToggle={() => handleWorkflowToggle(workflow.id)}
+													mode={mode}
+													showRoleBadges={entityRoles.length > 0}
+													orgName={getOrgName(workflow.organization_id)}
+												/>
+											);
+										})}
+									</div>
+								)}
 							</div>
 						</div>
-					)}
-
-					<div className="flex gap-2 ml-auto">
-						<Button variant="outline" onClick={handleCancel}>
-							Cancel
-						</Button>
-						<Button
-							onClick={handleConfirm}
-							disabled={localSelection.size === 0}
-						>
-							{assignRolesOnSelect && selectedMismatchCount > 0
-								? "Select & Assign Roles"
-								: "Select"}
-						</Button>
 					</div>
-				</DialogFooter>
-			</DialogContent>
+
+					{/* Footer */}
+					<DialogFooter className="flex-shrink-0 flex-col items-start gap-2 border-t border-border/70 bg-muted/20 p-4 sm:flex-row sm:items-center">
+						{/* Auto-assign checkbox (only shown when there are entity roles and mismatches) */}
+						{entityRoles.length > 0 && selectedMismatchCount > 0 && (
+							<div className="mr-auto flex flex-1 items-start gap-3 rounded-[var(--bf-radius-surface)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)]/60 p-3">
+								<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--bf-warning)]" />
+								<div className="flex-1 min-w-0">
+									<p className="text-sm leading-6 text-[var(--bf-warning)]">
+										{selectedMismatchCount} selected workflow
+										{selectedMismatchCount !== 1 ? "s have" : " has"} role
+										mismatches
+									</p>
+									<label className="mt-1.5 flex cursor-pointer items-center gap-2">
+										<Checkbox
+											checked={assignRolesOnSelect}
+											onCheckedChange={(checked) =>
+												setAssignRolesOnSelect(checked === true)
+											}
+										/>
+										<span className="text-xs leading-5 text-[var(--bf-warning)]">
+											Auto-assign missing roles on save
+										</span>
+									</label>
+								</div>
+							</div>
+						)}
+
+						<div className="ml-auto flex gap-2">
+							<Button
+								variant="outline"
+								className="min-h-11"
+								onClick={handleCancel}
+							>
+								Cancel
+							</Button>
+							<Button
+								className="min-h-11"
+								onClick={handleConfirm}
+								disabled={localSelection.size === 0}
+							>
+								{assignRolesOnSelect && selectedMismatchCount > 0
+									? "Select & Assign Roles"
+									: "Select"}
+							</Button>
+						</div>
+					</DialogFooter>
+				</div>
+				</DialogContent>
 		</Dialog>
 	);
 }
@@ -449,16 +487,16 @@ function WorkflowListItem({
 			type="button"
 			onClick={onToggle}
 			className={cn(
-				"w-full text-left p-3 rounded-lg border transition-colors",
+				"flex min-h-11 w-full items-start rounded-[var(--bf-radius-surface)] border p-3 text-left transition-colors",
 				"hover:bg-accent/50",
 				isSelected
 					? "border-primary bg-primary/5"
-					: "border-transparent bg-transparent",
+					: "border-border/50 bg-transparent",
 			)}
 		>
 			<div className="flex items-start gap-3">
 				{/* Selection indicator */}
-				<div className="flex-shrink-0 mt-0.5">
+				<div className="mt-0.5 flex-shrink-0">
 					{mode === "multi" ? (
 						<Checkbox checked={isSelected} className="pointer-events-none" />
 					) : (
@@ -477,21 +515,25 @@ function WorkflowListItem({
 
 				{/* Workflow info */}
 				<div className="flex-1 min-w-0">
-					<div className="flex items-center gap-2 flex-wrap">
-						<span className="font-medium">{workflow.name}</span>
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="min-w-0 font-medium leading-6 [overflow-wrap:anywhere]">
+							{workflow.name}
+						</span>
 						{/* Organization badge */}
 						{orgName ? (
 							<Badge
 								variant="outline"
-								className="text-xs px-1.5 py-0 h-5 text-muted-foreground"
+								className="h-5 px-1.5 py-0 text-xs text-muted-foreground"
 							>
 								<Building2 className="h-3 w-3 mr-1" />
-								{orgName}
+								<span className="max-w-[10rem] [overflow-wrap:anywhere]">
+									{orgName}
+								</span>
 							</Badge>
 						) : (
 							<Badge
 								variant="default"
-								className="text-xs px-1.5 py-0 h-5"
+								className="h-5 px-1.5 py-0 text-xs"
 							>
 								<Globe className="h-3 w-3 mr-1" />
 								Global
@@ -499,35 +541,37 @@ function WorkflowListItem({
 						)}
 						{/* Type badge */}
 						{workflow.type && workflow.type !== "workflow" && (
-							<Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+							<Badge variant="secondary" className="h-5 px-1.5 py-0 text-xs">
 								{workflow.type === "tool" ? "Tool" : "Data Provider"}
 							</Badge>
 						)}
 					</div>
 
 					{workflow.description && (
-						<p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">
+						<p className="mt-0.5 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
 							{workflow.description}
 						</p>
 					)}
 
 					{/* Role badges */}
 					{showRoleBadges && (
-						<div className="flex items-center gap-1.5 mt-2 flex-wrap">
+						<div className="mt-2 flex flex-wrap items-center gap-1.5">
 							{workflow.roleIds.length > 0 ? (
 								<>
-									<span className="text-xs text-muted-foreground">Roles:</span>
+									<span className="text-xs leading-5 text-muted-foreground">
+										Roles:
+									</span>
 									{workflow.roleIds.slice(0, 3).map((roleId) => (
 										<Badge
 											key={roleId}
 											variant="secondary"
-											className="text-xs px-1.5 py-0 h-5"
+											className="h-5 px-1.5 py-0 text-xs"
 										>
 											{roleId.slice(0, 8)}...
 										</Badge>
 									))}
 									{workflow.roleIds.length > 3 && (
-										<span className="text-xs text-muted-foreground">
+										<span className="text-xs leading-5 text-muted-foreground">
 											+{workflow.roleIds.length - 3} more
 										</span>
 									)}
@@ -535,7 +579,7 @@ function WorkflowListItem({
 							) : (
 								<Badge
 									variant="outline"
-									className="text-xs px-1.5 py-0 h-5 text-muted-foreground"
+									className="h-5 px-1.5 py-0 text-xs text-muted-foreground"
 								>
 									No roles assigned
 								</Badge>
@@ -545,9 +589,9 @@ function WorkflowListItem({
 
 					{/* Mismatch warning */}
 					{workflow.hasMismatch && (
-						<div className="flex items-center gap-1.5 mt-2 text-amber-600 dark:text-amber-400">
-							<AlertTriangle className="h-3.5 w-3.5" />
-							<span className="text-xs">
+						<div className="mt-2 flex items-start gap-1.5 text-[var(--bf-warning)]">
+							<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+							<span className="text-xs leading-5 [overflow-wrap:anywhere]">
 								Missing: {workflow.missingRoleNames.join(", ")}
 							</span>
 						</div>

@@ -1,3 +1,12 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
+import { FleetReviewDialog } from "./FleetReviewDialog";
+import { FleetHeader } from "./FleetHeader";
+import { FleetToolbar } from "./FleetToolbar";
+import { FleetReadError } from "./FleetReadError";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 /**
  * FleetPage — fleet-wide view of all agents.
  *
@@ -7,28 +16,24 @@
  * the page renders the fleet in one bounded request instead of one call/card.
  */
 
-import { type MouseEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-	AlertTriangle,
 	Bot,
 	Building2,
 	Clock,
-	Copy,
 	Globe,
 	Hash,
-	History,
-	LayoutGrid,
-	List,
 	MessageSquare,
 	Phone,
 	Plus,
 	Power,
-	Search,
 } from "lucide-react";
-import { toast } from "sonner";
+import { AgentMcpCopyButton } from "./AgentMcpCopyButton";
 
-import { EntityLogo } from "@/components/EntityLogo";
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
+import { ResourceIcon } from "@/components/ResourceIcon";
+import { ResourceCatalogCard } from "@/components/catalog/ResourceCatalogCard";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { Badge } from "@/components/ui/badge";
@@ -41,33 +46,25 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { Sparkline } from "@/components/agents/Sparkline";
-import { StatCard } from "@/components/agents/StatCard";
+import { FleetMetrics } from "./FleetMetrics";
 import { SummaryBackfillButton } from "@/components/agents/SummaryBackfillButton";
-import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { useAuth } from "@/contexts/AuthContext";
 import { term, useTerminology } from "@/lib/terminology";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import type { components } from "@/lib/v1";
 import {
-	CARD_HOVER,
 	CARD_SURFACE,
 	CHIP_OUTLINE,
 	GAP_CARD,
 	PILL_ACTIVE,
 	RADIUS_CARD,
 	TONE_MUTED,
-	TYPE_BODY,
-	TYPE_CARD_TITLE,
 	TYPE_MINI_STAT_VALUE,
 	TYPE_MUTED,
-	TYPE_PAGE_TITLE,
 	successRateTone,
 } from "@/components/agents/design-tokens";
 
@@ -86,7 +83,9 @@ type ViewMode = "grid" | "table";
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function FleetPage() {
+	const [reviewOpen, setReviewOpen] = useState(false);
 	const [view, setView] = useState<ViewMode>("grid");
+	const tableAvailable = useMediaQuery("(min-width: 1024px)");
 	const [query, setQuery] = useState("");
 	const [showInactive, setShowInactive] = useState(false);
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -95,11 +94,23 @@ export function FleetPage() {
 	const { isPlatformAdmin } = useAuth();
 	const terminology = useTerminology();
 
-	const { data: agents, isLoading: agentsLoading } = useAgents(
-		isPlatformAdmin ? filterOrgId : undefined,
-		{ includeInactive: showInactive, includeStats: true },
-	);
-	const { data: fleetStats, isLoading: fleetLoading } = useFleetStats();
+	const {
+		data: agents,
+		isLoading: agentsLoading,
+		isError: agentsError,
+		isFetching: agentsFetching,
+		refetch: refetchAgents,
+	} = useAgents(isPlatformAdmin ? filterOrgId : undefined, {
+		includeInactive: showInactive,
+		includeStats: true,
+	});
+	const {
+		data: fleetStats,
+		isLoading: fleetLoading,
+		isError: fleetError,
+		isFetching: fleetFetching,
+		refetch: refetchFleet,
+	} = useFleetStats();
 
 	// Resolve organization names for badges (platform admins only).
 	const { data: organizations } = useOrganizations({
@@ -128,259 +139,117 @@ export function FleetPage() {
 	);
 
 	return (
-		<div className="mx-auto flex h-full max-w-[1400px] flex-col gap-4 md:gap-5">
-			{/* Header */}
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-				<div>
-					<h1 className={TYPE_PAGE_TITLE}>
-						{term(terminology, "agent", "plural")}
-					</h1>
-					<p className={cn("mt-1", TYPE_BODY, TONE_MUTED)}>
-						{totalAgents} total · {activeCount} active · last 7 days
-					</p>
-				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					<Button asChild variant="outline" size="sm">
-						<Link to="/history?type=agents">
-							<History className="h-3.5 w-3.5" /> All runs
-						</Link>
-					</Button>
-					{isPlatformAdmin ? <SummaryBackfillButton /> : null}
-					<Button asChild size="sm">
-						<Link to="/agents/new">
-							<Plus className="h-3.5 w-3.5" /> New{" "}
-							{term(terminology, "agent", "singularLower")}
-						</Link>
-					</Button>
-				</div>
-			</div>
-
-			{/* Tuning queue banner */}
-			{fleetStats && fleetStats.needs_review > 0 ? (
-				<QueueBanner
-					count={fleetStats.needs_review}
-					actionLabel="Review now"
-					actionHref="/agents"
+		<PageWorkspace className="mx-auto flex min-w-0 max-w-[1400px] flex-col gap-4 md:gap-5">
+			<div className="shrink-0 space-y-6">
+				<FleetHeader
+					title={term(terminology, "agent", "plural")}
+					agentLabel={term(terminology, "agent", "singularLower")}
+					total={totalAgents}
+					active={activeCount}
+					actions={isPlatformAdmin ? <SummaryBackfillButton /> : null}
 				/>
-			) : null}
 
-			{/* Fleet stats — compact on mobile, full card row on wider screens */}
-			{fleetLoading || !fleetStats ? (
-				<>
-					<div
-						data-testid="mobile-fleet-metrics"
-						className={cn(
-							CARD_SURFACE,
-							"grid grid-cols-3 gap-2 px-3 py-2 md:hidden",
-						)}
-					>
-						{[...Array(3)].map((_, i) => (
-							<Skeleton key={i} className="h-9 w-full" />
-						))}
-					</div>
-					<div
-						data-testid="desktop-fleet-stats"
-						className={cn(
-							"hidden grid-cols-1 sm:grid-cols-2 md:grid lg:grid-cols-4 xl:grid-cols-5",
-							GAP_CARD,
-						)}
-					>
-						{[...Array(5)].map((_, i) => (
-							<Skeleton key={i} className="h-24 w-full" />
-						))}
-					</div>
-				</>
-			) : (
-				<>
-					<div
-						data-testid="mobile-fleet-metrics"
-						className={cn(
-							CARD_SURFACE,
-							"grid grid-cols-3 gap-2 px-3 py-2 md:hidden",
-						)}
-					>
-						<CompactMetric
-							label="Runs"
-							value={`${formatNumber(fleetStats.total_runs)} runs`}
-						/>
-						<CompactMetric
-							label="Success"
-							value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}% success`}
-						/>
-						<CompactMetric
-							label="Review"
-							value={
-								fleetStats.needs_review > 0
-									? `${formatNumber(fleetStats.needs_review)} flagged`
-									: "Clear"
-							}
-							alert={fleetStats.needs_review > 0}
-						/>
-					</div>
-					<div
-						data-testid="desktop-fleet-stats"
-						className={cn(
-							"hidden grid-cols-1 sm:grid-cols-2 md:grid lg:grid-cols-4 xl:grid-cols-5",
-							GAP_CARD,
-						)}
-					>
-						<StatCard
-							label="Runs (7d)"
-							value={formatNumber(fleetStats.total_runs)}
-							delta={
-								fleetStats.total_runs > 0
-									? `Across active ${term(terminology, "agent", "pluralLower")}`
-									: "No runs yet"
-							}
-						/>
-						<StatCard
-							label="Success rate"
-							value={`${Math.round((fleetStats.avg_success_rate ?? 0) * 100)}%`}
-							delta={`Across active ${term(terminology, "agent", "pluralLower")}`}
-						/>
-						<StatCard
-							label="Spend (7d)"
-							value={formatCost(fleetStats.total_cost_7d)}
-							delta={
-								fleetStats.total_runs > 0
-									? `${formatCost(
-											Number(fleetStats.total_cost_7d) /
-												7,
-										)}/day avg`
-									: "—"
-							}
-						/>
-						<StatCard
-							label={`Active ${term(terminology, "agent", "pluralLower")}`}
-							value={formatNumber(fleetStats.active_agents)}
-							delta={`of ${totalAgents} total`}
-						/>
-						<StatCard
-							label="Needs review"
-							value={formatNumber(fleetStats.needs_review)}
-							alert={fleetStats.needs_review > 0}
-							icon={
-								fleetStats.needs_review > 0 ? (
-									<AlertTriangle className="h-[11px] w-[11px]" />
-								) : undefined
-							}
-							delta={
-								fleetStats.needs_review > 0
-									? "runs marked — click to open"
-									: "All runs reviewed"
-							}
-							deltaTone={
-								fleetStats.needs_review > 0 ? "down" : "up"
-							}
-						/>
-					</div>
-				</>
-			)}
+				{reviewOpen && (
+					<FleetReviewDialog onClose={() => setReviewOpen(false)} />
+				)}
+				{/* Tuning queue banner */}
+				{fleetStats && fleetStats.needs_review > 0 ? (
+					<QueueBanner
+						count={fleetStats.needs_review}
+						actionLabel="Review now"
+						onAction={() => setReviewOpen(true)}
+					/>
+				) : null}
 
-			{/* Search + view toggle */}
-			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-				<div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-					<div className="relative w-full sm:max-w-md sm:flex-1">
-						<Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-						<Input
-							aria-label={`Search ${term(terminology, "agent", "pluralLower")}`}
-							placeholder={`Search ${term(terminology, "agent", "pluralLower")}...`}
-							value={query}
-							onChange={(e) => setQuery(e.target.value)}
-							className="h-8 pl-8 text-[13px]"
-						/>
-					</div>
-					{isPlatformAdmin && (
-						<div className="w-full sm:w-64">
-							<OrganizationSelect
-								value={filterOrgId}
-								onChange={setFilterOrgId}
-								showAll
-								showGlobal
-								placeholder="All organizations"
-							/>
-						</div>
-					)}
-					<div className="flex items-center gap-2 sm:ml-auto">
-						<Switch
-							id="show-inactive"
-							checked={showInactive}
-							onCheckedChange={setShowInactive}
-						/>
-						<Label
-							htmlFor="show-inactive"
-							className="cursor-pointer whitespace-nowrap text-sm text-muted-foreground"
-						>
-							Show Inactive
-						</Label>
-					</div>
-				</div>
-				<div className="inline-flex items-center rounded-2xl bg-muted p-[3px]">
-					<button
-						type="button"
-						aria-label="Grid view"
-						aria-pressed={view === "grid"}
-						onClick={() => setView("grid")}
-						className={cn(
-							"inline-flex items-center gap-1.5 rounded-2xl px-3 py-1 text-[12.5px] transition-colors",
-							view === "grid"
-								? "bg-card text-foreground shadow-sm"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						<LayoutGrid className="h-3 w-3" /> Grid
-					</button>
-					<button
-						type="button"
-						aria-label="Table view"
-						aria-pressed={view === "table"}
-						onClick={() => setView("table")}
-						className={cn(
-							"inline-flex items-center gap-1.5 rounded-2xl px-3 py-1 text-[12.5px] transition-colors",
-							view === "table"
-								? "bg-card text-foreground shadow-sm"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						<List className="h-3 w-3" /> Table
-					</button>
-				</div>
+				{fleetError && (
+					<FleetReadError
+						resource="fleet statistics"
+						cached={!!fleetStats}
+						pending={fleetFetching}
+						onRetry={() => {
+							void refetchFleet();
+						}}
+					/>
+				)}
+				{!(fleetError && !fleetStats) && (
+					<FleetMetrics
+						stats={fleetStats}
+						loading={fleetLoading}
+						scopeLabel={
+							isPlatformAdmin
+								? "All organizations"
+								: "Your organization"
+						}
+						agentLabel={term(terminology, "agent", "pluralLower")}
+					/>
+				)}
+
+				<FleetToolbar
+					agentLabel={term(terminology, "agent", "pluralLower")}
+					query={query}
+					filterOrgId={filterOrgId}
+					showInactive={showInactive}
+					view={view}
+					isPlatformAdmin={isPlatformAdmin}
+					onQueryChange={setQuery}
+					onOrganizationChange={setFilterOrgId}
+					onInactiveChange={setShowInactive}
+					onViewChange={setView}
+				/>
 			</div>
 
 			{/* Content */}
-			<div className="flex-1 min-h-0 overflow-auto">
-				{agentsLoading ? (
-					<PageLoader
-						message={`Loading ${term(terminology, "agent", "pluralLower")}…`}
-						size="sm"
-					/>
-				) : filtered.length === 0 ? (
-					<EmptyState hasQuery={query.trim().length > 0} />
-				) : view === "grid" ? (
-					<div
-						className={cn(
-							"grid md:grid-cols-2 xl:grid-cols-3",
-							GAP_CARD,
-						)}
-					>
-						{filtered.map((agent) => (
-							<AgentGridCard
-								key={agent.id}
-								agent={agent}
-								showOrg={isPlatformAdmin}
-								orgName={getOrgName(agent.organization_id)}
-							/>
-						))}
-					</div>
-				) : (
-					<AgentTable
-						agents={filtered}
-						showOrg={isPlatformAdmin}
-						getOrgName={getOrgName}
-					/>
-				)}
-			</div>
-		</div>
+			<PageScrollArea
+				className={
+					view === "table" && tableAvailable
+						? "lg:overflow-hidden"
+						: undefined
+				}
+			>
+				<div className="min-w-0 space-y-4 pb-1 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+					{agentsError && (
+						<FleetReadError
+							resource={term(terminology, "agent", "pluralLower")}
+							cached={!!agents}
+							pending={agentsFetching}
+							onRetry={() => {
+								void refetchAgents();
+							}}
+						/>
+					)}
+					{agentsError && !agents ? null : agentsLoading ? (
+						<PageLoader
+							message={`Loading ${term(terminology, "agent", "pluralLower")}…`}
+							size="sm"
+						/>
+					) : filtered.length === 0 ? (
+						<EmptyState hasQuery={query.trim().length > 0} />
+					) : view === "grid" || !tableAvailable ? (
+						<div
+							className={cn(
+								"grid md:grid-cols-2 xl:grid-cols-3",
+								GAP_CARD,
+							)}
+						>
+							{filtered.map((agent) => (
+								<AgentGridCard
+									key={agent.id}
+									agent={agent}
+									showOrg={isPlatformAdmin}
+									orgName={getOrgName(agent.organization_id)}
+								/>
+							))}
+						</div>
+					) : (
+						<AgentTable
+							agents={filtered}
+							showOrg={isPlatformAdmin}
+							getOrgName={getOrgName}
+						/>
+					)}
+				</div>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }
 
@@ -412,32 +281,6 @@ function EmptyState({ hasQuery }: { hasQuery: boolean }) {
 	);
 }
 
-function CompactMetric({
-	label,
-	value,
-	alert,
-}: {
-	label: string;
-	value: string;
-	alert?: boolean;
-}) {
-	return (
-		<div className="min-w-0">
-			<div className="truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-				{label}
-			</div>
-			<div
-				className={cn(
-					"mt-0.5 truncate text-[13px] font-semibold leading-tight tabular-nums",
-					alert && "text-rose-500",
-				)}
-			>
-				{value}
-			</div>
-		</div>
-	);
-}
-
 function ChannelBadge({ channel }: { channel: string }) {
 	const Icon =
 		channel === "voice"
@@ -465,60 +308,76 @@ function AgentGridCard({
 	const successRate = stats?.success_rate ?? 0;
 	const colorClass = successRateTone(successRate);
 	const hasRuns = (stats?.runs_7d ?? 0) > 0;
+	const navigate = useNavigate();
+	const terminology = useTerminology();
 
 	return (
-		<Link
-			to={`/agents/${agent.id}`}
+		<div
 			onPointerEnter={() => prefetchAgentDetail(agent.id)}
 			onFocus={() => prefetchAgentDetail(agent.id)}
-			className={cn(
-				"group flex flex-col overflow-hidden",
-				CARD_SURFACE,
-				CARD_HOVER,
-			)}
 		>
-			<div className="border-b px-4 pb-3 pt-3.5">
-				<div className="flex items-start justify-between gap-3">
-					<div className="flex min-w-0 items-center gap-2">
-						<EntityLogo
-							entityType="agent"
-							entityId={agent.id}
-							logo={agent.logo_url ?? null}
-							fallback={
-								<Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-							}
-							size={20}
-							className="h-5 w-5 rounded shrink-0 object-cover"
-						/>
-						<span className={cn("truncate", TYPE_CARD_TITLE)}>
-							{agent.name}
-						</span>
-						{!agent.is_active ? (
-							<Badge variant="secondary" className="text-[11px]">
-								Paused
-							</Badge>
-						) : null}
+			<ResourceCatalogCard
+				icon={
+					<ResourceIcon
+						kind="agent"
+						id={agent.id}
+						logo={agent.logo_url ?? null}
+						size="card"
+						className="border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300 [&_svg]:text-current"
+					/>
+				}
+				title={agent.name}
+				subtitle={
+					<>
+						{term(terminology, "agent", "singular")}
+						<span> · </span>
+						{agent.is_active ? "Active" : "Paused"}
+					</>
+				}
+				description={agent.description}
+				action={
+					<div className="flex items-center gap-1">
 						{agent.is_solution_managed ? (
 							<SolutionManagedBadge
 								solutionId={agent.solution_id}
 							/>
 						) : null}
+						<RecordActionsMenu label={`${agent.name} actions`}>
+							<DropdownMenuItem
+								className="min-h-11"
+								onSelect={() => navigate(`/agents/${agent.id}`)}
+							>
+								<Bot aria-hidden="true" className="size-4" />
+								Open Agent
+							</DropdownMenuItem>
+							<AgentMcpCopyButton
+								agentId={agent.id}
+								variant="menuitem"
+							/>
+						</RecordActionsMenu>
 					</div>
-					<div className="flex shrink-0 flex-wrap gap-1">
-						{(agent.channels ?? []).slice(0, 3).map((c) => (
-							<ChannelBadge key={c} channel={c} />
-						))}
-					</div>
+				}
+				footer={
+					showOrg ? (
+						<p className="flex min-w-0 items-center gap-2">
+							{agent.organization_id ? (
+								<Building2 className="size-3.5 shrink-0" />
+							) : (
+								<Globe className="size-3.5 shrink-0" />
+							)}
+							<span className="truncate">{orgName}</span>
+						</p>
+					) : undefined
+				}
+				onOpen={() => navigate(`/agents/${agent.id}`)}
+			>
+				<div className="flex flex-wrap items-center gap-1.5">
+					{(agent.channels ?? []).slice(0, 3).map((c) => (
+						<ChannelBadge key={c} channel={c} />
+					))}
 				</div>
-				{agent.description ? (
-					<p className={cn("mt-1 line-clamp-2", TYPE_MUTED)}>
-						{agent.description}
-					</p>
-				) : null}
-			</div>
-			<div className="flex-1 space-y-3 p-4">
 				{hasRuns ? (
-					<>
+					<div className="mt-3 space-y-3 border-t pt-3">
 						<div className="grid grid-cols-3 gap-3">
 							<MiniStat
 								label="Runs"
@@ -544,7 +403,7 @@ function AgentGridCard({
 						) : null}
 						<div
 							className={cn(
-								"flex items-center justify-between text-[12px]",
+								"flex flex-wrap items-center justify-between gap-2 text-xs",
 								TONE_MUTED,
 							)}
 						>
@@ -558,46 +417,15 @@ function AgentGridCard({
 								avg {formatDuration(stats!.avg_duration_ms)}
 							</span>
 						</div>
-					</>
+					</div>
 				) : (
-					<p className={cn("py-1", TYPE_MUTED)}>
+					<p className={cn("mt-3 border-t pt-3", TYPE_MUTED)}>
 						No runs yet ·{" "}
 						{agent.is_active ? "waiting for traffic" : "paused"}
 					</p>
 				)}
-			</div>
-			<div className="flex items-center justify-between gap-2 border-t px-4 py-2.5">
-				{showOrg ? (
-					<OrgBadge orgId={agent.organization_id} name={orgName} />
-				) : (
-					<span />
-				)}
-				{agent.id ? <McpUrlBadge agentId={agent.id} /> : null}
-			</div>
-		</Link>
-	);
-}
-
-function McpUrlBadge({ agentId }: { agentId: string }) {
-	const url = `${window.location.origin}/mcp/${agentId}`;
-	const handleCopy = (e: MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		void navigator.clipboard.writeText(url);
-		toast.success("Agent MCP URL copied");
-	};
-	return (
-		<button
-			type="button"
-			onClick={handleCopy}
-			title={url}
-			aria-label="Copy agent MCP URL"
-			data-testid="agent-mcp-copy"
-			className="inline-flex items-center gap-1 rounded-2xl border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-		>
-			MCP
-			<Copy className="h-3 w-3" />
-		</button>
+			</ResourceCatalogCard>
+		</div>
 	);
 }
 
@@ -610,7 +438,10 @@ function OrgBadge({
 }) {
 	if (orgId) {
 		return (
-			<Badge variant="outline" className="text-xs">
+			<Badge
+				variant="outline"
+				className="min-w-0 whitespace-normal [overflow-wrap:anywhere] text-xs"
+			>
 				<Building2 className="mr-1 h-3 w-3" />
 				{name}
 			</Badge>
@@ -653,7 +484,12 @@ function AgentTable({
 	getOrgName: (orgId: string | null | undefined) => string;
 }) {
 	return (
-		<div className={cn("overflow-hidden border", RADIUS_CARD)}>
+		<div
+			className={cn(
+				"min-h-0 max-h-full overflow-hidden border",
+				RADIUS_CARD,
+			)}
+		>
 			<DataTable>
 				<DataTableHeader>
 					<DataTableRow>
@@ -712,15 +548,11 @@ function AgentTableRow({
 	return (
 		<DataTableRow
 			className="cursor-pointer hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-			tabIndex={0}
 			onPointerEnter={() => prefetchAgentDetail(agent.id)}
 			onFocus={() => prefetchAgentDetail(agent.id)}
-			onClick={() => navigate(`/agents/${agent.id}`)}
-			onKeyDown={(event) => {
-				if (event.key === "Enter" || event.key === " ") {
-					event.preventDefault();
-					navigate(`/agents/${agent.id}`);
-				}
+			onClick={(event) => {
+				if ((event.target as HTMLElement).closest("a, button")) return;
+				navigate(`/agents/${agent.id}`);
 			}}
 		>
 			{showOrg && (
@@ -730,17 +562,18 @@ function AgentTableRow({
 			)}
 			<DataTableCell>
 				<div className="flex items-center gap-2">
-					<EntityLogo
-						entityType="agent"
-						entityId={agent.id}
+					<ResourceIcon
+						kind="agent"
+						id={agent.id}
 						logo={agent.logo_url ?? null}
-						fallback={
-							<Bot className="h-3.5 w-3.5 text-muted-foreground" />
-						}
-						size={20}
-						className="h-5 w-5 shrink-0 rounded object-cover"
+						size="table"
 					/>
-					<span className="font-medium">{agent.name}</span>
+					<Link
+						to={`/agents/${agent.id}`}
+						className="inline-flex min-h-11 items-center font-medium [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					>
+						{agent.name}
+					</Link>
 					{agent.is_solution_managed ? (
 						<SolutionManagedBadge solutionId={agent.solution_id} />
 					) : null}

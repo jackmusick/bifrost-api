@@ -1,14 +1,26 @@
+import { LogEntryRow } from "./LogEntryRow";
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
-import { Loader2, Copy, Check } from "lucide-react";
+import { ArrowDown, Check, Copy, Download, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { copyToClipboard } from "@/lib/clipboard";
+import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 import type { StreamingLog } from "@/stores/executionStreamStore";
 
 // Re-export from generated types
-export type ExecutionStatus = components["schemas"]["ExecutionStatus"];
+export type ExecutionStatus =
+	components["schemas"]["ExecutionStatus"] | "Cancelling" | "Cancelled";
 export type ExecutionLogPublic = components["schemas"]["ExecutionLogPublic"];
 
 // Union type that handles both API logs and streaming logs
@@ -29,14 +41,16 @@ interface ExecutionLogsPanelProps {
 	className?: string;
 	/** Maximum height for the logs container */
 	maxHeight?: string;
+	/** Larger, page-primary rendering with full controls. */
+	variant?: "default" | "primary";
 }
 
 const levelColors: Record<string, string> = {
 	debug: "text-muted-foreground",
-	info: "text-blue-600 dark:text-blue-400",
-	warning: "text-yellow-600 dark:text-yellow-500",
-	error: "text-red-600 dark:text-red-400",
-	traceback: "text-orange-600 dark:text-orange-400",
+	info: "text-[var(--bf-info)]",
+	warning: "text-[var(--bf-warning)]",
+	error: "text-[var(--bf-danger)]",
+	traceback: "text-[var(--bf-danger)]",
 };
 
 /**
@@ -76,15 +90,18 @@ function formatLogTime(timestamp?: string | null): string {
 export function ExecutionLogsPanel({
 	logs = [],
 	status,
-	isConnected = false,
+	isConnected,
 	isLoading = false,
 	isPlatformAdmin = false,
 	className,
 	maxHeight = "600px",
+	variant = "default",
 }: ExecutionLogsPanelProps) {
 	const logsContainerRef = useRef<HTMLDivElement>(null);
 	const [autoScroll, setAutoScroll] = useState(true);
 	const [copied, setCopied] = useState(false);
+	const [query, setQuery] = useState("");
+	const [levelFilter, setLevelFilter] = useState("all");
 
 	const isRunning =
 		status === "Running" || status === "Pending" || status === "Cancelling";
@@ -97,16 +114,33 @@ export function ExecutionLogsPanel({
 
 	// Parent (ExecutionDetails) already merges API + streaming logs via
 	// mergeLogsWithDedup and memoizes the array, so `logs` is a stable input.
-	const renderItems = useMemo(() => coalesceTracebacks(logs), [logs]);
+	const visibleLogs = useMemo(() => {
+		const normalizedQuery = query.trim().toLowerCase();
+		return logs.filter((log) => {
+			const level = (log.level || "info").toLowerCase();
+			if (levelFilter !== "all" && level !== levelFilter) return false;
+			if (!normalizedQuery) return true;
+			const data =
+				"data" in log && log.data ? JSON.stringify(log.data) : "";
+			return `${log.message || ""} ${level} ${data}`
+				.toLowerCase()
+				.includes(normalizedQuery);
+		});
+	}, [logs, query, levelFilter]);
+
+	const renderItems = useMemo(
+		() => coalesceTracebacks(visibleLogs),
+		[visibleLogs],
+	);
 
 	// Auto-scroll to bottom when new logs arrive.
 	// Uses scrollTop instead of scrollIntoView to avoid scrolling the outer page.
 	useEffect(() => {
 		const container = logsContainerRef.current;
-		if (autoScroll && container && logs.length > 0) {
+		if (autoScroll && container && visibleLogs.length > 0) {
 			container.scrollTop = container.scrollHeight;
 		}
-	}, [logs.length, autoScroll]);
+	}, [visibleLogs.length, autoScroll]);
 
 	// Handle scroll to detect if user has scrolled up (pause auto-scroll)
 	const handleLogsScroll = useCallback(() => {
@@ -122,30 +156,54 @@ export function ExecutionLogsPanel({
 		setAutoScroll(isAtBottom);
 	}, []);
 
-	const handleCopyLogs = useCallback(() => {
-		const text = logs
+	const handleCopyLogs = useCallback(async () => {
+		const text = visibleLogs
 			.map((log) => {
 				const time = formatLogTime(log.timestamp);
 				const level = (log.level || "INFO").toUpperCase();
 				return `${time}  ${level}  ${log.message || ""}`;
 			})
 			.join("\n");
-		navigator.clipboard.writeText(text).then(() => {
+		const copied = await copyToClipboard(text);
+		if (copied) {
 			setCopied(true);
 			setTimeout(() => setCopied(false), 2000);
-		});
+		} else {
+			toast.error("Failed to copy logs");
+		}
+	}, [visibleLogs]);
+
+	const handleDownloadLogs = useCallback(() => {
+		const text = logs
+			.map((log) => {
+				const time = formatLogTime(log.timestamp);
+				const level = (log.level || "INFO").toUpperCase();
+				const data =
+					"data" in log && log.data
+						? ` ${JSON.stringify(log.data)}`
+						: "";
+				return `${time}  ${level}  ${log.message || ""}${data}`;
+			})
+			.join("\n");
+		const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "execution-logs.txt";
+		link.click();
+		URL.revokeObjectURL(url);
 	}, [logs]);
 
 	const copyButton = logs.length > 0 && (
 		<Button
 			variant="ghost"
-			size="icon"
-			className="h-7 w-7"
+			size="icon-lg"
 			onClick={handleCopyLogs}
 			title="Copy logs"
+			aria-label={copied ? "Logs copied" : "Copy logs"}
 		>
 			{copied ? (
-				<Check className="h-3.5 w-3.5 text-green-500" />
+				<Check className="h-3.5 w-3.5 text-[var(--bf-success)]" />
 			) : (
 				<Copy className="h-3.5 w-3.5" />
 			)}
@@ -155,23 +213,24 @@ export function ExecutionLogsPanel({
 	const renderItem = (item: LogRenderItem, index: number) => {
 		if (item.kind === "traceback") {
 			return (
-				<div
+				<LogEntryRow
+					level="traceback"
 					key={index}
-					className="flex gap-3 rounded px-2 py-1 text-xs font-mono hover:bg-muted/40"
+					className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-border/50 px-3 py-3 font-mono text-xs last:border-0 @3xl:grid-cols-[auto_78px_minmax(0,1fr)] @3xl:py-2 hover:bg-muted/40"
 					data-testid="log-traceback-block"
 				>
 					<span className="whitespace-nowrap tabular-nums text-muted-foreground">
 						{formatLogTime(item.timestamp)}
 					</span>
 					<span
-						className={`min-w-[70px] font-semibold uppercase ${levelColors.traceback}`}
+						className={`min-w-0 font-semibold uppercase ${levelColors.traceback}`}
 					>
 						traceback
 					</span>
-					<pre className="flex-1 whitespace-pre-wrap break-words">
+					<pre className="col-span-full min-w-0 whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere] @3xl:col-span-1">
 						{item.lines.join("\n")}
 					</pre>
-				</div>
+				</LogEntryRow>
 			);
 		}
 
@@ -182,32 +241,36 @@ export function ExecutionLogsPanel({
 		const data = "data" in log ? log.data : undefined;
 
 		return (
-			<div
+			<LogEntryRow
+				level={log.level}
 				key={index}
-				className="flex gap-3 rounded px-2 py-1 text-xs font-mono hover:bg-muted/40"
+				className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-border/50 px-3 py-3 font-mono text-xs last:border-0 @3xl:grid-cols-[auto_78px_minmax(0,1fr)] @3xl:py-2 hover:bg-muted/40"
 			>
 				<span className="whitespace-nowrap tabular-nums text-muted-foreground">
 					{formatLogTime(log.timestamp)}
 				</span>
 				<span
-					className={`min-w-[70px] font-semibold uppercase ${levelColor}`}
+					className={`min-w-0 font-semibold uppercase ${levelColor}`}
 				>
 					{log.level}
 				</span>
-				<span className="flex-1 whitespace-pre-wrap break-words">
+				<span
+					data-testid="log-message"
+					className="col-span-full min-w-0 whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere] @3xl:col-span-1"
+				>
 					{log.message}
 				</span>
 				{data && Object.keys(data).length > 0 && (
-					<details className="text-xs">
-						<summary className="cursor-pointer text-muted-foreground">
+					<details className="col-span-full min-w-0 text-xs @3xl:col-start-3">
+						<summary className="min-h-11 cursor-pointer content-center text-muted-foreground">
 							data
 						</summary>
-						<pre className="mt-1 p-2 rounded-md bg-muted">
+						<pre className="mt-1 min-w-0 whitespace-pre-wrap rounded-[var(--bf-radius-control)] bg-muted p-2 [overflow-wrap:anywhere]">
 							{JSON.stringify(data, null, 2)}
 						</pre>
 					</details>
 				)}
-			</div>
+			</LogEntryRow>
 		);
 	};
 
@@ -215,14 +278,20 @@ export function ExecutionLogsPanel({
 		<div
 			ref={logsContainerRef}
 			onScroll={handleLogsScroll}
-			className="overflow-y-auto py-1"
-			style={{ maxHeight }}
+			className="min-h-0 min-w-0 overflow-y-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+			aria-label="Execution log messages"
+			role="region"
+			tabIndex={0}
+			style={{
+				maxHeight: `var(--execution-log-max-height, ${maxHeight})`,
+			}}
 		>
 			{renderItems.map(renderItem)}
 		</div>
 	);
 
 	const lineCount = logs.length;
+	const visibleCount = visibleLogs.length;
 	const countLabel = `${lineCount} line${lineCount !== 1 ? "s" : ""}`;
 
 	// Inspector panel: one step-1 surface framed by a hairline ring, with a
@@ -237,10 +306,28 @@ export function ExecutionLogsPanel({
 						: "No execution in progress"}
 			</div>
 		) : isLoading && logs.length === 0 ? (
-			<div className="space-y-2 p-4">
+			<div
+				role="status"
+				aria-label="Loading execution logs"
+				className="space-y-2 p-4"
+			>
 				<Skeleton className="h-3 w-full" />
 				<Skeleton className="h-3 w-5/6" />
 				<Skeleton className="h-3 w-4/5" />
+			</div>
+		) : visibleLogs.length === 0 ? (
+			<div className="space-y-3 px-4 py-8 text-center text-sm text-muted-foreground">
+				<p>No logs match the current filters</p>
+				<Button
+					variant="outline"
+					className="min-h-11"
+					onClick={() => {
+						setQuery("");
+						setLevelFilter("all");
+					}}
+				>
+					Clear filters
+				</Button>
 			</div>
 		) : (
 			renderLogList()
@@ -249,31 +336,142 @@ export function ExecutionLogsPanel({
 	return (
 		<div
 			className={cn(
-				"overflow-hidden rounded-lg bg-muted/50 ring-1 ring-foreground/5",
+				"@container min-w-0 overflow-hidden rounded-[var(--bf-radius-surface)] border border-border bg-muted/50",
+				variant === "primary" &&
+					"bg-background xl:flex xl:min-h-0 xl:flex-1 xl:flex-col xl:[--execution-log-max-height:none]",
 				className,
 			)}
 		>
 			{/* Header band (step-2) */}
-			<div className="flex items-center justify-between border-b border-border/50 bg-muted px-3 py-1.5">
-				<div className="flex items-center gap-2">
-					<span className="text-sm font-medium">Logs</span>
-					{lineCount > 0 && (
-						<span className="text-xs text-muted-foreground">
-							{countLabel}
-							{!isPlatformAdmin && " · INFO and above"}
-						</span>
-					)}
-					{isConnected && isRunning && (
-						<Badge variant="secondary" className="text-xs">
-							<Loader2 className="mr-1 h-3 w-3 animate-spin" />
-							Live
-						</Badge>
-					)}
+			<div className="shrink-0 space-y-3 border-b border-border/50 bg-muted px-3 py-3">
+				<div className="flex items-center justify-between gap-3">
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						<span className="text-sm font-semibold">Logs</span>
+						{lineCount > 0 && (
+							<span className="text-xs text-muted-foreground">
+								{countLabel}
+								{visibleCount !== lineCount &&
+									` · ${visibleCount} visible`}
+								{!isPlatformAdmin && " · INFO and above"}
+							</span>
+						)}
+						{isConnected && isRunning && (
+							<Badge
+								variant="secondary"
+								className="gap-1 text-xs"
+							>
+								<span
+									data-testid="execution-live-indicator"
+									aria-hidden="true"
+									className="h-2 w-2 rounded-full bg-[image:var(--bf-activity-gradient)] motion-safe:animate-pulse motion-reduce:animate-none"
+								/>
+								Live
+							</Badge>
+						)}
+					</div>
+					<div className="flex shrink-0 items-center gap-1">
+						{copyButton}
+						{logs.length > 0 && (
+							<Button
+								variant="ghost"
+								size="icon-lg"
+								onClick={handleDownloadLogs}
+								title="Download all logs"
+								aria-label="Download all logs"
+							>
+								<Download className="h-3.5 w-3.5" />
+							</Button>
+						)}
+					</div>
 				</div>
-				{copyButton}
+				{logs.length > 0 && (
+					<div className="grid gap-2 @lg:grid-cols-[minmax(0,1fr)_9rem]">
+						<div className="relative min-w-0">
+							<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+							<Input
+								value={query}
+								onChange={(event) =>
+									setQuery(event.target.value)
+								}
+								className="pl-9 pr-11"
+								placeholder="Search logs..."
+								aria-label="Search logs"
+							/>
+							{query && (
+								<span className="absolute inset-y-0 right-1 z-20 flex items-center">
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										className="size-8"
+										onClick={() => setQuery("")}
+										aria-label="Clear log search"
+									>
+										<X className="size-4" />
+									</Button>
+								</span>
+							)}
+						</div>
+						<Select
+							value={levelFilter}
+							onValueChange={setLevelFilter}
+						>
+							<SelectTrigger
+								aria-label="Log level"
+								className="h-10 w-full"
+							>
+								<SelectValue placeholder="All levels" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All levels</SelectItem>
+								<SelectItem value="info">Info</SelectItem>
+								<SelectItem value="warning">Warning</SelectItem>
+								<SelectItem value="error">Error</SelectItem>
+								<SelectItem value="traceback">
+									Traceback
+								</SelectItem>
+								{isPlatformAdmin && (
+									<SelectItem value="debug">Debug</SelectItem>
+								)}
+							</SelectContent>
+						</Select>
+					</div>
+				)}
 			</div>
+			{isRunning && isConnected === false && (
+				<p
+					role="status"
+					className="border-b border-border/50 bg-[var(--bf-warning-soft)] px-3 py-3 text-sm text-foreground"
+				>
+					Live connection unavailable. New log messages may be
+					delayed.
+				</p>
+			)}
 			{/* Content */}
 			{logsContent}
+			{!autoScroll && visibleLogs.length > 0 && (
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-muted px-3 py-2">
+					<span
+						role="status"
+						className="text-xs text-muted-foreground"
+					>
+						Following paused
+					</span>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						onClick={() => {
+							setAutoScroll(true);
+							const container = logsContainerRef.current;
+							if (container)
+								container.scrollTop = container.scrollHeight;
+						}}
+					>
+						<ArrowDown className="h-4 w-4" />
+						Jump to latest
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }

@@ -1,0 +1,52 @@
+.home-search {
+	isolation: isolate;
+	border-radius: var(--bf-radius-control);
+}
+
+.home-search::before,
+.home-search::after {
+	content: "";
+	position: absolute;
+	inset: -1px;
+	border-radius: inherit;
+	background: var(--bf-activity-gradient);
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--bf-motion-feedback) ease-out;
+}
+
+/* Keep the soft halo behind the opaque field and the crisp edge above it. */
+.home-search::before {
+	z-index: -1;
+	filter: blur(8px);
+}
+
+.home-search::after {
+	padding: 1px;
+	mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	mask-composite: exclude;
+}
+
+.home-search:focus-within::before {
+	opacity: 0.10;
+}
+
+.home-search:focus-within::after {
+	opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.home-search::before,
+	.home-search::after {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.home-search::before,
+	.home-search::after {
+		display: none;
+	}
+}

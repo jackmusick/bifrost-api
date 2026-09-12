@@ -72,6 +72,11 @@ class IntegrationCreate(BaseModel):
         max_length=255,
         description="Unique integration name (e.g., 'Microsoft Partner', 'QuickBooks Online')",
     )
+    description: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional integration description for admin UI cards",
+    )
     config_schema: list[ConfigSchemaItem] | None = Field(
         default=None,
         description="Optional schema defining available configuration for this integration",
@@ -105,6 +110,11 @@ class IntegrationUpdate(BaseModel):
         min_length=1,
         max_length=255,
         description="Integration name",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional integration description for admin UI cards",
     )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
@@ -275,6 +285,10 @@ class IntegrationResponse(BaseModel):
 
     id: UUID = Field(..., description="Integration ID")
     name: str = Field(..., description="Integration name")
+    description: str | None = Field(
+        default=None,
+        description="Optional integration description for admin UI cards",
+    )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
         description="Associated data provider ID for listing entities",
@@ -298,6 +312,34 @@ class IntegrationResponse(BaseModel):
     has_oauth_config: bool = Field(
         default=False,
         description="Whether OAuth configuration is set up for this integration",
+    )
+    logo_url: str | None = Field(
+        default=None,
+        description="URL for the uploaded integration logo thumbnail/original",
+    )
+    logo: str | None = Field(
+        default=None,
+        description="Inline data URI for the uploaded integration logo when included",
+    )
+    logo_version: str | None = Field(
+        default=None,
+        description="Stable cache version for the generated logo thumbnail",
+    )
+    mapping_count: int = Field(
+        default=0,
+        description="Number of organization/global mappings for this integration",
+    )
+    connected_count: int = Field(
+        default=0,
+        description="Number of mappings with a completed OAuth token",
+    )
+    needs_reconnection_count: int = Field(
+        default=0,
+        description="Number of mappings with a failed OAuth token status",
+    )
+    connection_status_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Counts of mapped OAuth token statuses by status value",
     )
     is_deleted: bool = Field(
         default=False,
@@ -421,6 +463,10 @@ class IntegrationDetailResponse(BaseModel):
     # Core integration fields
     id: UUID = Field(..., description="Integration ID")
     name: str = Field(..., description="Integration name")
+    description: str | None = Field(
+        default=None,
+        description="Optional integration description for admin UI cards",
+    )
     list_entities_data_provider_id: UUID | None = Field(
         default=None,
         description="Associated data provider ID for listing entities",
@@ -448,6 +494,34 @@ class IntegrationDetailResponse(BaseModel):
     has_oauth_config: bool = Field(
         default=False,
         description="Whether OAuth configuration is set up for this integration",
+    )
+    logo_url: str | None = Field(
+        default=None,
+        description="URL for the uploaded integration logo thumbnail/original",
+    )
+    logo: str | None = Field(
+        default=None,
+        description="Inline data URI for the uploaded integration logo when included",
+    )
+    logo_version: str | None = Field(
+        default=None,
+        description="Stable cache version for the generated logo thumbnail",
+    )
+    mapping_count: int = Field(
+        default=0,
+        description="Number of organization/global mappings for this integration",
+    )
+    connected_count: int = Field(
+        default=0,
+        description="Number of mappings with a completed OAuth token",
+    )
+    needs_reconnection_count: int = Field(
+        default=0,
+        description="Number of mappings with a failed OAuth token status",
+    )
+    connection_status_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Counts of mapped OAuth token statuses by status value",
     )
     is_deleted: bool = Field(
         default=False,

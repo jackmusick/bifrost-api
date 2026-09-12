@@ -1,11 +1,6 @@
-/**
- * Overview tab for an agent's detail page.
- *
- * Layout (mirrors /tmp/agent-mockup/src/pages/AgentDetailPage.tsx `OverviewTab`):
- *   main column  →  stat row, activity sparkline card, recent activity list
- *   side column  →  needs-attention card (red), Configuration KV, Budgets KV
- */
+/** Agent overview: activity, recent runs, review queue, configuration and budgets. */
 
+import { useAuth } from "@/contexts/AuthContext";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -16,6 +11,7 @@ import {
 	ThumbsUp,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	CARD_BODY,
@@ -53,13 +49,27 @@ export interface AgentOverviewTabProps {
 
 export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 	const location = useLocation();
+	const { isPlatformAdmin } = useAuth();
 	const { data: agent } = useAgent(agentId);
 	const { data: modelProfiles } = useQuery({
 		queryKey: ["ai", "model-profiles"],
 		queryFn: listModelProfiles,
+		enabled: isPlatformAdmin,
 	});
-	const { data: stats, isLoading: statsLoading } = useAgentStats(agentId);
-	const { data: runsList, isLoading: runsLoading } = useAgentRuns({
+	const {
+		data: stats,
+		isLoading: statsLoading,
+		isError: statsError,
+		isFetching: statsFetching,
+		refetch: refetchStats,
+	} = useAgentStats(agentId);
+	const {
+		data: runsList,
+		isLoading: runsLoading,
+		isError: runsError,
+		isFetching: runsFetching,
+		refetch: refetchRuns,
+	} = useAgentRuns({
 		agentId,
 		limit: 10,
 	});
@@ -85,7 +95,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 	return (
 		<div
 			className={cn(
-				"agent-overview-tab grid min-w-0 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_320px]",
+				"agent-overview-tab grid min-w-0 grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_320px]",
 				GAP_CARD,
 			)}
 		>
@@ -96,6 +106,13 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					GAP_CARD,
 				)}
 			>
+				{statsError && (
+					<OverviewReadError
+						label="statistics"
+						pending={statsFetching}
+						onRetry={() => void refetchStats()}
+					/>
+				)}
 				{/* Stat row — 4 stats */}
 				{statsLoading ? (
 					<div
@@ -143,7 +160,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				<div className={cn(CARD_SURFACE, "overflow-hidden")}>
 					<div
 						className={cn(
-							"flex items-center justify-between",
+							"flex flex-wrap items-center justify-between gap-3",
 							CARD_HEADER,
 						)}
 					>
@@ -159,9 +176,15 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 						<span className={TYPE_MUTED}>Daily buckets</span>
 					</div>
 					<div className={cn("h-[140px]", CARD_BODY)}>
-						{stats &&
-						stats.runs_by_day.length > 1 &&
-						stats.runs_by_day.some((v) => v > 0) ? (
+						{statsLoading ? (
+							<Skeleton className="h-full w-full" />
+						) : statsError && !stats ? (
+							<p className="text-sm text-muted-foreground">
+								Activity is unavailable until statistics load.
+							</p>
+						) : stats &&
+						  stats.runs_by_day.length > 1 &&
+						  stats.runs_by_day.some((v) => v > 0) ? (
 							<Sparkline
 								values={stats.runs_by_day}
 								colorClass={sparkColor}
@@ -183,7 +206,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 				>
 					<div
 						className={cn(
-							"flex items-center justify-between",
+							"flex flex-wrap items-center justify-between gap-3",
 							CARD_HEADER,
 						)}
 					>
@@ -193,7 +216,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 							className={cn(
 								TYPE_SMALL,
 								TONE_MUTED,
-								"hover:text-foreground",
+								"inline-flex min-h-11 items-center hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 							)}
 						>
 							View all runs →
@@ -204,14 +227,22 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 						role="region"
 						aria-label="Recent activity"
 					>
+						{runsError && (
+							<OverviewReadError
+								label="recent runs"
+								pending={runsFetching}
+								onRetry={() => void refetchRuns()}
+							/>
+						)}
 						{runsLoading ? (
 							<div className="space-y-1 p-3">
 								<Skeleton className="h-12 w-full" />
 								<Skeleton className="h-12 w-full" />
 								<Skeleton className="h-12 w-full" />
 							</div>
-						) : recentRuns.length === 0 ? (
-							<p className="py-8 text-center text-[13px] text-muted-foreground">
+						) : runsError &&
+						  !runsList ? null : recentRuns.length === 0 ? (
+							<p className="py-8 text-center text-sm text-muted-foreground">
 								No runs yet for this agent.
 							</p>
 						) : (
@@ -243,13 +274,13 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 						to={`/agents/${agentId}/review`}
 						className={cn(
 							CARD_SURFACE,
-							"block overflow-hidden transition-colors ring-rose-500/40 hover:ring-rose-500/70 dark:ring-rose-500/40 dark:hover:ring-rose-500/70",
+							"block overflow-hidden motion-safe:transition-colors border-[var(--bf-danger)]/40 hover:border-[var(--bf-danger)]",
 						)}
 					>
-						<div className="border-b border-rose-500/20 px-4 py-3">
+						<div className="border-b border-[var(--bf-danger)]/20 px-4 py-3">
 							<div
 								className={cn(
-									"flex items-center gap-2 text-rose-500",
+									"flex items-center gap-2 text-[var(--bf-danger)]",
 									TYPE_CARD_TITLE,
 								)}
 							>
@@ -257,7 +288,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 								Needs attention
 							</div>
 						</div>
-						<div className={cn("space-y-2 text-[13px]", CARD_BODY)}>
+						<div className={cn("space-y-2 text-sm", CARD_BODY)}>
 							<div>
 								<strong>{needsReview}</strong> run
 								{needsReview === 1 ? "" : "s"} marked 👎
@@ -269,7 +300,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 									review
 								</div>
 							) : null}
-							<div className="mt-1 w-full rounded-md bg-rose-500/15 px-3 py-1.5 text-center text-[12.5px] font-medium text-rose-500">
+							<div className="mt-1 w-full rounded-[var(--bf-radius-control)] bg-[var(--bf-danger-soft)] px-3 py-1.5 text-center text-sm font-medium text-[var(--bf-danger)]">
 								Open review flipbook →
 							</div>
 						</div>
@@ -279,7 +310,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 						to={`/agents/${agentId}/review`}
 						className={cn(
 							CARD_SURFACE,
-							"block overflow-hidden transition-colors hover:ring-foreground/10 dark:hover:ring-foreground/15",
+							"block overflow-hidden motion-safe:transition-colors hover:ring-foreground/10 dark:hover:ring-foreground/15",
 						)}
 					>
 						<div className={CARD_HEADER}>
@@ -293,11 +324,11 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 								{unreviewed} to review
 							</div>
 						</div>
-						<div className={cn("space-y-2 text-[13px]", CARD_BODY)}>
+						<div className={cn("space-y-2 text-sm", CARD_BODY)}>
 							<div className="text-muted-foreground">
 								Completed runs awaiting a verdict
 							</div>
-							<div className="mt-1 w-full rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-1.5 text-center text-[12.5px]">
+							<div className="mt-1 w-full rounded-[var(--bf-radius-control)] bg-muted/50 ring-1 ring-foreground/5 px-3 py-1.5 text-center text-sm">
 								Open review flipbook →
 							</div>
 						</div>
@@ -311,14 +342,12 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					</div>
 					<dl
 						className={cn(
-							"grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[13px]",
+							"grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-2 text-sm [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt:not(:first-child)]:mt-2",
 							CARD_BODY,
 						)}
 					>
 						<dt className={TONE_MUTED}>Model profile</dt>
-						<dd className={TYPE_MONO}>
-							{modelProfileLabel}
-						</dd>
+						<dd className={TYPE_MONO}>{modelProfileLabel}</dd>
 						<dt className={TONE_MUTED}>Channels</dt>
 						<dd>{(agent?.channels ?? []).join(", ") || "—"}</dd>
 						<dt className={TONE_MUTED}>Access</dt>
@@ -330,7 +359,12 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 									: "Role-based"}
 						</dd>
 						<dt className={TONE_MUTED}>Owner</dt>
-						<dd className={cn("truncate", TYPE_MONO)}>
+						<dd
+							className={cn(
+								"[overflow-wrap:anywhere]",
+								TYPE_MONO,
+							)}
+						>
 							{agent?.created_by ?? "system"}
 						</dd>
 					</dl>
@@ -343,7 +377,7 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					</div>
 					<dl
 						className={cn(
-							"grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[13px]",
+							"grid grid-cols-[minmax(0,1fr)] gap-x-3 gap-y-2 text-sm [&_dd]:min-w-0 [&_dd]:[overflow-wrap:anywhere] [&_dt:not(:first-child)]:mt-2",
 							CARD_BODY,
 						)}
 					>
@@ -358,6 +392,35 @@ export function AgentOverviewTab({ agentId }: AgentOverviewTabProps) {
 					</dl>
 				</div>
 			</div>
+		</div>
+	);
+}
+
+function OverviewReadError({
+	label,
+	pending,
+	onRetry,
+}: {
+	label: string;
+	pending: boolean;
+	onRetry: () => void;
+}) {
+	return (
+		<div
+			role="alert"
+			className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--bf-radius-surface)] border border-border p-4 text-sm"
+		>
+			<p>Could not load {label}.</p>
+			<Button
+				type="button"
+				variant="outline"
+				className="min-h-11"
+				disabled={pending}
+				onClick={onRetry}
+				aria-label={`Retry ${label}`}
+			>
+				{pending ? "Retrying…" : "Retry"}
+			</Button>
 		</div>
 	);
 }
@@ -383,14 +446,14 @@ function ActivityRow({
 						<span role="img" aria-label="Verdict: Good">
 							<ThumbsUp
 								aria-hidden="true"
-								className="h-3.5 w-3.5 text-emerald-500"
+								className="h-3.5 w-3.5 text-[var(--bf-success)]"
 							/>
 						</span>
 					) : run.verdict === "down" ? (
 						<span role="img" aria-label="Verdict: Wrong">
 							<ThumbsDown
 								aria-hidden="true"
-								className="h-3.5 w-3.5 text-rose-500"
+								className="h-3.5 w-3.5 text-[var(--bf-danger)]"
 							/>
 						</span>
 					) : null

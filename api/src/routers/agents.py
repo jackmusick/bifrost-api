@@ -755,6 +755,8 @@ async def update_agent(
         # UI can submit a single payload regardless of role.
         agent_data.mcp_connection_ids = None
 
+    final_access_level = agent_data.access_level or agent.access_level
+
     # Validate references being updated
     await _validate_agent_references(
         db=db,
@@ -764,6 +766,8 @@ async def update_agent(
     )
     if "llm_profile_id" in agent_data.model_fields_set:
         await _validate_llm_profile_id(db, agent_data.llm_profile_id)
+
+    was_private = agent.access_level == AgentAccessLevel.PRIVATE
 
     # Update fields
     if agent_data.name is not None:
@@ -776,6 +780,11 @@ async def update_agent(
         agent.channels = [c.value for c in agent_data.channels]
     if agent_data.access_level is not None:
         agent.access_level = agent_data.access_level
+        if agent_data.access_level == AgentAccessLevel.PRIVATE:
+            if not was_private or agent.owner_user_id is None:
+                agent.owner_user_id = user.user_id
+        elif is_admin:
+            agent.owner_user_id = None
     # Use model_fields_set to distinguish "not provided" from "explicitly null"
     if "organization_id" in agent_data.model_fields_set:
         agent.organization_id = agent_data.organization_id
@@ -842,11 +851,21 @@ async def update_agent(
             except ValueError:
                 logger.warning(f"Invalid delegate agent ID: {log_safe(delegate_id)}")
 
-    # Clear all role assignments if requested
-    if agent_data.clear_roles:
+    # Private agents are owner-only; do not retain stale role grants when
+    # changing visibility via the generic update endpoint.
+    roles_changed = False
+    if final_access_level == AgentAccessLevel.PRIVATE:
         await db.execute(
             delete(AgentRole).where(AgentRole.agent_id == agent_id)
         )
+        roles_changed = True
+
+    # Clear all role assignments if requested
+    elif agent_data.clear_roles:
+        await db.execute(
+            delete(AgentRole).where(AgentRole.agent_id == agent_id)
+        )
+        roles_changed = True
         # Also set to role_based access level (effectively no access)
         agent.access_level = AgentAccessLevel.ROLE_BASED
         logger.info(f"Cleared all role assignments for agent '{log_safe(agent.name)}'")
@@ -856,6 +875,7 @@ async def update_agent(
         await db.execute(
             delete(AgentRole).where(AgentRole.agent_id == agent_id)
         )
+        roles_changed = True
         for role_id in agent_data.role_ids:
             try:
                 role_uuid = UUID(role_id)
@@ -871,6 +891,9 @@ async def update_agent(
                     ))
             except ValueError:
                 logger.warning(f"Invalid role ID: {log_safe(role_id)}")
+
+    if roles_changed:
+        db.expire(agent, ["roles"])
 
     # Sync MCP connection grants if provided. ``mcp_connection_ids=None``
     # means "leave grants alone"; an empty list explicitly revokes all.

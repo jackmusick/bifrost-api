@@ -58,6 +58,14 @@ const WORKFLOW = {
 	parameters: [],
 };
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((res) => {
+		resolve = res;
+	});
+	return { promise, resolve };
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockUseWorkflowsMetadata.mockReturnValue({
@@ -81,7 +89,7 @@ async function renderPage() {
 
 describe("ExecuteWorkflow — run-now path (no schedule)", () => {
 	it(
-		"submits a body without scheduled_at or delay_seconds when the schedule checkbox is untouched",
+		"submits a body without scheduled_at or delay_seconds when the schedule switch is untouched",
 		async () => {
 			const { user } = await renderPage();
 
@@ -120,21 +128,24 @@ describe("ExecuteWorkflow — run-now path (no schedule)", () => {
 
 describe("ExecuteWorkflow — scheduled path", () => {
 	it(
-		"sends delay_seconds: 3600 when the user picks 'In 1 hour' and submits",
+		"sends delay_seconds: 3600 when the user picks 'In 1 hour' and shows the scheduling label",
 		async () => {
 			const { user } = await renderPage();
 
 			await user.click(
-				await screen.findByRole("checkbox", {
+				await screen.findByRole("switch", {
 					name: /schedule for later/i,
 				}),
 			);
 			await user.click(
 				screen.getByRole("button", { name: /in 1 hour/i }),
 			);
+			expect(
+				screen.getByRole("button", { name: /schedule workflow/i }),
+			).toBeInTheDocument();
 
 			await user.click(
-				screen.getByRole("button", { name: /execute workflow/i }),
+				screen.getByRole("button", { name: /schedule workflow/i }),
 			);
 
 			await waitFor(() => {
@@ -152,6 +163,44 @@ describe("ExecuteWorkflow — scheduled path", () => {
 	);
 
 	it(
+		"shows a Scheduling label while the scheduled request is pending",
+		async () => {
+			const pending = deferred<{
+				execution_id: string;
+				status: string;
+				scheduled_at: string;
+			}>();
+			mockMutateAsync.mockImplementationOnce(() => pending.promise);
+
+			const { user } = await renderPage();
+
+			await user.click(
+				await screen.findByRole("switch", {
+					name: /schedule for later/i,
+				}),
+			);
+			await user.click(screen.getByRole("button", { name: /in 1 hour/i }));
+			await user.click(
+				screen.getByRole("button", { name: /schedule workflow/i }),
+			);
+
+			expect(
+				screen.getByRole("button", { name: /scheduling/i }),
+			).toBeDisabled();
+			pending.resolve({
+				execution_id: "abc",
+				status: "Scheduled",
+				scheduled_at: "2026-05-01T12:00:00Z",
+			});
+
+			await waitFor(() => {
+				expect(mockNavigate).toHaveBeenCalledWith("/history");
+			});
+		},
+		15000,
+	);
+
+	it(
 		"navigates to /history and toasts the scheduled time on a Scheduled response",
 		async () => {
 			mockMutateAsync.mockResolvedValueOnce({
@@ -163,7 +212,7 @@ describe("ExecuteWorkflow — scheduled path", () => {
 			const { user } = await renderPage();
 
 			await user.click(
-				await screen.findByRole("checkbox", {
+				await screen.findByRole("switch", {
 					name: /schedule for later/i,
 				}),
 			);
@@ -171,7 +220,7 @@ describe("ExecuteWorkflow — scheduled path", () => {
 				screen.getByRole("button", { name: /in 1 hour/i }),
 			);
 			await user.click(
-				screen.getByRole("button", { name: /execute workflow/i }),
+				screen.getByRole("button", { name: /schedule workflow/i }),
 			);
 
 			await waitFor(() => {
@@ -184,4 +233,52 @@ describe("ExecuteWorkflow — scheduled path", () => {
 		},
 		15000,
 	);
+});
+
+
+describe("ExecuteWorkflow — metadata recovery", () => {
+	it("offers retry without reporting a failed request as a missing workflow", async () => {
+		const refetch = vi.fn();
+		mockUseWorkflowsMetadata.mockReturnValue({ data: undefined, isLoading: false, error: new Error("offline"), refetch });
+		const { user } = await renderPage();
+		expect(screen.getByText("Unable to load workflow")).toBeVisible();
+		expect(screen.queryByText("Workflow not found")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Try again" }));
+		expect(refetch).toHaveBeenCalledOnce();
+		expect(mockMutateAsync).not.toHaveBeenCalled();
+	});
+});
+
+describe("ExecuteWorkflow — mutation errors", () => {
+	it("shows an inline error and focuses it when scheduling fails", async () => {
+		mockMutateAsync.mockRejectedValueOnce(new Error("backend exploded"));
+		const { user } = await renderPage();
+
+		await user.click(
+			await screen.findByRole("switch", {
+				name: /schedule for later/i,
+			}),
+		);
+		await user.click(screen.getByRole("button", { name: /in 1 hour/i }));
+		await user.click(
+			screen.getByRole("button", { name: /schedule workflow/i }),
+		);
+
+		await waitFor(
+			() => {
+				expect(
+					screen.getByText(/backend exploded/i),
+				).toBeVisible();
+			},
+			{ timeout: 5000 },
+		);
+		const alert = screen
+			.getByText(/backend exploded/i)
+			.closest('[role="alert"]');
+		expect(alert).toHaveTextContent(/failed to schedule workflow/i);
+		await waitFor(() => {
+			expect(alert?.parentElement).toHaveFocus();
+		});
+		expect(mockToastError).not.toHaveBeenCalled();
+	});
 });

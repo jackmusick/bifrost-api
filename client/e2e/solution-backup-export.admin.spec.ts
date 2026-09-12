@@ -177,7 +177,7 @@ test.describe("Solution backup export (admin)", () => {
 			await expect(dialog).toBeVisible();
 			await dialog.getByRole("radio", { name: "Backup" }).click();
 			await dialog.getByLabel("Password").fill("correct horse battery staple");
-			await expect(dialog.getByRole("checkbox", { name: "Config values" })).toBeChecked();
+			await expect(dialog.getByRole("checkbox", { name: /^Config values/ })).toBeChecked();
 			await expect(dialog.getByRole("checkbox", { name: "Solution-owned files" })).toBeChecked();
 			await dialog.getByRole("button", { name: "Queue backup" }).click();
 

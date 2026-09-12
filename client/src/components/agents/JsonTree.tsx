@@ -40,11 +40,16 @@ export function JsonTree({
 	return (
 		<div
 			className={cn(
-				"font-mono text-[11.5px] leading-relaxed",
+				"@container font-mono text-[13px] leading-6 text-foreground/90",
 				className,
 			)}
 		>
-			<Node value={value} depth={0} openDepth={openDepth} forceOpen={defaultOpen} />
+			<Node
+				value={value}
+				depth={0}
+				openDepth={openDepth}
+				forceOpen={defaultOpen}
+			/>
 		</div>
 	);
 }
@@ -124,27 +129,34 @@ function Container({ kind, items, depth, openDepth, forceOpen }: ContainerProps)
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
-				className="inline-flex items-center gap-0.5 align-baseline text-muted-foreground hover:text-foreground"
+				aria-expanded={open}
+				className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] px-2 py-1.5 align-baseline text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 				aria-label={open ? "Collapse" : "Expand"}
 			>
 				<ChevronRight
 					className={cn(
-						"h-3 w-3 transition-transform",
+						"h-3.5 w-3.5 transition-transform motion-reduce:transition-none",
 						open && "rotate-90",
 					)}
 				/>
 				<span>{open_b}</span>
 				{!open ? (
-					<span className="ml-1 text-[10px] text-muted-foreground/70">
+					<span className="ml-1 text-[11px] text-muted-foreground/70">
 						{items.length}{" "}
 						{kind === "array" ? "items" : "keys"}
 					</span>
 				) : null}
 			</button>
 			{open ? (
-				<ul className="ml-3 border-l border-border/40 pl-3">
+				<ul className="ml-1 border-l border-border/40 pl-2 @sm:ml-3 @sm:pl-3">
 					{items.map((it) => (
-						<Row key={it.key} kind={kind} entry={it} depth={depth} openDepth={openDepth} />
+						<Row
+							key={it.key}
+							kind={kind}
+							entry={it}
+							depth={depth}
+							openDepth={openDepth}
+						/>
 					))}
 				</ul>
 			) : null}
@@ -162,9 +174,9 @@ interface RowProps {
 
 function Row({ kind, entry, depth, openDepth }: RowProps) {
 	return (
-		<li className="flex min-w-0 items-baseline gap-1.5 break-words">
+		<li className="min-w-0 items-baseline gap-2 [overflow-wrap:anywhere] @sm:flex">
 			{kind === "object" ? (
-				<span className="text-blue-700 dark:text-sky-300">
+				<span className="text-primary">
 					&quot;{entry.key}&quot;
 				</span>
 			) : (
@@ -173,7 +185,7 @@ function Row({ kind, entry, depth, openDepth }: RowProps) {
 			{kind === "object" ? (
 				<span className="text-muted-foreground">:</span>
 			) : null}
-			<span className="min-w-0 flex-1 break-words">
+			<span className="block min-w-0 flex-1 [overflow-wrap:anywhere]">
 				<Node
 					value={entry.value}
 					depth={depth + 1}

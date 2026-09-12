@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { formatCost, formatNumber } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
+import { Sparkline } from "./Sparkline";
+
 type FleetStatsResponse = components["schemas"]["FleetStatsResponse"];
 
 export interface FleetStatsProps {
@@ -30,72 +32,87 @@ export function FleetStats({
 	onNeedsReviewClick,
 	className,
 }: FleetStatsProps) {
-	const successPct = Math.round((stats.avg_success_rate ?? 0) * 100);
+	const successRate = stats.avg_success_rate;
+	const successPct = Math.round((successRate ?? 0) * 100);
+	const successTone = resolveSuccessTone(successRate);
+	const needsReviewTone =
+		stats.needs_review > 0 ? "warning" : "success";
+	const trendMessage = resolveTrendMessage(runsByDay);
+	const hasTrend = trendMessage == null;
+
 	return (
-		<div
+		<dl
 			className={cn(
-				"grid gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-5",
+				"grid min-w-0 grid-cols-2 gap-3 [&>div:first-child]:col-span-2 xl:grid-cols-5 xl:[&>div:first-child]:col-span-1",
 				className,
 			)}
 			data-slot="fleet-stats"
 		>
-			<StatCard
+			<MetricCard
 				label="Runs (7d)"
 				value={formatNumber(stats.total_runs)}
-				sparkline={runsByDay}
+				emptyNote={trendMessage ?? undefined}
+				sparkline={
+					hasTrend && runsByDay != null ? (
+						<Sparkline
+							values={runsByDay}
+							colorClass="text-[var(--bf-info)]"
+							ariaLabel="Runs trend over the last 7 days"
+						/>
+					) : null
+				}
 			/>
-			<StatCard
+			<MetricCard
 				label="Avg success rate"
 				value={`${successPct}%`}
-				valueColor={successColor(stats.avg_success_rate)}
+				valueTone={successTone}
 			/>
-			<StatCard
+			<MetricCard
 				label="Spend (7d)"
 				value={formatCost(stats.total_cost_7d)}
 			/>
-			<StatCard
+			<MetricCard
 				label="Active agents"
 				value={formatNumber(stats.active_agents)}
 			/>
-			<StatCard
+			<MetricCard
 				label="Needs review"
 				value={formatNumber(stats.needs_review)}
+				valueTone={needsReviewTone}
 				icon={
 					stats.needs_review > 0 ? (
 						<AlertTriangle size={11} />
 					) : undefined
 				}
-				valueColor={
-					stats.needs_review > 0
-						? "text-rose-600 dark:text-rose-400"
-						: undefined
-				}
 				onClick={
 					stats.needs_review > 0 ? onNeedsReviewClick : undefined
 				}
 			/>
-		</div>
+		</dl>
 	);
 }
 
-interface StatCardProps {
+interface MetricCardProps {
 	label: string;
 	value: string;
 	icon?: React.ReactNode;
-	valueColor?: string;
-	sparkline?: number[];
+	valueTone?: "neutral" | "info" | "success" | "warning" | "danger";
+	emptyNote?: string;
+	sparkline?: React.ReactNode;
 	onClick?: () => void;
 }
 
-function StatCard({
+function MetricCard({
 	label,
 	value,
 	icon,
-	valueColor,
+	valueTone = "neutral",
+	emptyNote,
 	sparkline,
 	onClick,
-}: StatCardProps) {
-	const interactive = !!onClick;
+}: MetricCardProps) {
+	const interactive = typeof onClick === "function";
+
 	return (
 		<div
 			role={interactive ? "button" : undefined}
@@ -108,76 +125,72 @@ function StatCard({
 				}
 			}}
 			className={cn(
-				"flex flex-col gap-1 rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 p-4 transition-colors",
+				"min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-card p-3 transition-colors motion-reduce:transition-none sm:p-4",
 				interactive && "cursor-pointer hover:bg-accent/40",
+				interactive &&
+					"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 			)}
 			data-slot="stat-card"
+			data-tone={valueTone}
 		>
-			<div className="flex items-center gap-1 text-xs text-muted-foreground">
+			<dt
+				className="flex min-h-8 items-center gap-1.5 text-xs font-medium leading-4 text-muted-foreground"
+			>
 				{icon}
 				{label}
-			</div>
-			<div className={cn("text-2xl font-semibold", valueColor)}>
+			</dt>
+			<dd
+				className={cn(
+					"mt-1 text-base font-semibold leading-tight tracking-tight tabular-nums [overflow-wrap:anywhere] sm:text-xl",
+					toneClass(valueTone),
+				)}
+			>
 				{value}
-			</div>
-			{sparkline && sparkline.length > 1 ? (
-				<div className="mt-2 h-8">
-					<Sparkline values={sparkline} />
-				</div>
+			</dd>
+			{emptyNote ? (
+				<dd
+					className={cn(
+						"mt-1 text-xs leading-5 text-muted-foreground",
+					)}
+				>
+					{emptyNote}
+				</dd>
+			) : null}
+			{sparkline ? (
+				<div className="mt-3 h-10">{sparkline}</div>
 			) : null}
 		</div>
 	);
 }
 
-function successColor(rate: number | null | undefined): string | undefined {
-	if (rate == null) return undefined;
-	if (rate >= 0.9) return "text-emerald-600 dark:text-emerald-400";
-	if (rate >= 0.75) return "text-yellow-600 dark:text-yellow-400";
-	return "text-rose-600 dark:text-rose-400";
+function resolveSuccessTone(
+	rate: number | null | undefined,
+): "neutral" | "info" | "success" | "warning" | "danger" {
+	if (rate == null) return "neutral";
+	if (rate >= 0.9) return "success";
+	if (rate >= 0.75) return "warning";
+	return "danger";
 }
 
-/** Inline-SVG sparkline — no recharts dependency. */
-function Sparkline({ values }: { values: number[] }) {
-	if (values.length < 2) return null;
-	const w = 100;
-	const h = 30;
-	const max = Math.max(...values, 1);
-	const min = Math.min(...values, 0);
-	const range = Math.max(max - min, 1);
-	const step = w / (values.length - 1);
-	const points = values
-		.map((v, i) => {
-			const x = i * step;
-			const y = h - ((v - min) / range) * h;
-			return `${x.toFixed(2)},${y.toFixed(2)}`;
-		})
-		.join(" ");
-	const areaPath = `M0,${h} L${points
-		.split(" ")
-		.join(" L")} L${w},${h} Z`;
-	return (
-		<svg
-			viewBox={`0 0 ${w} ${h}`}
-			preserveAspectRatio="none"
-			className="h-full w-full"
-			aria-hidden
-		>
-			<path
-				d={areaPath}
-				fill="currentColor"
-				className="text-primary/15"
-			/>
-			<polyline
-				points={points}
-				fill="none"
-				stroke="currentColor"
-				strokeWidth={1.5}
-				strokeLinejoin="round"
-				strokeLinecap="round"
-				className="text-primary"
-			/>
-		</svg>
-	);
+function resolveTrendMessage(runsByDay?: number[]) {
+	if (!runsByDay || runsByDay.length < 2) return "No daily trend yet";
+	return runsByDay.some((value) => value > 0) ? null : "No activity yet";
+}
+
+function toneClass(tone: "neutral" | "info" | "success" | "warning" | "danger") {
+	switch (tone) {
+		case "info":
+			return "text-[var(--bf-info)]";
+		case "success":
+			return "text-[var(--bf-success)]";
+		case "warning":
+			return "text-[var(--bf-warning)]";
+		case "danger":
+			return "text-[var(--bf-danger)]";
+		case "neutral":
+		default:
+			return "text-foreground";
+	}
 }
 
 /** Re-export formatCost so consumers can format the cost string from the API. */

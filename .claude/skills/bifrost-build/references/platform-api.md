@@ -40,6 +40,24 @@ const Heavy = lazy(() => import("./pages/heavy"));
 <Suspense fallback={<div>Loading…</div>}><Heavy /></Suspense>
 ```
 
+### createContext
+
+Signature: `createContext<T>(defaultValue: T): Context<T>`.
+
+```tsx
+import { createContext } from "bifrost";
+const ThemeContext = createContext<"light" | "dark">("light");
+```
+
+### createElement
+
+Signature: `createElement(type, props?, ...children): ReactElement`.
+
+```tsx
+import { createElement } from "bifrost";
+const status = createElement("span", { className: "text-sm" }, "Ready");
+```
+
 ### forwardRef
 
 Signature: `forwardRef<Ref, Props>((props, ref) => ReactElement): ForwardRefExoticComponent`.
@@ -97,6 +115,18 @@ import { useDeferredValue } from "bifrost";
 const deferredQuery = useDeferredValue(query);
 ```
 
+### useDebugValue
+
+Signature: `useDebugValue<T>(value: T, format?: (value: T) => unknown): void` — labels custom hook state in React DevTools.
+
+```tsx
+import { useDebugValue } from "bifrost";
+function useStatusLabel(status: string) {
+  useDebugValue(status);
+  return status;
+}
+```
+
 ### useEffect
 
 Signature: `useEffect(effect: () => void | (() => void), deps?: DependencyList): void`.
@@ -140,6 +170,20 @@ import { useLayoutEffect } from "bifrost";
 useLayoutEffect(() => { el.current!.scrollTop = el.current!.scrollHeight; }, [messages]);
 ```
 
+### useInsertionEffect
+
+Signature: `useInsertionEffect(effect: () => void | (() => void), deps?: DependencyList): void` — runs before layout effects for CSS-in-JS style insertion.
+
+```tsx
+import { useInsertionEffect } from "bifrost";
+useInsertionEffect(() => {
+  const style = document.createElement("style");
+  style.textContent = ".critical { visibility: visible; }";
+  document.head.append(style);
+  return () => style.remove();
+}, []);
+```
+
 ### useMemo
 
 Signature: `useMemo<T>(factory: () => T, deps: DependencyList): T`.
@@ -174,6 +218,26 @@ Signature: `useState<T>(initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>
 ```tsx
 import { useState } from "bifrost";
 const [count, setCount] = useState(0);
+```
+
+### useSyncExternalStore
+
+Signature: `useSyncExternalStore<Snapshot>(subscribe, getSnapshot, getServerSnapshot?): Snapshot`.
+
+```tsx
+import { useSyncExternalStore } from "bifrost";
+const online = useSyncExternalStore(
+  (notify) => {
+    window.addEventListener("online", notify);
+    window.addEventListener("offline", notify);
+    return () => {
+      window.removeEventListener("online", notify);
+      window.removeEventListener("offline", notify);
+    };
+  },
+  () => navigator.onLine,
+  () => true,
+);
 ```
 
 ### useTransition

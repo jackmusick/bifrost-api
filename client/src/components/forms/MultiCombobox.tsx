@@ -1,9 +1,10 @@
 import * as React from "react";
-import { ChevronsUpDown, Loader2, X } from "lucide-react";
+import { ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { SelectionChip } from "@/components/ui/selection-chip";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import {
 	Command,
 	CommandEmpty,
@@ -48,7 +49,14 @@ export function MultiCombobox({
 
 	const selectedSet = React.useMemo(() => new Set(value), [value]);
 	const selectedOptions = React.useMemo(
-		() => value.map((v) => options.find((o) => o.value === v) ?? { value: v, label: v }),
+		() =>
+			value.map(
+				(v) =>
+					options.find((o) => o.value === v) ?? {
+						value: v,
+						label: v,
+					},
+			),
 		[options, value],
 	);
 
@@ -60,121 +68,135 @@ export function MultiCombobox({
 		}
 	};
 
-	const removeValue = (optionValue: string, e: React.MouseEvent) => {
-		e.stopPropagation();
-		onValueChange?.(value.filter((v) => v !== optionValue));
-	};
-
+	const triggerRef = React.useRef<HTMLButtonElement>(null);
+	const blocked = disabled || isLoading;
+	if (blocked && open) setOpen(false);
+	const listId = React.useId();
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button
-					id={id}
-					variant="outline"
-					role="combobox"
-					aria-expanded={open}
-					className={cn(
-						"w-full justify-between font-normal h-auto min-h-10 py-2",
-						className,
-					)}
-					disabled={disabled || isLoading}
+		<div className="min-w-0 space-y-2">
+			<Popover open={open && !blocked} onOpenChange={setOpen}>
+				<PopoverTrigger asChild>
+					<Button
+						type="button"
+						ref={triggerRef}
+						id={id}
+						variant="outline"
+						role="combobox"
+						aria-expanded={open && !blocked}
+						aria-controls={open && !blocked ? listId : undefined}
+						disabled={blocked}
+						className={cn(
+							"h-auto min-h-11 w-full justify-between whitespace-normal text-left font-normal",
+							className,
+						)}
+					>
+						<span className="min-w-0 [overflow-wrap:anywhere]">
+							{isLoading
+								? "Loading..."
+								: selectedOptions.length
+									? `${selectedOptions.length} selected`
+									: placeholder}
+						</span>
+						{isLoading ? (
+							<Loader2 className="h-4 w-4 shrink-0 motion-safe:animate-spin" />
+						) : (
+							<ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+						)}
+					</Button>
+				</PopoverTrigger>
+				<PopoverContent variant="picker"
+					className="p-0"
+					align="start"
+					aria-label="Select options"
 				>
-					{isLoading ? (
-						<>
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							<span className="text-muted-foreground">
-								Loading...
-							</span>
-						</>
-					) : (
-						<>
-							<div className="flex flex-wrap gap-1 flex-1 min-w-0">
-								{selectedOptions.length === 0 ? (
-									<span className="text-muted-foreground">
-										{placeholder}
-									</span>
-								) : (
-									selectedOptions.map((option) => (
-										<Badge
-											key={option.value}
-											variant="secondary"
-											className="gap-1 pr-1"
-										>
-											<span className="truncate max-w-[200px]">
-												{option.label}
-											</span>
-											<span
-												role="button"
-												tabIndex={-1}
-												aria-label={`Remove ${option.label}`}
-												className="inline-flex items-center justify-center rounded-sm hover:bg-muted-foreground/20 h-4 w-4 cursor-pointer"
-												onClick={(e) =>
-													removeValue(option.value, e)
-												}
-												onKeyDown={(e) => {
-													if (
-														e.key === "Enter" ||
-														e.key === " "
-													) {
-														e.preventDefault();
-														e.stopPropagation();
-														onValueChange?.(
-															value.filter(
-																(v) =>
-																	v !==
-																	option.value,
-															),
-														);
-													}
-												}}
-											>
-												<X className="h-3 w-3" />
-											</span>
-										</Badge>
-									))
-								)}
-							</div>
-							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-						</>
-					)}
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent
-				className="w-[var(--radix-popover-trigger-width)] p-0"
-				align="start"
-			>
-				<Command>
-					<CommandInput placeholder={searchPlaceholder} />
-					<CommandList className="max-h-60 overflow-y-auto">
-						<CommandEmpty>{emptyText}</CommandEmpty>
-						<CommandGroup>
-							{options.map((option) => {
-								const isSelected = selectedSet.has(option.value);
-								return (
+					<Command>
+						<CommandInput
+							placeholder={searchPlaceholder}
+							aria-label={searchPlaceholder}
+						/>
+						<CommandList
+							id={listId}
+							className="max-h-60 overflow-y-auto"
+						>
+							<CommandEmpty>{emptyText}</CommandEmpty>
+							<CommandGroup>
+								{options.map((option) => (
 									<CommandItem
 										key={option.value}
 										value={option.value}
 										keywords={[option.label]}
-										data-checked={isSelected}
-										onSelect={() => toggle(option.value)}
+										data-checked={selectedSet.has(
+											option.value,
+										)}
+										disabled={blocked}
+										className="min-h-11 lg:min-h-11"
+										onSelect={() => {
+											if (!blocked) toggle(option.value);
+										}}
 									>
-										<div className="flex flex-col flex-1">
+										<div className="min-w-0 flex-1 space-y-1 [overflow-wrap:anywhere]">
 											<span className="font-medium">
 												{option.label}
 											</span>
-											{option.description && (
-												<span className="text-xs text-muted-foreground">
-													{option.description}
+											{selectedSet.has(option.value) && (
+												<span className="sr-only">
+													Selected
 												</span>
+											)}
+											{option.description && (
+												<p className="text-sm leading-6 text-muted-foreground">
+													{option.description}
+												</p>
 											)}
 										</div>
 									</CommandItem>
+								))}
+							</CommandGroup>
+						</CommandList>
+					</Command>
+				</PopoverContent>
+			</Popover>
+			{selectedOptions.length > 0 && (
+				<ul
+					aria-label="Selected options"
+					className="flex min-w-0 flex-wrap gap-2"
+				>
+					{selectedOptions.map((option) => (
+						<SelectedOption
+							key={option.value}
+							label={option.label}
+							disabled={blocked}
+							onRemove={() => {
+								if (blocked) return;
+								onValueChange?.(
+									value.filter((v) => v !== option.value),
 								);
-							})}
-						</CommandGroup>
-					</CommandList>
-				</Command>
-			</PopoverContent>
-		</Popover>
+								triggerRef.current?.focus();
+							}}
+						/>
+					))}
+				</ul>
+			)}
+		</div>
+	);
+}
+
+function SelectedOption({
+	label,
+	disabled,
+	onRemove,
+}: {
+	label: string;
+	disabled: boolean;
+	onRemove: () => void;
+}) {
+	return (
+		<li className="min-w-0 max-w-full">
+			<SelectionChip
+				label={label}
+				disabled={disabled}
+				onRemove={onRemove}
+			/>
+		</li>
 	);
 }

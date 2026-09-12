@@ -1,3 +1,7 @@
+import { getErrorMessage } from "@/lib/api-error";
+import { ConsumerCards } from "./ConsumerCards";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 import { useMemo, useState } from "react";
 import { Building2, Plus, Star, X } from "lucide-react";
 import { toast } from "sonner";
@@ -44,11 +48,52 @@ export interface ConsumerTabItem {
 	org?: OrgInfo | null;
 }
 
+interface ConsumerReadState {
+	isError: boolean;
+	isFetching: boolean;
+	onRetry: () => void;
+}
+
+function ConsumerReadError({
+	hasRecords,
+	state,
+	label,
+}: {
+	state?: ConsumerReadState;
+	hasRecords: boolean;
+	label: string;
+}) {
+	if (!state?.isError) return null;
+	return (
+		<div
+			role="alert"
+			className="space-y-2 rounded-[var(--bf-radius-surface)] border p-4 text-sm"
+		>
+			<p>
+				{label} could not load.{" "}
+				{hasRecords
+					? "Previously loaded records are shown."
+					: "Try again to load records for this view."}
+			</p>
+			<Button
+				variant="outline"
+				className="min-h-11"
+				disabled={state.isFetching}
+				onClick={state.onRetry}
+			>
+				Retry {label.toLowerCase()}
+			</Button>
+		</div>
+	);
+}
+
 export interface ConsumerTabProps {
 	items: ConsumerTabItem[];
 	isLoading: boolean;
+	readState?: ConsumerReadState;
 	candidates: ConsumerTabItem[];
 	candidatesLoading: boolean;
+	candidatesReadState?: ConsumerReadState;
 	consumerLabel: string;
 	emptyHint: string;
 	/** Header label for the primary column (defaults to "Name"). */
@@ -86,8 +131,10 @@ export interface ConsumerTabProps {
 export function ConsumerTab({
 	items,
 	isLoading,
+	readState,
 	candidates,
 	candidatesLoading,
+	candidatesReadState,
 	consumerLabel,
 	emptyHint,
 	primaryColumnLabel = "Name",
@@ -103,9 +150,11 @@ export function ConsumerTab({
 	onAssign,
 	onUnassign,
 }: ConsumerTabProps) {
+	const desktop = useMediaQuery("(min-width: 1024px)");
 	const [internalSearch, setInternalSearch] = useState("");
 	const search = searchValue ?? internalSearch;
 	const [selected, setSelected] = useState<Set<string>>(new Set());
+	const [removeFailed, setRemoveFailed] = useState<string | null>(null);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 
@@ -136,6 +185,14 @@ export function ConsumerTab({
 		visibleItems.every((i) => effectiveSelected.has(i.id));
 	const someVisibleSelected =
 		!allVisibleSelected && effectiveSelected.size > 0;
+	const showPagination =
+		!!pagination &&
+		(items.length > 0 || pagination.offset > 0 || pagination.total > 0);
+	const showEmptyPagination =
+		showPagination &&
+		!isLoading &&
+		items.length === 0 &&
+		!readState?.isError;
 
 	const toggleOne = (id: string) =>
 		setSelected((prev) => {
@@ -159,6 +216,8 @@ export function ConsumerTab({
 		});
 
 	const handleUnassign = async () => {
+		if (submitting) return;
+		setRemoveFailed(null);
 		const ids = Array.from(effectiveSelected);
 		if (ids.length === 0) return;
 		setSubmitting(true);
@@ -167,10 +226,8 @@ export function ConsumerTab({
 			toast.success(`Removed ${ids.length} ${consumerLabel}`);
 			setSelected(new Set());
 		} catch (e) {
-			toast.error(
-				e instanceof Error
-					? e.message
-					: `Failed to remove ${consumerLabel}`,
+			setRemoveFailed(
+				getErrorMessage(e, `Failed to remove ${consumerLabel}`),
 			);
 		} finally {
 			setSubmitting(false);
@@ -178,8 +235,8 @@ export function ConsumerTab({
 	};
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-3">
-			<div className="flex items-center gap-3">
+		<div className="flex min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-center [&_input]:min-h-11 [&>button]:min-h-11">
 				<SearchBox
 					value={search}
 					onChange={onSearchChange ?? setInternalSearch}
@@ -197,136 +254,181 @@ export function ConsumerTab({
 				</Button>
 			</div>
 
+			<ConsumerReadError
+				hasRecords={items.length > 0}
+				state={readState}
+				label={`Assigned ${consumerLabel}`}
+			/>
 			{isLoading ? (
 				<div className="space-y-2">
 					{[...Array(4)].map((_, i) => (
 						<Skeleton key={i} className="h-12 w-full" />
 					))}
 				</div>
-			) : items.length === 0 ? (
+			) : readState?.isError &&
+			  items.length === 0 ? null : items.length === 0 ? (
 				<div className="text-sm text-muted-foreground py-8 text-center rounded-lg ring-1 ring-foreground/5">
 					{emptyHint}
 				</div>
 			) : (
 				<div className="flex-1 min-h-0">
-					<DataTable className="max-h-full">
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead className="w-0 whitespace-nowrap">
-									<Checkbox
-										checked={
-											allVisibleSelected
-												? true
-												: someVisibleSelected
-													? "indeterminate"
-													: false
-										}
-										onCheckedChange={toggleAll}
-										aria-label={`Select all visible ${consumerLabel}`}
-									/>
-								</DataTableHead>
-								{showOrgColumn && (
-									<DataTableHead className="w-0 whitespace-nowrap">
-										Organization
-									</DataTableHead>
-								)}
-								<DataTableHead className="w-0 whitespace-nowrap">
-									{primaryColumnLabel}
-								</DataTableHead>
-								{!hideSecondary && (
-									<DataTableHead>
-										{secondaryColumnLabel}
-									</DataTableHead>
-								)}
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
-							{visibleItems.map((item) => (
-								<DataTableRow
-									key={item.id}
-									className="group/row"
-									clickable={Boolean(onItemClick)}
-									href={getItemHref?.(item)}
-									onClick={() => onItemClick?.(item)}
-								>
-									<DataTableCell
-										className="w-0 whitespace-nowrap"
-										onClick={(event) =>
-											event.stopPropagation()
-										}
-									>
-										<Checkbox
-											checked={effectiveSelected.has(
-												item.id,
-											)}
-											onCheckedChange={() =>
-												toggleOne(item.id)
-											}
-											aria-label={`Select ${item.primary}`}
-										/>
-									</DataTableCell>
-									{showOrgColumn && (
-										<DataTableCell className="w-0 whitespace-nowrap text-sm">
-											<OrgBadge org={item.org ?? null} />
-										</DataTableCell>
-									)}
-									<DataTableCell className="w-0 whitespace-nowrap font-medium">
-										{item.primary}
-									</DataTableCell>
-									{!hideSecondary && (
-										<DataTableCell className="max-w-xs truncate text-muted-foreground">
-											{item.secondary ? (
-												<Tooltip>
-													<TooltipTrigger asChild>
-														<span className="block truncate">
-															{item.secondary}
-														</span>
-													</TooltipTrigger>
-													<TooltipContent>
-														{item.secondary}
-													</TooltipContent>
-												</Tooltip>
-											) : (
-												<span className="text-muted-foreground/60">
-													-
-												</span>
-											)}
-										</DataTableCell>
-									)}
-								</DataTableRow>
-							))}
-						</DataTableBody>
-						{pagination && (
-							<DataTableFooter>
+					{!desktop ? (
+						<>
+							<ConsumerCards
+								items={visibleItems}
+								selected={effectiveSelected}
+								label={consumerLabel}
+								allSelected={allVisibleSelected}
+								someSelected={someVisibleSelected}
+								pending={submitting}
+								hideSecondary={hideSecondary}
+								showOrg={showOrgColumn}
+								onToggle={toggleOne}
+								onToggleAll={toggleAll}
+								onItemClick={onItemClick}
+								getItemHref={getItemHref}
+							/>
+							{showPagination && pagination && (
+								<ListPagination {...pagination} />
+							)}
+						</>
+					) : (
+						<DataTable className="max-h-full">
+							<DataTableHeader>
 								<DataTableRow>
-									<DataTableCell
-										colSpan={
-											2 +
-											(showOrgColumn ? 1 : 0) +
-											(hideSecondary ? 0 : 1)
-										}
-										className="p-0"
-									>
-										<ListPagination {...pagination} />
-									</DataTableCell>
+									<DataTableHead className="w-0 whitespace-nowrap">
+										<Checkbox
+											checked={
+												allVisibleSelected
+													? true
+													: someVisibleSelected
+														? "indeterminate"
+														: false
+											}
+											disabled={submitting}
+											onCheckedChange={toggleAll}
+											aria-label={`Select all visible ${consumerLabel}`}
+										/>
+									</DataTableHead>
+									{showOrgColumn && (
+										<DataTableHead className="w-0 whitespace-nowrap">
+											Organization
+										</DataTableHead>
+									)}
+									<DataTableHead className="w-0 whitespace-nowrap">
+										{primaryColumnLabel}
+									</DataTableHead>
+									{!hideSecondary && (
+										<DataTableHead>
+											{secondaryColumnLabel}
+										</DataTableHead>
+									)}
 								</DataTableRow>
-							</DataTableFooter>
-						)}
-					</DataTable>
+							</DataTableHeader>
+							<DataTableBody>
+								{visibleItems.map((item) => (
+									<DataTableRow
+										key={item.id}
+										className="group/row"
+										clickable={Boolean(onItemClick)}
+										href={getItemHref?.(item)}
+										onClick={() => onItemClick?.(item)}
+									>
+										<DataTableCell
+											className="w-0 whitespace-nowrap"
+											onClick={(event) =>
+												event.stopPropagation()
+											}
+										>
+											<Checkbox
+												checked={effectiveSelected.has(
+													item.id,
+												)}
+												onCheckedChange={() =>
+													toggleOne(item.id)
+												}
+												disabled={submitting}
+												aria-label={`Select ${item.primary}`}
+											/>
+										</DataTableCell>
+										{showOrgColumn && (
+											<DataTableCell className="w-0 whitespace-nowrap text-sm">
+												<OrgBadge
+													org={item.org ?? null}
+												/>
+											</DataTableCell>
+										)}
+										<DataTableCell className="w-0 whitespace-nowrap font-medium">
+											{item.primary}
+										</DataTableCell>
+										{!hideSecondary && (
+											<DataTableCell className="max-w-xs truncate text-muted-foreground">
+												{item.secondary ? (
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<span className="block truncate">
+																{item.secondary}
+															</span>
+														</TooltipTrigger>
+														<TooltipContent>
+															{item.secondary}
+														</TooltipContent>
+													</Tooltip>
+												) : (
+													<span className="text-muted-foreground/60">
+														-
+													</span>
+												)}
+											</DataTableCell>
+										)}
+									</DataTableRow>
+								))}
+							</DataTableBody>
+							{showPagination && pagination && (
+								<DataTableFooter>
+									<DataTableRow>
+										<DataTableCell
+											colSpan={
+												2 +
+												(showOrgColumn ? 1 : 0) +
+												(hideSecondary ? 0 : 1)
+											}
+											className="p-0"
+										>
+											<ListPagination {...pagination} />
+										</DataTableCell>
+									</DataTableRow>
+								</DataTableFooter>
+							)}
+						</DataTable>
+					)}
 				</div>
+			)}
+			{showEmptyPagination && pagination && (
+				<ListPagination {...pagination} />
 			)}
 
 			{effectiveSelected.size > 0 && (
 				<div
 					role="region"
 					aria-label={`Selected ${consumerLabel}`}
-					className="sticky bottom-2 flex items-center gap-3 rounded-2xl bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
+					className="sticky bottom-2 grid grid-cols-[1fr_auto] items-center gap-3 sm:flex sm:flex-wrap rounded-[var(--bf-radius-surface)] bg-popover px-4 py-2 shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10"
 				>
-					<span className="text-sm font-medium">
+					{removeFailed && (
+						<p
+							role="alert"
+							className="order-0 col-span-2 w-full text-sm text-destructive [overflow-wrap:anywhere]"
+						>
+							{removeFailed}. Your selection is preserved. Try
+							again.
+						</p>
+					)}
+					<span className="order-1 text-sm font-medium">
 						{effectiveSelected.size} selected
 					</span>
 					<Button
 						variant="destructive"
+						className="order-3 col-span-2 min-h-11 w-full sm:order-2 sm:w-auto"
 						size="sm"
 						disabled={submitting}
 						onClick={handleUnassign}
@@ -336,7 +438,8 @@ export function ConsumerTab({
 					<Button
 						variant="ghost"
 						size="sm"
-						className="ml-auto"
+						className="order-2 ml-auto min-h-11 sm:order-3"
+						disabled={submitting}
 						onClick={() => setSelected(new Set())}
 						aria-label="Clear selection"
 					>
@@ -350,6 +453,7 @@ export function ConsumerTab({
 					assignedIds={new Set(items.map((i) => i.id))}
 					candidates={candidates}
 					candidatesLoading={candidatesLoading}
+					candidatesReadState={candidatesReadState}
 					consumerLabel={consumerLabel}
 					showOrgColumn={showOrgColumn}
 					onClose={() => setDrawerOpen(false)}
@@ -389,6 +493,7 @@ interface AssignDrawerProps {
 	assignedIds: Set<string>;
 	candidates: ConsumerTabItem[];
 	candidatesLoading: boolean;
+	candidatesReadState?: ConsumerReadState;
 	consumerLabel: string;
 	showOrgColumn?: boolean;
 	onClose: () => void;
@@ -399,11 +504,14 @@ function AssignDrawer({
 	assignedIds,
 	candidates,
 	candidatesLoading,
+	candidatesReadState,
 	consumerLabel,
 	showOrgColumn,
 	onClose,
 	onAssign,
 }: AssignDrawerProps) {
+	const returnFocus = useDialogReturnFocus();
+	const [failed, setFailed] = useState(false);
 	const [search, setSearch] = useState("");
 	const [showAssigned, setShowAssigned] = useState(false);
 	const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -432,6 +540,8 @@ function AssignDrawer({
 		});
 
 	const handleSubmit = async () => {
+		if (submitting) return;
+		setFailed(false);
 		const ids = Array.from(picked).filter((id) => !assignedIds.has(id));
 		if (ids.length === 0) {
 			toast.error("Select at least one item to assign");
@@ -443,6 +553,7 @@ function AssignDrawer({
 			toast.success(`Assigned ${ids.length} ${consumerLabel}`);
 			setPicked(new Set());
 		} catch (e) {
+			setFailed(true);
 			toast.error(
 				e instanceof Error
 					? e.message
@@ -454,10 +565,17 @@ function AssignDrawer({
 	};
 
 	return (
-		<Sheet open onOpenChange={(o) => !o && onClose()}>
+		<Sheet open onOpenChange={(o) => !o && !submitting && onClose()}>
 			<SheetContent
 				side="right"
-				className="w-[480px] sm:max-w-[480px] flex flex-col"
+				{...returnFocus}
+				onEscapeKeyDown={(event) => {
+					if (submitting) event.preventDefault();
+				}}
+				onInteractOutside={(event) => {
+					if (submitting) event.preventDefault();
+				}}
+				className="w-full sm:max-w-[480px] flex min-w-0 flex-col"
 			>
 				<SheetHeader>
 					<SheetTitle>Assign {consumerLabel}</SheetTitle>
@@ -468,13 +586,13 @@ function AssignDrawer({
 					</SheetDescription>
 				</SheetHeader>
 
-				<div className="px-6 pb-4 space-y-2">
+				<div className="px-4 sm:px-6 pb-4 space-y-2 [&_input]:min-h-11">
 					<SearchBox
 						value={search}
 						onChange={setSearch}
 						placeholder={`Search ${consumerLabel}...`}
 					/>
-					<label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+					<label className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground cursor-pointer">
 						<Checkbox
 							checked={showAssigned}
 							onCheckedChange={(v) => setShowAssigned(v === true)}
@@ -483,14 +601,20 @@ function AssignDrawer({
 					</label>
 				</div>
 
-				<div className="flex-1 overflow-y-auto px-6 pb-2">
+				<div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 pb-2">
+					<ConsumerReadError
+						hasRecords={candidates.length > 0}
+						state={candidatesReadState}
+						label={`Available ${consumerLabel}`}
+					/>
 					{candidatesLoading ? (
 						<div className="space-y-2 mt-2">
 							{[...Array(6)].map((_, i) => (
 								<Skeleton key={i} className="h-10 w-full" />
 							))}
 						</div>
-					) : filtered.length === 0 ? (
+					) : candidatesReadState?.isError &&
+					  candidates.length === 0 ? null : filtered.length === 0 ? (
 						<div className="text-sm text-muted-foreground py-8 text-center">
 							No {consumerLabel} available to assign.
 						</div>
@@ -502,18 +626,18 @@ function AssignDrawer({
 									<label
 										key={c.id}
 										className={
-											"flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent/30" +
+											"flex min-h-11 items-start gap-3 px-3 py-3 cursor-pointer hover:bg-accent/30" +
 											(isAssigned ? " opacity-60" : "")
 										}
 									>
 										<Checkbox
 											checked={picked.has(c.id)}
 											onCheckedChange={() => toggle(c.id)}
-											disabled={isAssigned}
+											disabled={isAssigned || submitting}
 											aria-label={`Pick ${c.primary}`}
 										/>
 										<div className="flex-1 min-w-0">
-											<div className="text-sm font-medium truncate">
+											<div className="text-sm font-medium [overflow-wrap:anywhere]">
 												{c.primary}
 												{isAssigned && (
 													<span className="ml-2 text-xs text-muted-foreground">
@@ -522,12 +646,12 @@ function AssignDrawer({
 												)}
 											</div>
 											{c.secondary && (
-												<div className="text-xs text-muted-foreground truncate">
+												<div className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
 													{c.secondary}
 												</div>
 											)}
 											{showOrgColumn && c.org && (
-												<div className="text-xs text-muted-foreground truncate">
+												<div className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
 													<OrgBadge org={c.org} />
 												</div>
 											)}
@@ -539,11 +663,26 @@ function AssignDrawer({
 					)}
 				</div>
 
+				{failed && (
+					<p
+						role="alert"
+						className="mx-4 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
+					>
+						Could not assign the selected items. Your selection is
+						preserved. Try again.
+					</p>
+				)}
 				<SheetFooter>
-					<Button variant="outline" onClick={onClose}>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						disabled={submitting}
+						onClick={onClose}
+					>
 						Close
 					</Button>
 					<Button
+						className="min-h-11"
 						disabled={submitting || picked.size === 0}
 						onClick={handleSubmit}
 					>

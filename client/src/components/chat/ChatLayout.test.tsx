@@ -74,12 +74,6 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 
 import { ChatLayout } from "./ChatLayout";
 
-function getSidebarShell(container: HTMLElement) {
-	return container
-		.querySelector('[data-marker="sidebar"]')
-		?.parentElement?.parentElement;
-}
-
 beforeEach(() => {
 	mediaQueryState.matches = true;
 	storeState.activeConversationId = null;
@@ -127,90 +121,41 @@ describe("ChatLayout — composition", () => {
 		expect(screen.getByText("c-1|DevBot")).toBeInTheDocument();
 	});
 
-	it("hides the sidebar when the close button is clicked", async () => {
-		storeState.activeConversationId = "c-1";
-		conversationRef.data = { title: "Title", agent_name: null };
-
-		const { user, container } = renderWithProviders(<ChatLayout />);
-
-		// The desktop close button is the PanelLeftClose icon — target by its
-		// sibling svg presence on the sidebar-close button (first absolute btn).
-		const buttons = container.querySelectorAll("button");
-		// The close-sidebar button sits inside the sidebar wrapper.
-		const closeBtn = Array.from(buttons).find(
-			(b) => b.className.includes("absolute") && b.className.includes("right-2"),
-		);
-		expect(closeBtn).toBeTruthy();
-		await user.click(closeBtn!);
-
-		// After closing, a PanelLeft toggle appears in the header to reopen.
-		const reopen = Array.from(container.querySelectorAll("button")).find(
-			(b) =>
-				b.className.includes("hidden lg:flex") &&
-				b.querySelector("svg"),
-		);
-		expect(reopen).toBeTruthy();
+	it("allows desktop artifacts navigation to be reopened", async () => {
+		const { user } = renderWithProviders(<ChatLayout view="artifacts" />);
+		await user.click(screen.getByRole("button", { name: "Close chat sidebar" }));
+		expect(screen.queryByRole("complementary", { name: "Chat navigation" })).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Open chat sidebar" }));
+		expect(screen.getByRole("complementary", { name: "Chat navigation" })).toBeInTheDocument();
 	});
 
-	it("keeps the sidebar out of the layout by default on mobile", () => {
+	it("keeps mobile navigation closed until requested", () => {
 		mediaQueryState.matches = false;
-
-		const { container } = renderWithProviders(<ChatLayout />);
-
-		const openSidebar = screen.getByRole("button", {
-			name: /open chat sidebar/i,
-		});
-		expect(openSidebar).toBeInTheDocument();
-		expect(openSidebar).toHaveClass("size-11");
-		const sidebarShell = getSidebarShell(container);
-		expect(sidebarShell?.className).toContain("w-0");
+		renderWithProviders(<ChatLayout />);
+		expect(screen.getByRole("button", { name: "Open chat sidebar" })).toBeInTheDocument();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 		expect(screen.getByText("no-convo|no-agent")).toBeInTheDocument();
 	});
 
-	it("keeps artifact navigation reachable on mobile", () => {
+	it("closes mobile navigation on selection and restores trigger focus", async () => {
 		mediaQueryState.matches = false;
-
-		const { container } = renderWithProviders(<ChatLayout view="artifacts" />);
-
-		expect(container.querySelector('[data-marker="artifacts-library"]')).not.toBeNull();
-		expect(
-			screen.getByRole("button", { name: /open chat sidebar/i }),
-		).toBeInTheDocument();
+		const { user } = renderWithProviders(<ChatLayout />);
+		const trigger = screen.getByRole("button", { name: "Open chat sidebar" });
+		await user.click(trigger);
+		expect(screen.getByRole("dialog", { name: "Chat navigation" })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Mock select conversation" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
 	});
 
-	it("closes the mobile sidebar after a conversation is selected", async () => {
+	it("supports Escape from mobile artifact navigation", async () => {
 		mediaQueryState.matches = false;
-		const { user, container } = renderWithProviders(<ChatLayout />);
-
-		await user.click(
-			screen.getByRole("button", { name: /open chat sidebar/i }),
-		);
-		expect(
-			getSidebarShell(container)?.className,
-		).not.toContain("w-0");
-
-		await user.click(
-			screen.getByRole("button", { name: /mock select conversation/i }),
-		);
-
-		expect(
-			getSidebarShell(container)?.className,
-		).toContain("w-0");
-	});
-
-	it("opens the mobile sidebar above the app header as an opaque drawer", async () => {
-		mediaQueryState.matches = false;
-		const { user, container } = renderWithProviders(<ChatLayout />);
-
-		await user.click(
-			screen.getByRole("button", { name: /open chat sidebar/i }),
-		);
-
-		const sidebarShell = getSidebarShell(container);
-		expect(sidebarShell?.className).toContain("z-50");
-		expect(sidebarShell?.className).toContain("fixed");
-		expect(sidebarShell?.className).toContain("bg-background");
-		expect(sidebarShell?.style.width).toBe("20rem");
-		expect(sidebarShell?.style.maxWidth).toBe("calc(100vw - 2rem)");
+		const { user } = renderWithProviders(<ChatLayout view="artifacts" />);
+		const trigger = screen.getByRole("button", { name: "Open chat sidebar" });
+		await user.click(trigger);
+		expect(screen.getByRole("dialog", { name: "Chat navigation" })).toBeInTheDocument();
+		await user.keyboard("{Escape}");
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
 	});
 });

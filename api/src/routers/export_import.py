@@ -394,6 +394,7 @@ async def _build_integrations_export(
 
         items.append(IntegrationExportItem(
             name=integ.name,
+            description=integ.description,
             entity_id=integ.entity_id,
             entity_id_name=integ.entity_id_name,
             default_entity_id=integ.default_entity_id,
@@ -843,6 +844,7 @@ async def import_integrations(
                     continue
 
                 # Update basic fields
+                existing.description = item.description
                 existing.entity_id = item.entity_id
                 existing.entity_id_name = item.entity_id_name
                 existing.default_entity_id = item.default_entity_id
@@ -867,6 +869,7 @@ async def import_integrations(
                 # Create new integration
                 integ = Integration(
                     name=item.name,
+                    description=item.description,
                     entity_id=item.entity_id,
                     entity_id_name=item.entity_id_name,
                     default_entity_id=item.default_entity_id,

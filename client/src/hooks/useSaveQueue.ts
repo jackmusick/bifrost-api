@@ -8,6 +8,7 @@ import type { ConflictReason, FileDiagnostic } from "@/stores/editorStore";
 import { toast } from "sonner";
 
 interface SaveQueueEntry {
+	onError?: (() => void) | undefined;
 	filePath: string;
 	content: string;
 	encoding: "utf-8" | "base64";
@@ -38,7 +39,11 @@ interface SaveQueueEntry {
  * Uses 1-second debounce (Google Docs/VS Code style) and
  * processes saves sequentially to prevent conflicts.
  */
-export function useSaveQueue() {
+const alwaysSave = () => true;
+
+export function useSaveQueue(
+	shouldSave: (filePath: string) => boolean = alwaysSave,
+) {
 	const saveQueueRef = useRef<Map<string, SaveQueueEntry>>(new Map());
 	const savingRef = useRef(false);
 
@@ -72,8 +77,7 @@ export function useSaveQueue() {
 					contentModified: response.content_modified ?? false,
 					needsIndexing: response.needs_indexing ?? false,
 					diagnostics: response.diagnostics as
-						| FileDiagnostic[]
-						| undefined,
+						FileDiagnostic[] | undefined,
 				};
 			} catch (error) {
 				// Handle conflict errors specially
@@ -82,7 +86,11 @@ export function useSaveQueue() {
 						`[SaveQueue] Conflict detected for ${entry.filePath}:`,
 						error.conflictData.reason,
 					);
-					if (entry.onConflict) {
+					if (
+						entry.onConflict &&
+						shouldSave(entry.filePath) &&
+						saveQueueRef.current.get(entry.filePath) === entry
+					) {
 						// Pass full conflict data for deactivation conflicts
 						entry.onConflict(
 							error.conflictData.reason as ConflictReason,
@@ -96,14 +104,19 @@ export function useSaveQueue() {
 					`[SaveQueue] Failed to save ${entry.filePath}:`,
 					error,
 				);
+				if (
+					shouldSave(entry.filePath) &&
+					saveQueueRef.current.get(entry.filePath) === entry
+				)
+					entry.onError?.();
 				toast.error("Failed to save file", {
-					description:
-						error instanceof Error ? error.message : String(error),
+					id: `file-save-error:${entry.filePath}`,
+					description: `${entry.filePath}: ${error instanceof Error ? error.message : String(error)}`,
 				});
 				return { success: false };
 			}
 		},
-		[],
+		[shouldSave],
 	);
 
 	/**
@@ -120,17 +133,39 @@ export function useSaveQueue() {
 				// Skip if still debouncing
 				if (entry.debounceTimer) continue;
 
+				// Discard queued edits whose editor tab has been closed.
+				if (!shouldSave(entry.filePath)) {
+					queue.delete(entry.filePath);
+					continue;
+				}
+
 				// Mark as saving
 				savingRef.current = true;
 
 				// Execute save
 				const result = await executeSave(entry);
+				const current = queue.get(entry.filePath);
+				if (
+					result.success &&
+					result.etag &&
+					current &&
+					current !== entry &&
+					current.currentEtag === entry.currentEtag
+				) {
+					current.currentEtag = result.etag;
+				}
 
 				// Call completion callback if provided
 				// If content was modified (e.g., IDs injected), pass new content
 				// Also pass needsIndexing flag for deferred indexing flow
 				// Pass diagnostics (syntax errors, etc.) for editor display
-				if (result.success && entry.onComplete && result.etag) {
+				if (
+					result.success &&
+					current === entry &&
+					entry.onComplete &&
+					result.etag &&
+					shouldSave(entry.filePath)
+				) {
 					entry.onComplete(
 						result.etag,
 						result.contentModified ? result.content : undefined,
@@ -139,10 +174,9 @@ export function useSaveQueue() {
 					);
 				}
 
-				// Remove from queue after processing (success or failure)
-				// For failures, the onConflict callback has already been called
-				// and the user will need to manually resolve the conflict
-				queue.delete(entry.filePath);
+				// A newer edit may have replaced this entry while the request was in flight.
+				if (queue.get(entry.filePath) === entry)
+					queue.delete(entry.filePath);
 
 				savingRef.current = false;
 
@@ -153,7 +187,7 @@ export function useSaveQueue() {
 				break;
 			}
 		},
-		[executeSave],
+		[executeSave, shouldSave],
 	);
 
 	/**
@@ -182,6 +216,7 @@ export function useSaveQueue() {
 				conflictData?: FileConflictResponse,
 			) => void,
 			index: boolean = false,
+			onError?: () => void,
 		) => {
 			const queue = saveQueueRef.current;
 			const existing = queue.get(filePath);
@@ -201,6 +236,7 @@ export function useSaveQueue() {
 				timestamp: Date.now(),
 				onComplete,
 				onConflict,
+				onError,
 				debounceTimer: setTimeout(() => {
 					// Clear timer and process queue
 					const currentEntry = queue.get(filePath);

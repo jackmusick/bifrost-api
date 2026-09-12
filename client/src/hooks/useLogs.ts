@@ -4,6 +4,7 @@
  */
 
 import { $api } from "@/lib/api-client";
+import { sameQueryParamsExcept } from "@/lib/paginated-query";
 import type { components } from "@/lib/v1";
 
 // Re-export types for convenience
@@ -11,6 +12,8 @@ export type LogListEntry = components["schemas"]["LogListEntry"];
 export type LogsListResponse = components["schemas"]["LogsListResponse"];
 
 export interface LogFilters {
+	workflow_id?: string;
+	global_only?: boolean;
 	organization_id?: string;
 	workflow_name?: string;
 	levels?: string; // Comma-separated: "ERROR,WARNING"
@@ -30,8 +33,11 @@ export function useLogs(
 	filters?: LogFilters,
 	continuationToken?: string,
 	enabled: boolean = true,
+	options: { preservePageData?: boolean } = {},
 ) {
-	const queryParams: Record<string, string | number> = {};
+	const queryParams: Record<string, string | number | boolean> = {};
+	if (filters?.global_only) queryParams.global_only = true;
+	if (filters?.workflow_id) queryParams.workflow_id = filters.workflow_id;
 
 	if (filters?.organization_id) {
 		queryParams["organization_id"] = filters.organization_id;
@@ -62,6 +68,16 @@ export function useLogs(
 		"get",
 		"/api/executions/logs",
 		{ params: { query: queryParams } },
-		{ enabled },
+		{
+			enabled,
+			placeholderData: options.preservePageData
+				? (previousData, previousQuery) =>
+						sameQueryParamsExcept(queryParams, previousQuery, [
+							"continuation_token",
+						])
+							? previousData
+							: undefined
+				: undefined,
+		},
 	);
 }

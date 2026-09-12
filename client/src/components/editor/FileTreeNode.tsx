@@ -22,6 +22,7 @@ import {
 import type { FileTreeNode as FileTreeNodeType } from "@/hooks/useFileTree";
 import type { FileMetadata } from "@/services/fileService";
 import type { CreatingItemType } from "@/hooks/useFileTreeActions";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileTreeContextMenu } from "./FileTreeContextMenu";
 
@@ -32,10 +33,10 @@ const ENTITY_TYPE_ICONS: Record<
 	string,
 	{ icon: LucideIcon; className: string }
 > = {
-	workflow: { icon: Workflow, className: "text-blue-500" },
-	form: { icon: FileText, className: "text-green-500" },
-	app: { icon: AppWindow, className: "text-purple-500" },
-	agent: { icon: Bot, className: "text-orange-500" },
+	workflow: { icon: Workflow, className: "text-muted-foreground" },
+	form: { icon: FileText, className: "text-muted-foreground" },
+	app: { icon: AppWindow, className: "text-muted-foreground" },
+	agent: { icon: Bot, className: "text-muted-foreground" },
 };
 
 /**
@@ -44,44 +45,44 @@ const ENTITY_TYPE_ICONS: Record<
 const EXTENSION_ICONS: Record<string, { icon: LucideIcon; className: string }> =
 	{
 		// Code files
-		py: { icon: FileCode, className: "text-yellow-500" },
-		js: { icon: Braces, className: "text-yellow-400" },
-		jsx: { icon: Braces, className: "text-cyan-400" },
-		ts: { icon: Braces, className: "text-blue-400" },
-		tsx: { icon: Braces, className: "text-blue-400" },
-		html: { icon: FileCode, className: "text-orange-500" },
-		css: { icon: FileCode, className: "text-blue-500" },
-		scss: { icon: FileCode, className: "text-pink-400" },
+		py: { icon: FileCode, className: "text-muted-foreground" },
+		js: { icon: Braces, className: "text-muted-foreground" },
+		jsx: { icon: Braces, className: "text-muted-foreground" },
+		ts: { icon: Braces, className: "text-muted-foreground" },
+		tsx: { icon: Braces, className: "text-muted-foreground" },
+		html: { icon: FileCode, className: "text-muted-foreground" },
+		css: { icon: FileCode, className: "text-muted-foreground" },
+		scss: { icon: FileCode, className: "text-muted-foreground" },
 		// Data files
-		json: { icon: FileJson, className: "text-yellow-500" },
-		yaml: { icon: FileJson, className: "text-red-400" },
-		yml: { icon: FileJson, className: "text-red-400" },
-		xml: { icon: FileCode, className: "text-orange-400" },
-		csv: { icon: FileSpreadsheet, className: "text-green-500" },
+		json: { icon: FileJson, className: "text-muted-foreground" },
+		yaml: { icon: FileJson, className: "text-muted-foreground" },
+		yml: { icon: FileJson, className: "text-muted-foreground" },
+		xml: { icon: FileCode, className: "text-muted-foreground" },
+		csv: { icon: FileSpreadsheet, className: "text-muted-foreground" },
 		// Text/Docs
-		txt: { icon: FileType, className: "text-gray-400" },
-		md: { icon: FileText, className: "text-gray-500" },
+		txt: { icon: FileType, className: "text-muted-foreground" },
+		md: { icon: FileText, className: "text-muted-foreground" },
 		// Shell/Terminal
-		sh: { icon: FileTerminal, className: "text-green-400" },
-		bash: { icon: FileTerminal, className: "text-green-400" },
-		zsh: { icon: FileTerminal, className: "text-green-400" },
+		sh: { icon: FileTerminal, className: "text-muted-foreground" },
+		bash: { icon: FileTerminal, className: "text-muted-foreground" },
+		zsh: { icon: FileTerminal, className: "text-muted-foreground" },
 		// Images
-		png: { icon: FileImage, className: "text-purple-400" },
-		jpg: { icon: FileImage, className: "text-purple-400" },
-		jpeg: { icon: FileImage, className: "text-purple-400" },
-		gif: { icon: FileImage, className: "text-purple-400" },
-		svg: { icon: FileImage, className: "text-orange-400" },
-		webp: { icon: FileImage, className: "text-purple-400" },
-		ico: { icon: FileImage, className: "text-purple-400" },
+		png: { icon: FileImage, className: "text-muted-foreground" },
+		jpg: { icon: FileImage, className: "text-muted-foreground" },
+		jpeg: { icon: FileImage, className: "text-muted-foreground" },
+		gif: { icon: FileImage, className: "text-muted-foreground" },
+		svg: { icon: FileImage, className: "text-muted-foreground" },
+		webp: { icon: FileImage, className: "text-muted-foreground" },
+		ico: { icon: FileImage, className: "text-muted-foreground" },
 		// Archives
-		zip: { icon: FileArchive, className: "text-amber-500" },
-		tar: { icon: FileArchive, className: "text-amber-500" },
-		gz: { icon: FileArchive, className: "text-amber-500" },
+		zip: { icon: FileArchive, className: "text-muted-foreground" },
+		tar: { icon: FileArchive, className: "text-muted-foreground" },
+		gz: { icon: FileArchive, className: "text-muted-foreground" },
 		// Config
-		toml: { icon: Settings, className: "text-gray-400" },
-		ini: { icon: Settings, className: "text-gray-400" },
-		env: { icon: Settings, className: "text-yellow-600" },
-		gitignore: { icon: Settings, className: "text-gray-500" },
+		toml: { icon: Settings, className: "text-muted-foreground" },
+		ini: { icon: Settings, className: "text-muted-foreground" },
+		env: { icon: Settings, className: "text-muted-foreground" },
+		gitignore: { icon: Settings, className: "text-muted-foreground" },
 	};
 
 /**
@@ -183,13 +184,13 @@ export function FileTreeNode({
 			{isRenaming ? (
 				// Inline rename editor
 				<div
-					className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50"
-					style={{ paddingLeft: `${level * 12 + 8}px` }}
+					className="flex items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 bg-muted/50"
+					style={{ paddingLeft: `min(${level * 12 + 8}px, 25%)` }}
 				>
 					{isFolder ? (
 						<>
 							{isLoadingContents ? (
-								<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+								<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-muted-foreground" />
 							) : isExpanded ? (
 								<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 							) : (
@@ -205,7 +206,7 @@ export function FileTreeNode({
 							);
 							return (
 								<>
-									<div className="w-4" />
+									<div className="w-4 shrink-0" />
 									<FileIcon
 										className={cn(
 											"h-4 w-4 flex-shrink-0",
@@ -216,7 +217,8 @@ export function FileTreeNode({
 							);
 						})()
 					)}
-					<input
+					<Input
+						aria-label={`Rename ${file.name}`}
 						ref={renameInputRef}
 						type="text"
 						value={renameValue}
@@ -224,7 +226,7 @@ export function FileTreeNode({
 						onKeyDown={handleRenameKeyDown}
 						onMouseDown={handleRenameInputMouseDown}
 						disabled={isProcessing}
-						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+						className="min-w-0 min-h-11 flex-1 text-base sm:text-sm"
 					/>
 				</div>
 			) : (
@@ -237,6 +239,9 @@ export function FileTreeNode({
 					onDelete={onDelete}
 				>
 					<button
+						type="button"
+						aria-expanded={isFolder ? isExpanded : undefined}
+						aria-pressed={!isFolder ? isSelected : undefined}
 						draggable
 						onClick={() => {
 							if (isFolder) {
@@ -260,21 +265,21 @@ export function FileTreeNode({
 							}
 						}}
 						className={cn(
-							"flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors outline-none",
+							"flex min-h-11 min-w-0 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 text-left text-sm transition-colors motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 							isSelected && !isDragOver
 								? "bg-accent text-accent-foreground"
 								: "",
 							!isDragOver && !isSelected ? "hover:bg-muted" : "",
 							isDragOver &&
 								isFolder &&
-								"bg-primary/30 border-2 border-primary",
+								"bg-primary/10 ring-2 ring-inset ring-primary",
 						)}
-						style={{ paddingLeft: `${level * 12 + 8}px` }}
+						style={{ paddingLeft: `min(${level * 12 + 8}px, 25%)` }}
 					>
 						{isFolder && (
 							<>
 								{isLoadingContents ? (
-									<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-muted-foreground" />
+									<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-muted-foreground" />
 								) : isExpanded ? (
 									<ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 								) : (
@@ -285,13 +290,14 @@ export function FileTreeNode({
 						)}
 						{!isFolder &&
 							(() => {
-								const { icon: FileIcon, className } = getFileIcon(
-									file.entity_type,
-									file.extension,
-								);
+								const { icon: FileIcon, className } =
+									getFileIcon(
+										file.entity_type,
+										file.extension,
+									);
 								return (
 									<>
-										<div className="w-4" />
+										<div className="w-4 shrink-0" />
 										<FileIcon
 											className={cn(
 												"h-4 w-4 flex-shrink-0",
@@ -301,7 +307,9 @@ export function FileTreeNode({
 									</>
 								);
 							})()}
-						<span className="flex-1 truncate">{file.name}</span>
+						<span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+							{file.name}
+						</span>
 					</button>
 				</FileTreeContextMenu>
 			)}
@@ -309,18 +317,25 @@ export function FileTreeNode({
 			{/* Inline new item editor (shown when creating in this folder) */}
 			{creatingItem && creatingInFolder === file.path && (
 				<div
-					className="flex items-center gap-2 rounded-md px-2 py-1 bg-muted/50 mt-1"
-					style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+					className="flex items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-1 bg-muted/50 mt-1"
+					style={{
+						paddingLeft: `min(${(level + 1) * 12 + 8}px, 25%)`,
+					}}
 				>
-					<div className="w-4" />
+					<div className="w-4 shrink-0" />
 					{isProcessing ? (
-						<Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+						<Loader2 className="h-4 w-4 flex-shrink-0 motion-safe:animate-spin text-primary" />
 					) : creatingItem === "folder" ? (
 						<Folder className="h-4 w-4 flex-shrink-0 text-primary" />
 					) : (
 						<File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 					)}
-					<input
+					<Input
+						aria-label={
+							creatingItem === "folder"
+								? "Folder name"
+								: "File name"
+						}
 						ref={inputRef}
 						type="text"
 						value={newItemName}
@@ -333,7 +348,7 @@ export function FileTreeNode({
 								: "File name"
 						}
 						disabled={isProcessing}
-						className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+						className="min-w-0 min-h-11 flex-1 text-base sm:text-sm"
 					/>
 				</div>
 			)}

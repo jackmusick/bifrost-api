@@ -146,6 +146,8 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
+      # Browser-facing callbacks use the Playwright loopback client proxy.
+      BIFROST_PUBLIC_URL: http://localhost:3000
       # The full E2E suite intentionally reuses session-scoped users. Keep its
       # access tokens valid for the longest supported local/CI run.
       BIFROST_ACCESS_TOKEN_EXPIRE_MINUTES: "120"
@@ -434,6 +436,10 @@ services:
   # complete Vitest suite against the same source snapshot.
   client-check-runner:
     image: bifrost-test-client-check:latest
+    environment:
+      # Respect Vitest's worker override on shared development hosts while
+      # retaining the configured default when no override is supplied.
+      VITEST_MAX_WORKERS: ${VITEST_MAX_WORKERS:-}
     build:
       context: ./client
       dockerfile: Dockerfile

@@ -1,6 +1,8 @@
+import { useId } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RotateCcw, CheckCircle2 } from "lucide-react";
@@ -23,14 +25,19 @@ export function ConfigFieldInput({
 	onReset,
 	hasOverride,
 }: ConfigFieldInputProps) {
+	const inputId = useId();
+	const descriptionId = `${inputId}-description`;
 	// Secrets should never be displayed - only allow setting new values
 	if (field.type === "secret") {
 		const hasSecretValue = Boolean(value);
 
 		return (
 			<div className="space-y-2">
-				<div className="flex items-center justify-between">
-					<Label className="flex items-center gap-2">
+				<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+					<Label
+						htmlFor={inputId}
+						className="min-h-11 flex min-w-0 flex-wrap items-center gap-2 [overflow-wrap:anywhere]"
+					>
 						{field.key}
 						{field.required && (
 							<span className="text-destructive">*</span>
@@ -51,7 +58,7 @@ export function ConfigFieldInput({
 							variant="ghost"
 							size="sm"
 							onClick={onReset}
-							className="h-6 px-2 text-muted-foreground hover:text-foreground"
+							className="min-h-11 px-3 text-muted-foreground hover:text-foreground"
 							title="Reset to integration default"
 						>
 							<RotateCcw className="h-3 w-3 mr-1" />
@@ -60,12 +67,21 @@ export function ConfigFieldInput({
 					)}
 				</div>
 				{field.description && (
-					<p className="text-sm text-muted-foreground">
+					<p
+						id={descriptionId}
+						className="text-sm text-muted-foreground [overflow-wrap:anywhere]"
+					>
 						{field.description}
 					</p>
 				)}
 				<Input
+					id={inputId}
+					aria-describedby={
+						field.description ? descriptionId : undefined
+					}
+					className="min-h-11"
 					type="password"
+					autoComplete="new-password"
 					value={(value as string) || ""}
 					onChange={(e) => onChange(e.target.value)}
 					placeholder={
@@ -90,7 +106,11 @@ export function ConfigFieldInput({
 		switch (field.type) {
 			case "bool":
 				return (
-					<Checkbox
+					<Switch
+						id={inputId}
+						aria-describedby={
+							field.description ? descriptionId : undefined
+						}
 						checked={Boolean(value)}
 						onCheckedChange={(checked) => onChange(checked)}
 					/>
@@ -99,6 +119,11 @@ export function ConfigFieldInput({
 			case "int":
 				return (
 					<Input
+						id={inputId}
+						aria-describedby={
+							field.description ? descriptionId : undefined
+						}
+						className="min-h-11"
 						type="number"
 						value={
 							value !== undefined && value !== null
@@ -117,7 +142,12 @@ export function ConfigFieldInput({
 
 			case "json":
 				return (
-					<textarea
+					<Textarea
+						id={inputId}
+						aria-describedby={
+							field.description ? descriptionId : undefined
+						}
+						spellCheck={false}
 						value={
 							value === undefined || value === null
 								? ""
@@ -139,7 +169,7 @@ export function ConfigFieldInput({
 							}
 						}}
 						placeholder={field.description || field.key}
-						className="flex min-h-[80px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+						className="min-h-32 max-h-64 resize-y font-mono [field-sizing:fixed] motion-reduce:transition-none"
 					/>
 				);
 
@@ -147,6 +177,11 @@ export function ConfigFieldInput({
 			default:
 				return (
 					<Input
+						id={inputId}
+						aria-describedby={
+							field.description ? descriptionId : undefined
+						}
+						className="min-h-11"
 						type="text"
 						value={(value as string) ?? ""}
 						onChange={(e) => {
@@ -161,8 +196,11 @@ export function ConfigFieldInput({
 
 	return (
 		<div className="space-y-2">
-			<div className="flex items-center justify-between">
-				<Label className="flex items-center gap-1">
+			<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+				<Label
+					htmlFor={inputId}
+					className="min-h-11 flex min-w-0 flex-wrap items-center gap-1 [overflow-wrap:anywhere]"
+				>
 					{field.key}
 					{field.required && (
 						<span className="text-destructive">*</span>
@@ -174,7 +212,7 @@ export function ConfigFieldInput({
 						variant="ghost"
 						size="sm"
 						onClick={onReset}
-						className="h-6 px-2 text-muted-foreground hover:text-foreground"
+						className="min-h-11 px-3 text-muted-foreground hover:text-foreground"
 						title="Reset to integration default"
 					>
 						<RotateCcw className="h-3 w-3 mr-1" />
@@ -183,7 +221,10 @@ export function ConfigFieldInput({
 				)}
 			</div>
 			{field.description && (
-				<p className="text-sm text-muted-foreground">
+				<p
+					id={descriptionId}
+					className="text-sm text-muted-foreground [overflow-wrap:anywhere]"
+				>
 					{field.description}
 				</p>
 			)}

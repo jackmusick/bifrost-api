@@ -35,6 +35,11 @@ describe("TableFilterSidebar", () => {
 		expect(
 			screen.queryByRole("button", { name: /apply filters/i }),
 		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: /collapse query filters/i,
+			}),
+		).toHaveAttribute("aria-expanded", "true");
 	});
 
 	it("adds a condition row on Add Filter", async () => {
@@ -43,6 +48,9 @@ describe("TableFilterSidebar", () => {
 		await user.click(screen.getByRole("button", { name: /add filter/i }));
 
 		expect(screen.getByPlaceholderText(/field/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /remove filter 1/i }),
+		).toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: /apply filters/i }),
 		).toBeInTheDocument();
@@ -60,12 +68,31 @@ describe("TableFilterSidebar", () => {
 		expect(onApplyFilters).toHaveBeenCalledWith({ status: "open" });
 	});
 
+	it("defaults boolean operators to true when the value is not set", async () => {
+		const { user, onApplyFilters } = renderSidebar();
+
+		await user.click(screen.getByRole("button", { name: /add filter/i }));
+		await user.type(screen.getByLabelText(/filter field 1/i), "deleted");
+		await user.click(
+			screen.getByRole("combobox", { name: /filter operator 1/i }),
+		);
+		await user.click(screen.getByRole("option", { name: /is null/i }));
+
+		await user.click(screen.getByRole("button", { name: /apply filters/i }));
+
+		expect(onApplyFilters).toHaveBeenCalledWith({
+			deleted: { is_null: true },
+		});
+	});
+
 	it("shows the Clear button when hasActiveFilters and fires onClearFilters", async () => {
 		const { user, onClearFilters } = renderSidebar({
 			hasActiveFilters: true,
 		});
 
-		await user.click(screen.getByRole("button", { name: /^clear$/i }));
+		await user.click(
+			screen.getByRole("button", { name: /clear filters/i }),
+		);
 
 		expect(onClearFilters).toHaveBeenCalled();
 	});
@@ -74,7 +101,7 @@ describe("TableFilterSidebar", () => {
 		const onClose = vi.fn();
 		const { user } = renderSidebar({ onClose });
 
-		await user.click(screen.getByRole("button", { name: /hide filters/i }));
+		await user.click(screen.getByRole("button", { name: /close filters/i }));
 
 		expect(onClose).toHaveBeenCalled();
 	});

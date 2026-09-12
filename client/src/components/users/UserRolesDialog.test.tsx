@@ -1,13 +1,5 @@
 /**
  * Component tests for UserRolesDialog.
- *
- * Covers:
- * - superuser shows the "Cannot Modify" notice
- * - regular user shows role checkboxes
- * - pre-check state matches userRoles
- * - toggling an unchecked box calls assignUsersToRole
- * - toggling a checked box calls removeUserFromRole
- * - empty state when no roles exist
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -17,6 +9,8 @@ const mockUserRoles = vi.fn();
 const mockRoles = vi.fn();
 const mockAssignMutate = vi.fn();
 const mockRemoveMutate = vi.fn();
+const mockRefetchUserRoles = vi.fn();
+const mockRefetchRoles = vi.fn();
 
 vi.mock("@/hooks/useUsers", () => ({
 	useUserRoles: () => mockUserRoles(),
@@ -38,6 +32,14 @@ import { UserRolesDialog } from "./UserRolesDialog";
 
 type User = Parameters<typeof UserRolesDialog>[0]["user"];
 
+type QueryState<T> = {
+	data: T | undefined;
+	isLoading: boolean;
+	isError: boolean;
+	error?: unknown;
+	refetch: () => Promise<unknown>;
+};
+
 function makeUser(overrides: Partial<NonNullable<User>> = {}): NonNullable<User> {
 	return {
 		id: "u-1",
@@ -53,19 +55,64 @@ function makeUser(overrides: Partial<NonNullable<User>> = {}): NonNullable<User>
 	} as NonNullable<User>;
 }
 
+const userRolesState: QueryState<{ role_ids: string[] }> = {
+	data: { role_ids: [] },
+	isLoading: false,
+	isError: false,
+	refetch: mockRefetchUserRoles,
+};
+
+const rolesState: QueryState<Array<{ id: string; name: string; description: string | null }>> = {
+	data: [],
+	isLoading: false,
+	isError: false,
+	refetch: mockRefetchRoles,
+};
+
+function setUserRolesState(overrides: Partial<QueryState<{ role_ids: string[] }>>) {
+	Object.assign(userRolesState, overrides);
+}
+
+function setRolesState(
+	overrides: Partial<QueryState<Array<{ id: string; name: string; description: string | null }>>>,
+) {
+	Object.assign(rolesState, overrides);
+}
+
+function setLoadedData(roleIds: string[], roles: Array<{ id: string; name: string; description: string | null }>) {
+	setUserRolesState({
+		data: { role_ids: roleIds },
+		isLoading: false,
+		isError: false,
+		error: undefined,
+	});
+	setRolesState({
+		data: roles,
+		isLoading: false,
+		isError: false,
+		error: undefined,
+	});
+}
+
 beforeEach(() => {
 	mockUserRoles.mockReset();
+	mockUserRoles.mockImplementation(() => userRolesState);
 	mockRoles.mockReset();
+	mockRoles.mockImplementation(() => rolesState);
 	mockAssignMutate.mockReset();
 	mockAssignMutate.mockResolvedValue({});
 	mockRemoveMutate.mockReset();
 	mockRemoveMutate.mockResolvedValue({});
+	mockRefetchUserRoles.mockReset();
+	mockRefetchUserRoles.mockResolvedValue({});
+	mockRefetchRoles.mockReset();
+	mockRefetchRoles.mockResolvedValue({});
+	setLoadedData([], []);
 });
 
 describe("UserRolesDialog", () => {
 	it("shows the superuser notice for superusers", () => {
-		mockUserRoles.mockReturnValue({ data: { role_ids: [] }, isLoading: false });
-		mockRoles.mockReturnValue({ data: [], isLoading: false });
+		setLoadedData([], []);
 
 		renderWithProviders(
 			<UserRolesDialog
@@ -75,43 +122,100 @@ describe("UserRolesDialog", () => {
 			/>,
 		);
 
-		expect(
-			screen.getByText(/cannot modify superuser roles/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/cannot modify superuser roles/i)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /close dialog/i })).toBeInTheDocument();
 	});
 
-	it("renders role checkboxes with the correct pre-check state", () => {
-		mockUserRoles.mockReturnValue({
-			data: { role_ids: ["r-1"] },
-			isLoading: false,
+	it("hydrates checked state after the roles query settles", async () => {
+		setUserRolesState({
+			data: undefined,
+			isLoading: true,
+			isError: false,
+			error: undefined,
 		});
-		mockRoles.mockReturnValue({
+		setRolesState({
 			data: [
 				{ id: "r-1", name: "Admin", description: "Admin role" },
 				{ id: "r-2", name: "Viewer", description: "Viewer role" },
 			],
 			isLoading: false,
+			isError: false,
+			error: undefined,
 		});
-
-		renderWithProviders(
+		const { rerender } = renderWithProviders(
 			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
 		);
 
-		const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
-		const viewerCheckbox = screen.getByRole("checkbox", { name: /viewer/i });
-		expect(adminCheckbox).toBeChecked();
-		expect(viewerCheckbox).not.toBeChecked();
+		setLoadedData(["r-1"], [
+			{ id: "r-1", name: "Admin", description: "Admin role" },
+			{ id: "r-2", name: "Viewer", description: "Viewer role" },
+		]);
+		rerender(<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />);
+
+		expect(screen.getByRole("checkbox", { name: /admin/i })).toBeChecked();
+		expect(screen.getByRole("checkbox", { name: /viewer/i })).not.toBeChecked();
+	});
+
+	it("preserves local edits while the role queries refetch", async () => {
+		setLoadedData(["r-1"], [{ id: "r-1", name: "Admin", description: "Admin role" }]);
+
+		const { user, rerender } = renderWithProviders(
+			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
+		);
+
+		await user.click(screen.getByRole("checkbox", { name: /admin/i }));
+		await waitFor(() => expect(mockRemoveMutate).toHaveBeenCalled());
+
+		rerender(<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />);
+
+		expect(screen.getByRole("checkbox", { name: /admin/i })).not.toBeChecked();
+	});
+
+	it("resets the selection when a different user opens the dialog", () => {
+		setLoadedData(["r-1"], [{ id: "r-1", name: "Admin", description: "Admin role" }]);
+
+		const { rerender } = renderWithProviders(
+			<UserRolesDialog user={makeUser({ id: "u-1" })} open={true} onClose={vi.fn()} />,
+		);
+
+		expect(screen.getByRole("checkbox", { name: /admin/i })).toBeChecked();
+
+		setLoadedData([], [{ id: "r-1", name: "Admin", description: "Admin role" }]);
+		rerender(
+			<UserRolesDialog user={makeUser({ id: "u-2", name: "Bob" })} open={true} onClose={vi.fn()} />,
+		);
+
+		expect(screen.getByRole("checkbox", { name: /admin/i })).not.toBeChecked();
+	});
+
+	it("shows query errors with a retry action instead of the empty state", async () => {
+		setUserRolesState({
+			data: undefined,
+			isLoading: false,
+			isError: true,
+			error: new Error("roles unavailable"),
+		});
+		setRolesState({
+			data: undefined,
+			isLoading: false,
+			isError: false,
+			error: undefined,
+		});
+
+		const { user } = renderWithProviders(
+			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
+		);
+
+		expect(screen.getByRole("alert")).toHaveTextContent(/could not load roles/i);
+		expect(screen.queryByText(/no roles available/i)).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /retry/i }));
+		expect(mockRefetchUserRoles).toHaveBeenCalled();
+		expect(mockRefetchRoles).toHaveBeenCalled();
 	});
 
 	it("calls assignUsersToRole when toggling an unchecked role", async () => {
-		mockUserRoles.mockReturnValue({
-			data: { role_ids: [] },
-			isLoading: false,
-		});
-		mockRoles.mockReturnValue({
-			data: [{ id: "r-1", name: "Admin", description: null }],
-			isLoading: false,
-		});
+		setLoadedData([], [{ id: "r-1", name: "Admin", description: null }]);
 
 		const { user } = renderWithProviders(
 			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
@@ -126,15 +230,23 @@ describe("UserRolesDialog", () => {
 		});
 	});
 
+	it("blocks duplicate toggles while a mutation is pending", async () => {
+		setLoadedData([], [{ id: "r-1", name: "Admin", description: null }]);
+		mockAssignMutate.mockImplementationOnce(() => new Promise(() => {}));
+
+		const { user } = renderWithProviders(
+			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
+		);
+
+		const checkbox = screen.getByRole("checkbox", { name: /admin/i });
+		await user.click(checkbox);
+		await user.click(checkbox);
+
+		expect(mockAssignMutate).toHaveBeenCalledTimes(1);
+	});
+
 	it("calls removeUserFromRole when unchecking an assigned role", async () => {
-		mockUserRoles.mockReturnValue({
-			data: { role_ids: ["r-1"] },
-			isLoading: false,
-		});
-		mockRoles.mockReturnValue({
-			data: [{ id: "r-1", name: "Admin", description: null }],
-			isLoading: false,
-		});
+		setLoadedData(["r-1"], [{ id: "r-1", name: "Admin", description: null }]);
 
 		const { user } = renderWithProviders(
 			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
@@ -148,12 +260,25 @@ describe("UserRolesDialog", () => {
 		});
 	});
 
+	it("shows an inline retryable error when a role mutation fails", async () => {
+		setLoadedData([], [{ id: "r-1", name: "Admin", description: null }]);
+		mockAssignMutate.mockRejectedValueOnce(new Error("permission denied"));
+		mockAssignMutate.mockResolvedValueOnce({});
+
+		const { user } = renderWithProviders(
+			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,
+		);
+
+		await user.click(screen.getByRole("checkbox", { name: /admin/i }));
+		expect(screen.getByRole("alert")).toHaveTextContent(/failed to assign role/i);
+		expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /dismiss/i }));
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	});
+
 	it("shows 'No roles available' when roles list is empty", () => {
-		mockUserRoles.mockReturnValue({
-			data: { role_ids: [] },
-			isLoading: false,
-		});
-		mockRoles.mockReturnValue({ data: [], isLoading: false });
+		setLoadedData([], []);
 
 		renderWithProviders(
 			<UserRolesDialog user={makeUser()} open={true} onClose={vi.fn()} />,

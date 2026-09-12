@@ -15,9 +15,9 @@ describe("Chip", () => {
 		expect(screen.getByText("4822")).toBeInTheDocument();
 	});
 
-	it("applies a tone class for rose", () => {
+	it("maps the retained rose tone to semantic danger", () => {
 		renderWithProviders(<Chip tone="rose">flagged</Chip>);
 		const el = screen.getByText("flagged").parentElement;
-		expect(el?.className).toMatch(/text-rose-500/);
+		expect(el?.className).toContain("text-[var(--bf-danger)]");
 	});
 });

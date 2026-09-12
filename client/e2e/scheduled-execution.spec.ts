@@ -20,7 +20,8 @@
  * platform_admin.
  */
 
-import { test, expect, type Page } from "./fixtures/api-fixture";
+import { test, expect } from "./fixtures/api-fixture";
+import type { Page } from "@playwright/test";
 
 // Unique suffix keeps workflow names distinct across parallel worktrees and
 // re-runs, so stale `Scheduled` rows from previous runs can't collide with a
@@ -219,14 +220,16 @@ test.describe("Scheduled executions", () => {
 		await page.goto(`/workflows/${WORKFLOW_FUNCTION}/execute`);
 
 		// The workflow has no required params, so we go straight to scheduling.
-		// ScheduleControls renders a checkbox with aria-label="Schedule for later".
+		// Enable deferred execution using the shared scheduling control.
 		await page.getByLabel("Schedule for later").check();
 
 		// Click the "In 15 min" quick-pick button.
 		await page.getByRole("button", { name: "In 15 min" }).click();
 
-		// Submit the outer form via the "Execute Workflow" button.
-		await page.getByRole("button", { name: "Execute Workflow" }).click();
+		// Submit the scheduled action using its specific label.
+		await page
+			.getByRole("button", { name: "Schedule workflow", exact: true })
+			.click();
 
 		// ExecuteWorkflow navigates to /history and toasts "Scheduled for ...".
 		await expect(page).toHaveURL(/\/history/, { timeout: 10_000 });

@@ -45,6 +45,7 @@ import {
 import { PrettyInputDisplay } from "@/components/execution/PrettyInputDisplay";
 import { ToolOutputDisplay } from "@/components/chat/ToolOutputDisplay";
 import type { components } from "@/lib/v1";
+import { useReducedMotion } from "framer-motion";
 
 type ToolCall = components["schemas"]["ToolCall"];
 type ExecutionStatus = components["schemas"]["ExecutionStatus"];
@@ -144,13 +145,13 @@ const statusConfig: Record<
 	running: {
 		icon: Loader2,
 		label: "Running",
-		className: "text-blue-500",
+		className: "text-[var(--bf-info)]",
 		badgeVariant: "default",
 	},
 	success: {
 		icon: CheckCircle2,
 		label: "Success",
-		className: "text-green-500",
+		className: "text-[var(--bf-success)]",
 		badgeVariant: "outline",
 	},
 	failed: {
@@ -162,7 +163,7 @@ const statusConfig: Record<
 	timeout: {
 		icon: Clock,
 		label: "Timeout",
-		className: "text-amber-500",
+		className: "text-[var(--bf-warning)]",
 		badgeVariant: "outline",
 	},
 };
@@ -215,6 +216,7 @@ export function ToolExecutionCard({
 	// Auto-expand results when execution completes
 	const [isResultOpen, setIsResultOpen] = useState(false);
 	const logsEndRef = useRef<HTMLDivElement>(null);
+	const prefersReducedMotion = useReducedMotion();
 
 	// Resolve executionId from props or legacy execution object
 	const resolvedExecutionId = executionId ?? execution?.executionId;
@@ -297,9 +299,12 @@ export function ToolExecutionCard({
 	// Auto-scroll logs when new ones arrive
 	useEffect(() => {
 		if (status === "running" && logsEndRef.current) {
-			logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+			logsEndRef.current.scrollTo({
+				top: logsEndRef.current.scrollHeight,
+				behavior: prefersReducedMotion ? "auto" : "smooth",
+			});
 		}
-	}, [displayLogs.length, status]);
+	}, [displayLogs.length, prefersReducedMotion, status]);
 
 	// Format duration
 	const formatDuration = (ms: number) => {
@@ -312,7 +317,7 @@ export function ToolExecutionCard({
 		return (
 			<div
 				className={cn(
-					"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden",
+					"overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card shadow-sm",
 					className,
 				)}
 			>
@@ -332,43 +337,43 @@ export function ToolExecutionCard({
 	return (
 		<div
 			className={cn(
-				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden",
-				status === "running" && "ring-blue-500/50 dark:ring-blue-500/50",
-				status === "failed" && "ring-destructive/50 dark:ring-destructive/50",
+				"overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card shadow-sm",
+				status === "running" && "border-[var(--bf-info)]/40",
+				status === "failed" && "border-[var(--bf-danger)]/40",
 				className,
 			)}
 		>
 			{/* Header */}
-			<div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-				<div className="flex items-center gap-2">
+			<div className="flex items-start justify-between gap-3 px-3 py-3 sm:items-center sm:px-4">
+				<div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
 					{/* Status Badge */}
 					<Badge
 						variant={config.badgeVariant}
 						className={cn(
-							"gap-1 font-normal",
-							status === "running" && "animate-pulse",
+							"gap-1.5 rounded-[var(--bf-radius-control)] px-2.5 py-1 font-normal leading-snug",
+							status === "running" && "motion-safe:animate-pulse",
 						)}
 					>
 						<StatusIcon
 							className={cn(
-								"h-3 w-3",
+								"h-3.5 w-3.5",
 								config.className,
-								status === "running" && "animate-spin",
+								status === "running" && "motion-safe:animate-spin",
 							)}
 						/>
-						{config.label}
+						<span className="whitespace-normal">{config.label}</span>
 					</Badge>
 
 					{/* Tool Name */}
-					<span className="font-medium text-sm">
+					<span className="min-w-0 flex-1 text-sm font-medium leading-snug [overflow-wrap:anywhere]">
 						{resolvedToolCall.name}
 					</span>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="flex shrink-0 items-center gap-2">
 					{/* Duration */}
 					{durationMs !== undefined && (
-						<span className="text-xs text-muted-foreground">
+						<span className="text-xs text-muted-foreground tabular-nums">
 							{formatDuration(durationMs)}
 						</span>
 					)}
@@ -378,14 +383,15 @@ export function ToolExecutionCard({
 						<PopoverTrigger asChild>
 							<Button
 								variant="ghost"
+								aria-label={`Input parameters for ${resolvedToolCall.name}`}
 								size="icon"
-								className="h-6 w-6"
+								className="size-11 rounded-[var(--bf-radius-control)]"
 							>
-								<Info className="h-3.5 w-3.5 text-muted-foreground" />
+								<Info className="h-4 w-4 text-muted-foreground" />
 							</Button>
 						</PopoverTrigger>
 						<PopoverContent
-							className="w-96 max-h-80 overflow-auto"
+							className="max-h-80 w-[min(24rem,calc(100vw-1.5rem))] overflow-auto rounded-[var(--bf-radius-surface)] border-border/70"
 							align="end"
 						>
 							<div className="space-y-2">
@@ -418,17 +424,19 @@ export function ToolExecutionCard({
 
 			{/* Live Logs (while running) */}
 			{status === "running" && displayLogs.length > 0 && (
-				<div className="border-t bg-muted/10">
-					<div className="max-h-32 overflow-y-auto px-3 py-2 space-y-0.5">
+				<div className="border-t border-border/70 bg-muted/10">
+					<div ref={logsEndRef} className="max-h-40 space-y-1 overflow-y-auto px-3 py-3">
 						{displayLogs.map((log, index) => (
 							<p
 								key={`${log.timestamp || index}-${index}`}
 								className={cn(
-									"text-xs font-mono",
-									log.level === "error" && "text-destructive",
-									log.level === "warning" && "text-amber-500",
+									"min-w-0 text-xs font-mono leading-5 [overflow-wrap:anywhere]",
+									log.level === "error" &&
+										"text-[var(--bf-danger)]",
+									log.level === "warning" &&
+										"text-[var(--bf-warning)]",
 									log.level === "info" &&
-										"text-muted-foreground",
+										"text-[var(--bf-info)]",
 									log.level === "debug" &&
 										"text-muted-foreground/70",
 								)}
@@ -436,24 +444,23 @@ export function ToolExecutionCard({
 								{log.message}
 							</p>
 						))}
-						<div ref={logsEndRef} />
 					</div>
 				</div>
 			)}
 
 			{/* Single log line when pending (no streaming yet) */}
 			{status === "pending" && latestLog && (
-				<div className="px-3 py-2 border-t bg-muted/10">
-					<p className="text-xs font-mono text-muted-foreground truncate">
+				<div className="border-t border-border/70 bg-muted/10 px-3 py-3">
+					<p className="text-xs font-mono text-muted-foreground [overflow-wrap:anywhere]">
 						{latestLog.message}
 					</p>
 				</div>
 			)}
 
 			{/* Error Message */}
-			{status === "failed" && error && (
-				<div className="px-3 py-2 border-t bg-destructive/5">
-					<p className="text-xs text-destructive font-mono">
+			{(status === "failed" || status === "timeout") && error && (
+				<div className="border-t border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/50 px-3 py-3">
+					<p role="alert" className="text-sm font-mono text-[var(--bf-danger)] [overflow-wrap:anywhere]">
 						{error}
 					</p>
 				</div>
@@ -465,29 +472,31 @@ export function ToolExecutionCard({
 					<CollapsibleTrigger asChild>
 						<button
 							type="button"
-							className="flex items-center gap-1 w-full px-3 py-2 border-t bg-muted/10 hover:bg-muted/20 transition-colors text-left"
+							className="flex min-h-11 w-full items-center gap-2 border-t border-border/70 bg-muted/10 px-3 py-3 text-left motion-safe:transition-colors hover:bg-muted/20 focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
 						>
 							{isResultOpen ? (
-								<ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+								<ChevronDown className="h-4 w-4 text-muted-foreground" />
 							) : (
-								<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+								<ChevronRight className="h-4 w-4 text-muted-foreground" />
 							)}
-							<span className="text-xs font-medium">Result</span>
+							<span className="text-sm font-medium">Result</span>
 						</button>
 					</CollapsibleTrigger>
 					<AnimatePresence>
 						{isResultOpen && (
 							<CollapsibleContent forceMount>
-								<motion.div
-									initial={{ height: 0, opacity: 0 }}
-									animate={{ height: "auto", opacity: 1 }}
-									exit={{ height: 0, opacity: 0 }}
-									transition={{ duration: 0.2 }}
-									className="overflow-hidden"
-								>
-									<div className="border-t">
+									<motion.div
+										initial={{ height: 0, opacity: 0 }}
+										animate={{ height: "auto", opacity: 1 }}
+										exit={{ height: 0, opacity: 0 }}
+										transition={{
+											duration: prefersReducedMotion ? 0 : 0.2,
+										}}
+										className="overflow-hidden"
+									>
+									<div className="border-t border-border/70">
 										{/* Result Section */}
-										<div className="px-3 py-2 max-h-64 overflow-auto">
+										<div className="max-h-64 overflow-auto px-3 py-3">
 											{(() => {
 												const mcpContent =
 													extractMcpContent(result);
@@ -504,7 +513,7 @@ export function ToolExecutionCard({
 																mcpContent.structured !==
 																	null && (
 																	<details className="text-xs">
-																		<summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+																		<summary className="min-h-11 cursor-pointer py-3 text-muted-foreground hover:text-foreground">
 																			View
 																			raw
 																			data
@@ -546,7 +555,7 @@ export function ToolExecutionCard({
 													);
 												}
 												return (
-													<pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">
+													<pre className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap text-muted-foreground leading-6 [overflow-wrap:anywhere]">
 														{typeof result ===
 														"string"
 															? result
@@ -561,26 +570,26 @@ export function ToolExecutionCard({
 										</div>
 										{/* Logs Section */}
 										{displayLogs.length > 0 && (
-											<div className="px-3 py-2 border-t">
-												<h5 className="text-xs font-medium text-muted-foreground mb-1">
+											<div className="border-t border-border/70 px-3 py-3">
+												<h5 className="mb-2 text-xs font-medium text-muted-foreground">
 													Logs
 												</h5>
-												<div className="max-h-32 overflow-y-auto space-y-0.5">
+												<div className="max-h-32 space-y-1 overflow-y-auto">
 													{displayLogs.map(
 														(log, index) => (
 															<p
 																key={`${log.timestamp || index}-${index}`}
 																className={cn(
-																	"text-xs font-mono",
+																	"min-w-0 text-xs font-mono leading-5 [overflow-wrap:anywhere]",
 																	log.level ===
 																		"error" &&
-																		"text-destructive",
+																		"text-[var(--bf-danger)]",
 																	log.level ===
 																		"warning" &&
-																		"text-amber-500",
+																		"text-[var(--bf-warning)]",
 																	log.level ===
 																		"info" &&
-																		"text-muted-foreground",
+																		"text-[var(--bf-info)]",
 																	log.level ===
 																		"debug" &&
 																		"text-muted-foreground/70",

@@ -15,12 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import {
-	renderWithProviders,
-	screen,
-	waitFor,
-	fireEvent,
-} from "@/test-utils";
+import { renderWithProviders, screen, waitFor, fireEvent } from "@/test-utils";
 import type { ReactNode } from "react";
 import { POLICY_TEMPLATES } from "./policy-templates";
 
@@ -119,11 +114,16 @@ vi.mock("@/components/ui/select", async () => {
 	};
 });
 
+vi.mock("@/services/policyRules", () => ({
+	listPolicyRules: vi.fn(async () => []),
+}));
+
 const mockCreateMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
 const mockAuth = vi.fn();
 
 vi.mock("@/services/tables", () => ({
+	validatePolicies: vi.fn(async () => ({ ok: true, errors: [] })),
 	useCreateTable: () => ({ mutateAsync: mockCreateMutate, isPending: false }),
 	useUpdateTable: () => ({ mutateAsync: mockUpdateMutate, isPending: false }),
 }));
@@ -206,14 +206,32 @@ describe("TableDialog — validation", () => {
 		});
 		await user.click(screen.getByRole("button", { name: /^create$/i }));
 
-		expect(
-			await screen.findByText(/invalid json/i),
-		).toBeInTheDocument();
+		expect(await screen.findByText(/invalid json/i)).toBeInTheDocument();
 		expect(mockCreateMutate).not.toHaveBeenCalled();
 	});
 });
 
 describe("TableDialog — create mode", () => {
+	it("renders as an embedded settings panel with close control", async () => {
+		const onClose = vi.fn();
+		const { user } = renderWithProviders(
+			<TableDialog embedded open={true} onClose={onClose} />,
+		);
+
+		expect(
+			screen.getByRole("heading", { name: "Create Table" }),
+		).toBeVisible();
+		expect(
+			screen.getByRole("region", { name: "Table settings" }),
+		).toBeVisible();
+
+		await user.click(
+			screen.getByRole("button", { name: "Close table settings" }),
+		);
+
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
 	it("submits with parsed JSON schema and scope query", async () => {
 		const onClose = vi.fn();
 		const { user } = renderWithProviders(
@@ -434,5 +452,66 @@ describe("TableDialog — organization picker visibility", () => {
 		expect(
 			screen.getByLabelText(/organization-select/i),
 		).toBeInTheDocument();
+	});
+	it("blocks submitting a broken policy draft instead of the previous policies", async () => {
+		renderWithProviders(<TableDialog open={true} onClose={vi.fn()} />);
+		fireEvent.change(screen.getByPlaceholderText("my_table_name"), {
+			target: { value: "review_table" },
+		});
+		const editor = screen.getByLabelText("policies.json");
+		fireEvent.change(editor, { target: { value: "{" } });
+		const create = screen.getByRole("button", { name: /^create$/i });
+		expect(create).toBeDisabled();
+		fireEvent.click(create);
+		expect(mockCreateMutate).not.toHaveBeenCalled();
+		fireEvent.change(editor, { target: { value: '{"policies":[]}' } });
+		expect(create).toBeEnabled();
+	});
+	it("discards a canceled new table policy draft when reopened", () => {
+		const onClose = vi.fn();
+		const { rerender } = renderWithProviders(
+			<TableDialog open={true} onClose={onClose} />,
+		);
+		fireEvent.change(screen.getByLabelText("policies.json"), {
+			target: {
+				value: '{"policies":[{"name":"draft","actions":["read"],"when":null}]}',
+			},
+		});
+		rerender(<TableDialog open={false} onClose={onClose} />);
+		rerender(<TableDialog open={true} onClose={onClose} />);
+		expect(screen.getByLabelText("policies.json")).toHaveValue(
+			JSON.stringify({ policies: [] }, null, 2),
+		);
+	});
+	it("retains a failed create draft and retries the same values", async () => {
+		mockCreateMutate
+			.mockRejectedValueOnce(new Error("Synthetic save failure"))
+			.mockResolvedValueOnce({});
+		const onClose = vi.fn();
+		const { user } = renderWithProviders(
+			<TableDialog open={true} onClose={onClose} />,
+		);
+		await user.type(
+			screen.getByPlaceholderText("my_table_name"),
+			"review_table",
+		);
+		await user.type(
+			screen.getByPlaceholderText(
+				"Describe the purpose of this table...",
+			),
+			"Retained draft",
+		);
+		await user.click(screen.getByRole("button", { name: /^create$/i }));
+		await screen.findByText("Table could not be saved");
+		expect(onClose).not.toHaveBeenCalled();
+		expect(screen.getByPlaceholderText("my_table_name")).toHaveValue(
+			"review_table",
+		);
+		await user.click(screen.getByRole("button", { name: /^create$/i }));
+		await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+		expect(mockCreateMutate).toHaveBeenCalledTimes(2);
+		expect(mockCreateMutate.mock.calls[1]![0].body).toEqual(
+			mockCreateMutate.mock.calls[0]![0].body,
+		);
 	});
 });

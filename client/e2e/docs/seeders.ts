@@ -10,13 +10,13 @@
  * Most seeders go through the API rather than the UI for speed and
  * reliability. They share auth via the page's stored cookies.
  */
-import type { Page } from "@playwright/test";
+import type { APIResponse, Page } from "@playwright/test";
 
 export type Seeder = (page: Page) => Promise<void>;
 
 const SAMPLE_FORM_NAME = "Docs Sample Form";
 
-async function apiGet(page: Page, path: string): Promise<Response> {
+async function apiGet(page: Page, path: string): Promise<APIResponse> {
   return page.request.get(path);
 }
 
@@ -24,7 +24,7 @@ async function apiPost(
   page: Page,
   path: string,
   body: unknown,
-): Promise<Response> {
+): Promise<APIResponse> {
   return page.request.post(path, {
     data: body as Record<string, unknown>,
     headers: { "Content-Type": "application/json" },

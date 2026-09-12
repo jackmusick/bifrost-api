@@ -7,12 +7,14 @@ import {
 	PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY,
 } from "@/services/auth";
 
+const login = vi.fn();
+const loginWithMfa = vi.fn();
 const loginWithPasskey = vi.fn();
 
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => ({
-		login: vi.fn(),
-		loginWithMfa: vi.fn(),
+		login,
+		loginWithMfa,
 		loginWithPasskey,
 		isAuthenticated: false,
 		isLoading: false,
@@ -59,6 +61,9 @@ const preferredStatus = {
 describe("Login preferred SSO redirect", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		login.mockReset();
+		loginWithMfa.mockReset();
+		loginWithPasskey.mockReset();
 		sessionStorage.clear();
 		vi.mocked(getAuthStatus).mockResolvedValue(preferredStatus);
 		vi.mocked(initOAuth).mockImplementation(
@@ -80,7 +85,9 @@ describe("Login preferred SSO redirect", () => {
 		expect(
 			sessionStorage.getItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY),
 		).toBe("true");
-		expect(sessionStorage.getItem("oauth_redirect_from")).toBe("/workflows");
+		expect(sessionStorage.getItem("oauth_redirect_from")).toBe(
+			"/workflows",
+		);
 		expect(loginWithPasskey).not.toHaveBeenCalled();
 	});
 
@@ -99,5 +106,38 @@ describe("Login preferred SSO redirect", () => {
 		).toBeInTheDocument();
 		expect(initOAuth).not.toHaveBeenCalled();
 		expect(loginWithPasskey).not.toHaveBeenCalled();
+	});
+
+	it("submits a full formatted recovery code without truncating it", async () => {
+		sessionStorage.setItem(PREFERRED_SSO_REDIRECT_ATTEMPTED_KEY, "true");
+		login.mockResolvedValueOnce({
+			success: false,
+			mfaRequired: true,
+			mfaToken: "mfa-token",
+			availableMethods: ["totp"],
+			expiresIn: 300,
+		});
+		loginWithMfa.mockResolvedValueOnce(undefined);
+		renderWithProviders(<Login />, { initialEntries: ["/login"] });
+
+		await screen.findByLabelText("Email");
+		const user = (
+			await import("@testing-library/user-event")
+		).default.setup();
+		await user.type(screen.getByLabelText("Email"), "admin@example.com");
+		await user.type(screen.getByLabelText("Password"), "password");
+		await user.click(screen.getByRole("button", { name: "Sign In" }));
+
+		const mfaInput = await screen.findByLabelText("Authentication Code");
+		await user.type(mfaInput, "ABCD-1234");
+		await user.click(screen.getByRole("button", { name: "Verify" }));
+
+		await waitFor(() =>
+			expect(loginWithMfa).toHaveBeenCalledWith(
+				"mfa-token",
+				"ABCD-1234",
+				false,
+			),
+		);
 	});
 });

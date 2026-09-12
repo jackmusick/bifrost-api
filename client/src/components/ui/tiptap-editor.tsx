@@ -15,6 +15,10 @@ interface TiptapEditorProps {
 	className?: string;
 	editorClassName?: string;
 	ariaLabel?: string;
+	id?: string;
+	onBlur?: () => void;
+	"aria-describedby"?: string;
+	"aria-invalid"?: boolean | "true" | "false";
 }
 
 export function TiptapEditor({
@@ -25,10 +29,15 @@ export function TiptapEditor({
 	className,
 	editorClassName,
 	ariaLabel,
+	id,
+	onBlur,
+	"aria-describedby": describedBy,
+	"aria-invalid": invalid,
 }: TiptapEditorProps) {
 	const editor = useEditor({
 		extensions: [
 			StarterKit.configure({
+				link: false,
 				heading: {
 					levels: [2, 3],
 				},
@@ -49,11 +58,19 @@ export function TiptapEditor({
 		content,
 		contentType: "markdown",
 		editable: !readOnly,
+		onBlur: () => onBlur?.(),
 		onUpdate: ({ editor }) => {
 			onChange?.(editor.getMarkdown());
 		},
 		editorProps: {
 			attributes: {
+				role: "textbox",
+				...(id ? { id } : {}),
+				...(describedBy ? { "aria-describedby": describedBy } : {}),
+				...(invalid !== undefined
+					? { "aria-invalid": String(invalid) }
+					: {}),
+				"aria-multiline": "true",
 				class: cn(
 					"tiptap-editor min-h-[200px] h-full overflow-y-auto p-3 focus:outline-none prose prose-sm dark:prose-invert max-w-none",
 					editorClassName,
@@ -79,14 +96,14 @@ export function TiptapEditor({
 
 	if (!editor) {
 		return (
-			<div className="border rounded-md min-h-[200px] animate-pulse bg-muted/50" />
+			<div className="min-h-[200px] animate-pulse rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/50" />
 		);
 	}
 
 	return (
 		<div
 			className={cn(
-				"border rounded-md overflow-hidden flex flex-col",
+				"flex flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border border-border/70 bg-card",
 				className,
 			)}
 		>

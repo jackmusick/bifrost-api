@@ -196,8 +196,8 @@ describe("ChatSidebar — delete flow", () => {
 			name: /delete alpha/i,
 		});
 
-		expect(deleteButton.className).toContain("opacity-100");
-		expect(deleteButton.className).toContain("sm:opacity-0");
+		expect(deleteButton).toBeVisible();
+		expect(deleteButton.className).not.toContain("sm:opacity-0");
 		expect(deleteButton.className).toContain("size-11");
 	});
 
@@ -219,7 +219,7 @@ describe("ChatSidebar — delete flow", () => {
 
 		expect(mockDeleteMutate).toHaveBeenCalledWith({
 			params: { path: { conversation_id: "c-1" } },
-		});
+		}, expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }));
 
 		// Avoid an unused-variable warning from the test harness.
 		void container;

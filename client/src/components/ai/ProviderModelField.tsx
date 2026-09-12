@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { Combobox } from "@/components/ui/combobox";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { listProviderModels } from "@/services/aiModels";
 
 interface ProviderModelFieldProps {
 	id: string;
+	disabled?: boolean;
 	connectionId: string;
 	value: string;
 	onValueChange: (value: string) => void;
@@ -14,6 +16,7 @@ interface ProviderModelFieldProps {
 
 export function ProviderModelField({
 	id,
+	disabled = false,
 	connectionId,
 	value,
 	onValueChange,
@@ -33,10 +36,13 @@ export function ProviderModelField({
 	}
 
 	return (
-		<div className="space-y-2">
+		<div className="min-w-0 space-y-2">
 			<Label htmlFor={id}>Model</Label>
-			{!modelsQuery.isError &&
-			(!connectionId || modelsQuery.isLoading || options.length > 0) ? (
+			{modelsQuery.isError && <div role="alert" className="space-y-2 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm">
+				<p>Could not refresh the model catalog. Your selected model is preserved.</p>
+				<Button type="button" variant="outline" className="min-h-11" disabled={disabled || modelsQuery.isFetching} onClick={() => void modelsQuery.refetch()}>{modelsQuery.isFetching ? "Retrying…" : "Retry model catalog"}</Button>
+			</div>}
+			{(!connectionId || modelsQuery.isLoading || Boolean(modelsQuery.data?.models.length)) ? (
 				<>
 					<Combobox
 						id={id}
@@ -50,7 +56,7 @@ export function ProviderModelField({
 						}
 						searchPlaceholder="Search models..."
 						emptyText="No models reported by this provider."
-						disabled={!connectionId}
+						disabled={disabled || !connectionId}
 						isLoading={modelsQuery.isLoading}
 					/>
 					{Boolean(modelsQuery.data?.models.length) && (
@@ -65,13 +71,14 @@ export function ProviderModelField({
 				<>
 					<Input
 						id={id}
+						className="min-h-11"
+						disabled={disabled || !connectionId}
 						value={value}
 						onChange={(event) => onValueChange(event.target.value)}
 						placeholder="Enter a model ID"
 					/>
 					<p className="text-xs text-muted-foreground">
-						This provider did not return a model catalog. Enter the
-						model ID manually.
+						{modelsQuery.isError ? "You can enter the model ID manually while the catalog is unavailable." : "This provider did not return a model catalog. Enter the model ID manually."}
 					</p>
 				</>
 			)}

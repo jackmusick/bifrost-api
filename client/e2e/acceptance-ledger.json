@@ -1,0 +1,846 @@
+{
+	"inventoryComplete": true,
+	"scope": "Initial implementation batch and selected next journeys; full action inventory remains in progress. Empty tests means required proof has not been bound, not a claim that no related tests exist.",
+	"journeys": [
+		{
+			"id": "FORM-01",
+			"area": "Forms",
+			"title": "Assigned member submits a form and receives its workflow result",
+			"tests": [
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-01 desktop] member submits assigned form and sees workflow result",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-01 mobile] member submits assigned form and sees workflow result",
+					"project": "org-user",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-02",
+			"area": "Forms",
+			"title": "Designer saves and reopens form name and description",
+			"tests": [
+				{
+					"spec": "forms-acceptance.admin.spec.ts",
+					"title": "[FORM-02 desktop] designer saves and reopens form metadata",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-01",
+			"area": "Executions",
+			"title": "Completed result persists through browser back navigation",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-01 desktop] completed execution survives browser back and shows Result/Input/Logs states",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-02",
+			"area": "Executions",
+			"title": "Rerun creates a new execution with the intended input and result",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-02 desktop] actual rerun creates a new execution with the expected output",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-03",
+			"area": "Executions",
+			"title": "Cancel running work and observe persisted cancelled status",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-03 mobile] cancellation of a running execution reaches a cancelled state",
+					"project": "platform-admin",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "APP-01",
+			"area": "Apps",
+			"title": "Editor saves the correct file across file switches and reload",
+			"tests": [
+				{
+					"spec": "apps-editor-acceptance.admin.spec.ts",
+					"title": "[APP-01] editor save/file switching persists the selected file after reload \u2014 desktop",
+					"sourceTitle": "[APP-01] editor save/file switching persists the selected file after reload \u2014 ${viewport.name}",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "apps-editor-acceptance.admin.spec.ts",
+					"title": "[APP-01] editor save/file switching persists the selected file after reload \u2014 mobile",
+					"sourceTitle": "[APP-01] editor save/file switching persists the selected file after reload \u2014 ${viewport.name}",
+					"project": "platform-admin",
+					"variant": "mobile",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "V1-01",
+			"area": "V1 compatibility",
+			"title": "Legacy components invoke a workflow in preview and published app, with wrapped navigation",
+			"tests": [
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "[V1-01] legacy components execute workflows and preserve preview and published navigation \u2014 desktop",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-01",
+			"area": "Agents",
+			"title": "Create a private agent as a member and reopen its settings",
+			"tests": [
+				{
+					"spec": "agent-create-acceptance.user.spec.ts",
+					"title": "[AGENT-01 desktop] member creates private agent and reopens persisted settings",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EVENT-01",
+			"area": "Event sources",
+			"title": "Open a delivered local webhook event and follow its workflow result",
+			"tests": [
+				{
+					"spec": "event-delivery-acceptance.admin.spec.ts",
+					"title": "[EVENT-01 desktop] local webhook event shows successful workflow delivery and execution outcome",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "MAPPING-01",
+			"area": "Integrations",
+			"title": "Create and edit an organization mapping through the UI and reload",
+			"tests": [
+				{
+					"spec": "integration-mapping-acceptance.admin.spec.ts",
+					"title": "[MAPPING-01] add and edit organization mappings persist after reload and search",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ORG-01",
+			"area": "Organizations",
+			"title": "Create an organization through the UI and reopen it",
+			"tests": [
+				{
+					"spec": "organizations.admin.spec.ts",
+					"title": "[ORG-01 desktop] creates, edits, reloads, and disables an organization",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "USER-01",
+			"area": "Users",
+			"title": "Bulk move selected users and verify their persisted organizations",
+			"tests": [
+				{
+					"spec": "users.bulk.spec.ts",
+					"title": "[USER-01] bulk move persists selected users after reload and leaves unselected users",
+					"project": "chromium",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-03",
+			"area": "Forms",
+			"title": "Designer adds a configured field and preserves it after reload",
+			"tests": [
+				{
+					"spec": "form-fields-acceptance.admin.spec.ts",
+					"title": "[FORM-03 desktop] designer adds and persists a configured form field",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EXEC-04",
+			"area": "Executions",
+			"title": "History log row opens a drawer with result/input/logs and a link to the same full execution",
+			"tests": [
+				{
+					"spec": "executions.admin.spec.ts",
+					"title": "[EXEC-04 desktop] History log row opens drawer with Result/Input/Logs and full-page link for the same execution",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-ACCESS-01",
+			"title": "Unassigned form is absent and its direct route denies access",
+			"area": "Forms",
+			"tests": [
+				{
+					"spec": "forms.user.spec.ts",
+					"title": "[FORM-ACCESS-01 desktop] member cannot see or open an unassigned role-based form",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-BROWSE-01",
+			"title": "Admin searches and opens a seeded form, then opens the creation designer",
+			"area": "Forms",
+			"tests": [
+				{
+					"spec": "forms.admin.spec.ts",
+					"title": "[FORM-BROWSE-01 desktop] admin searches and opens a seeded form",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-BROWSE-01",
+			"area": "Agents",
+			"title": "Fleet search and both views open the intended agent",
+			"tests": [
+				{
+					"spec": "agents-fleet.admin.spec.ts",
+					"title": "[AGENT-BROWSE-01 desktop] search finds a seeded agent and grid and table open the same detail",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-FILTER-01",
+			"area": "Agents",
+			"title": "Inactive agents stay hidden until Show Inactive is enabled",
+			"tests": [
+				{
+					"spec": "agents-fleet.admin.spec.ts",
+					"title": "[AGENT-FILTER-01 desktop] inactive agents appear only when requested",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "CONFIG-01",
+			"area": "Configuration",
+			"title": "Admin creates, edits, reloads and deletes an organization-scoped configuration",
+			"tests": [
+				{
+					"spec": "config-acceptance.admin.spec.ts",
+					"title": "[CONFIG-01] admin creates edits reloads and deletes org-scoped configuration",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ROLE-01",
+			"area": "Roles",
+			"title": "Admin creates, edits, reloads and deletes a role",
+			"tests": [
+				{
+					"spec": "role-lifecycle-acceptance.admin.spec.ts",
+					"title": "ROLE-01 creates, edits, reloads, and deletes a role",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "HOME-01",
+			"area": "Home",
+			"title": "Pin state survives reload and an agent launches a real conversation",
+			"tests": [
+				{
+					"spec": "home-launch-acceptance.admin.spec.ts",
+					"title": "HOME-01 persists favorite state and opens a known agent resource",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AUTH-RECOVERY-01",
+			"area": "Authentication and permissions",
+			"title": "Member recovers from a denied admin route without losing their session",
+			"tests": [
+				{
+					"spec": "permissions.user.spec.ts",
+					"title": "denies /config in place, then returns to a non-admin Home",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "PROFILE-01",
+			"area": "Account settings",
+			"title": "Member saves display name and sees the persisted value after reload",
+			"tests": [
+				{
+					"spec": "profile-acceptance.user.spec.ts",
+					"title": "PROFILE-01 member edits display name and reloads saved profile",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "WORKFLOW-KEY-01",
+			"area": "Platform settings",
+			"title": "Create, copy, reopen and revoke a workflow API key",
+			"tests": [
+				{
+					"spec": "workflow-keys-acceptance.admin.spec.ts",
+					"title": "creates, copies, reloads, and revokes a workflow API key",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "CHAT-PERSIST-01",
+			"area": "Chat",
+			"title": "Send a real streamed chat turn and reopen persisted messages",
+			"tests": [
+				{
+					"spec": "chat-persistence.admin.spec.ts",
+					"title": "[CHAT-PERSIST-01 desktop] admin sends chat through local provider and reloads persisted messages",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "TABLE-RECORD-01",
+			"area": "Tables",
+			"title": "Create edit and delete a table and its document through the UI",
+			"tests": [
+				{
+					"spec": "table-records-acceptance.admin.spec.ts",
+					"title": "admin creates and edits a table, then creates edits deletes a document and deletes the table",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "SECURITY-01",
+			"area": "Account settings",
+			"title": "Enroll reload and delete a real passkey using an isolated account",
+			"tests": [
+				{
+					"spec": "account-security-acceptance.admin.spec.ts",
+					"title": "SECURITY-01 user registers, reloads, and removes a persisted passkey",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ENTITY-01",
+			"area": "Entity Management",
+			"title": "Assign reassign and unassign one app without changing an unselected app",
+			"tests": [
+				{
+					"spec": "entity-management-acceptance.admin.spec.ts",
+					"title": "bulk assigns two selected entities while preserving an unselected resource",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "BRANDING-01",
+			"area": "Platform settings",
+			"title": "updates terminology and primary color through Branding settings",
+			"tests": [
+				{
+					"spec": "branding-terminology.admin.spec.ts",
+					"title": "updates terminology and primary color through Branding settings",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FILES-01",
+			"area": "Files",
+			"title": "downloads and deletes an owned file through the explorer UI",
+			"tests": [
+				{
+					"spec": "files-management-acceptance.admin.spec.ts",
+					"title": "downloads and deletes an owned file through the explorer UI",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "HOME-CATALOG-01",
+			"area": "Home",
+			"title": "HOME-CATALOG-01 launches app/form resources and filters exact Home catalog data",
+			"tests": [
+				{
+					"spec": "home-catalog-acceptance.admin.spec.ts",
+					"title": "HOME-CATALOG-01 launches app/form resources and filters exact Home catalog data",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "SSO-01",
+			"area": "Platform settings",
+			"title": "creates, edits, prefers, persists, and removes Google SSO through settings",
+			"tests": [
+				{
+					"spec": "sso-settings-acceptance.admin.spec.ts",
+					"title": "creates, edits, prefers, persists, and removes Google SSO through settings",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "KNOWLEDGE-01",
+			"area": "Knowledge",
+			"title": "admin creates, searches, reads, and deletes a knowledge document",
+			"tests": [
+				{
+					"spec": "knowledge-acceptance.admin.spec.ts",
+					"title": "admin creates, searches, reads, and deletes a knowledge document",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "HOME-COLLECTION-ACCESS-01",
+			"area": "Home",
+			"title": "HOME-COLLECTION-ACCESS-01 proves private ownership, shared filtering, and edit authority",
+			"tests": [
+				{
+					"spec": "home-collection-access.user.spec.ts",
+					"title": "HOME-COLLECTION-ACCESS-01 proves private ownership, shared filtering, and edit authority",
+					"project": "org-user",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "REPORTS-01",
+			"area": "Reports",
+			"title": "dashboard, usage, and ROI reports show the seeded rows",
+			"tests": [
+				{
+					"spec": "operational-reports-acceptance.admin.spec.ts",
+					"title": "dashboard, usage, and ROI reports show the seeded rows",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "GITHUB-UI-01",
+			"area": "Platform settings",
+			"title": "validates, selects, saves, reloads, creates a repo, and disconnects through the UI",
+			"tests": [
+				{
+					"spec": "github-settings-acceptance.admin.spec.ts",
+					"title": "validates, selects, saves, reloads, creates a repo, and disconnects through the UI",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "intercepted-external"
+				}
+			]
+		},
+		{
+			"id": "MCP-PERSONAL-01",
+			"area": "Account settings",
+			"title": "connects through MCP OAuth callback and disconnects persisted personal credentials",
+			"tests": [
+				{
+					"spec": "mcp-personal-connection-acceptance.admin.spec.ts",
+					"title": "connects through MCP OAuth callback and disconnects persisted personal credentials",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "MCP-SETTINGS-01",
+			"area": "Platform settings",
+			"title": "admin saves, reloads, resets, and restores MCP configuration",
+			"tests": [
+				{
+					"spec": "mcp-settings-acceptance.admin.spec.ts",
+					"title": "admin saves, reloads, resets, and restores MCP configuration",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "WORKFLOW-METADATA-01",
+			"area": "Workflows",
+			"title": "WORKFLOW-METADATA-01 searches, saves and reopens workflow settings before opening execution",
+			"tests": [
+				{
+					"spec": "workflows.admin.spec.ts",
+					"title": "WORKFLOW-METADATA-01 searches, saves and reopens workflow settings before opening execution",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-REVIEW-01",
+			"area": "Agents",
+			"title": "AGENT-REVIEW-01 saves a note and resolves a flagged run after reload",
+			"tests": [
+				{
+					"spec": "agents-review-verdict.admin.spec.ts",
+					"title": "AGENT-REVIEW-01 saves a note and resolves a flagged run after reload",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "V1-CONTROLS-01",
+			"area": "V1 compatibility",
+			"title": "Included controlled inputs overlays tabs and tables in both themes and viewport sizes",
+			"tests": [
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "V1-CONTROLS-01 included controls work in preview and published app \u2014 desktop light",
+					"sourceTitle": "V1-CONTROLS-01 included controls work in preview and published app \u2014 ${viewport.name} ${theme}",
+					"project": "platform-admin",
+					"variant": "desktop light",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "V1-CONTROLS-01 included controls work in preview and published app \u2014 desktop dark",
+					"sourceTitle": "V1-CONTROLS-01 included controls work in preview and published app \u2014 ${viewport.name} ${theme}",
+					"project": "platform-admin",
+					"variant": "desktop dark",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "V1-CONTROLS-01 included controls work in preview and published app \u2014 mobile light",
+					"sourceTitle": "V1-CONTROLS-01 included controls work in preview and published app \u2014 ${viewport.name} ${theme}",
+					"project": "platform-admin",
+					"variant": "mobile light",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "apps-preview-migration.admin.spec.ts",
+					"title": "V1-CONTROLS-01 included controls work in preview and published app \u2014 mobile dark",
+					"sourceTitle": "V1-CONTROLS-01 included controls work in preview and published app \u2014 ${viewport.name} ${theme}",
+					"project": "platform-admin",
+					"variant": "mobile dark",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "INTEGRATION-01",
+			"area": "Integrations",
+			"title": "Create edit logo select navigate and delete an integration through the UI",
+			"tests": [
+				{
+					"spec": "integration-cards.admin.spec.ts",
+					"title": "integration cards preserve descriptions, uploaded logos and table navigation",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "EVENT-MGMT-01",
+			"area": "Event sources",
+			"title": "[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes a generic webhook source with a workflow subscription",
+			"tests": [
+				{
+					"spec": "event-source-management-acceptance.admin.spec.ts",
+					"title": "[EVENT-MGMT-01 desktop] creates, edits, persists, deactivates, and deletes a generic webhook source with a workflow subscription",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "CHAT-INSTRUCTIONS-01",
+			"area": "Platform settings",
+			"title": "CHAT-INSTRUCTIONS-01 saves and reloads default chat instructions",
+			"tests": [
+				{
+					"spec": "chat-instructions-acceptance.admin.spec.ts",
+					"title": "CHAT-INSTRUCTIONS-01 saves and reloads default chat instructions",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "MCP-MGMT-01",
+			"area": "MCP servers",
+			"title": "creates, edits, reloads, and deletes an auth-free MCP server connection",
+			"tests": [
+				{
+					"spec": "mcp-management-acceptance.admin.spec.ts",
+					"title": "creates, edits, reloads, and deletes an auth-free MCP server connection",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AI-PRICING-01",
+			"area": "Platform settings",
+			"title": "adds, edits, reloads, and deletes a unique model pricing record",
+			"tests": [
+				{
+					"spec": "ai-pricing-acceptance.admin.spec.ts",
+					"title": "adds, edits, reloads, and deletes a unique model pricing record",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "WORKSPACE-EDITOR-01",
+			"area": "Code editor",
+			"title": "edits, saves, switches, and reloads global workspace files",
+			"tests": [
+				{
+					"spec": "workspace-editor-acceptance.admin.spec.ts",
+					"title": "edits, saves, switches, and reloads global workspace files",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "SOLUTION-LIFECYCLE-01",
+			"area": "Solutions",
+			"title": "uninstalls, reactivates, and permanently deletes a solution through the UI",
+			"tests": [
+				{
+					"spec": "solution-lifecycle.admin.spec.ts",
+					"title": "uninstalls a solution and reveals it with Show Inactive",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "solution-lifecycle.admin.spec.ts",
+					"title": "reactivates an inactive solution from an uploaded package",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				},
+				{
+					"spec": "solution-lifecycle.admin.spec.ts",
+					"title": "permanently deletes a solution with slug confirmation",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "REVIEW-PACK-01",
+			"area": "Connected review fixtures",
+			"title": "ensures an idempotent review namespace and drives seeded Home and webhook journeys",
+			"tests": [
+				{
+					"spec": "review-pack-acceptance.admin.spec.ts",
+					"title": "ensures an idempotent review namespace and drives seeded Home and webhook journeys",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "MCP-CATALOG-01",
+			"area": "MCP servers",
+			"title": "activates, refreshes, reloads, disconnects, and deletes a service MCP catalog",
+			"tests": [
+				{
+					"spec": "mcp-catalog-acceptance.admin.spec.ts",
+					"title": "activates, refreshes, reloads, disconnects, and deletes a service MCP catalog",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "AGENT-TUNING-APPLY-01",
+			"area": "Agents",
+			"title": "applies an edited proposal through the real API and persists the live prompt",
+			"tests": [
+				{
+					"spec": "agents-tuning-apply.admin.spec.ts",
+					"title": "applies an edited proposal through the real API and persists the live prompt",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "mixed-setup-real-mutation"
+				}
+			]
+		},
+		{
+			"id": "SECURITY-03",
+			"area": "Account settings",
+			"title": "SECURITY-03 changes a password in settings and signs in with the saved password",
+			"tests": [
+				{
+					"spec": "account-onboarding-acceptance.admin.spec.ts",
+					"title": "SECURITY-03 changes a password in settings and signs in with the saved password",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "SECURITY-02",
+			"area": "Account settings",
+			"title": "SECURITY-02 enrolls TOTP, downloads recovery codes, and signs in using a recovery code",
+			"tests": [
+				{
+					"spec": "account-onboarding-acceptance.admin.spec.ts",
+					"title": "SECURITY-02 enrolls TOTP, downloads recovery codes, and signs in using a recovery code",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "DASHBOARD-PRIMARY-01",
+			"area": "Dashboard",
+			"title": "DASHBOARD-PRIMARY-01 renders API-backed metrics, refreshes, and drills into workflows",
+			"tests": [
+				{
+					"spec": "dashboard-acceptance.admin.spec.ts",
+					"title": "DASHBOARD-PRIMARY-01 renders API-backed metrics, refreshes, and drills into workflows",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "ROLE-FORM-01",
+			"area": "Roles",
+			"title": "forms tab assigns, reloads, unassigns, and persists role membership",
+			"tests": [
+				{
+					"spec": "roles.detail.admin.spec.ts",
+					"title": "forms tab assigns, reloads, unassigns, and persists role membership",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		},
+		{
+			"id": "FORM-BUILDER-STRUCTURE-01",
+			"area": "Form designer",
+			"title": "[FORM-BUILDER-STRUCTURE-01 desktop] designer rebinds workflow, reorders fields, deletes a field, and persists structure",
+			"tests": [
+				{
+					"spec": "form-builder-structure-acceptance.admin.spec.ts",
+					"title": "[FORM-BUILDER-STRUCTURE-01 desktop] designer rebinds workflow, reorders fields, deletes a field, and persists structure",
+					"project": "platform-admin",
+					"variant": "desktop",
+					"proof": "real-platform"
+				}
+			]
+		}
+	],
+	"inventoryScope": "Supported route families, settings panels, and primary user journeys. Detailed action dispositions and lower-layer/external limits are in docs/design-modernization/acceptance-closure-matrix.md; this is not every interaction permutation."
+}

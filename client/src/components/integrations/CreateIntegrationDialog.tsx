@@ -21,16 +21,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { IntegrationReadError } from "./IntegrationReadError";
+import { IntegrationSchemaEditor } from "./IntegrationSchemaEditor";
 import { Combobox } from "@/components/ui/combobox";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { LogoDropZone } from "@/components/LogoDropZone";
+import { bumpEntityLogo } from "@/components/entityLogoVersions";
+import { Loader2, Trash2, Plug } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
@@ -62,35 +59,40 @@ function CreateIntegrationForm({
 	onOpenChange,
 	editIntegrationId,
 	existingIntegration,
-	initialData,
+	isSaving,
+	setIsSaving,
 }: {
 	onOpenChange: (open: boolean) => void;
 	editIntegrationId?: string;
 	existingIntegration?: IntegrationDetail;
-	initialData?: IntegrationDetail;
+	isSaving: boolean;
+	setIsSaving: (saving: boolean) => void;
 }) {
 	const queryClient = useQueryClient();
 
 	// Fetch available data providers
-	const { data: dataProviders, isLoading: isLoadingProviders } =
-		useDataProviders();
+	const {
+		data: dataProviders,
+		isLoading: isLoadingProviders,
+		isError: providersError,
+		isFetching: fetchingProviders,
+		refetch: refetchProviders,
+	} = useDataProviders();
 
 	const createMutation = useCreateIntegration();
 	const updateMutation = useUpdateIntegration();
 
 	const isEditing = Boolean(editIntegrationId);
-	const isLoading = createMutation.isPending || updateMutation.isPending;
+	const isLoading =
+		isSaving || createMutation.isPending || updateMutation.isPending;
+	const [saveError, setSaveError] = useState<string | null>(null);
 
 	// Initialize state from existing integration (or empty for new)
 	// This is safe because the parent only mounts this component once data is ready
 	const [name, setName] = useState(existingIntegration?.name || "");
-	const [description, setDescription] = useState(() => {
-		const integrationWithDesc =
-			existingIntegration as typeof existingIntegration & {
-				description?: string;
-			};
-		return integrationWithDesc?.description || "";
-	});
+	const [description, setDescription] = useState(
+		existingIntegration?.description || "",
+	);
 	const [dataProviderId, setDataProviderId] = useState<string | null>(
 		existingIntegration?.list_entities_data_provider_id || null,
 	);
@@ -131,26 +133,31 @@ function CreateIntegrationForm({
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (isLoading) return;
 
 		if (!name.trim()) {
 			toast.error("Integration name is required");
 			return;
 		}
 
-		// In edit mode, check for confirmations needed
+		await confirmAndSave(0);
+	};
+
+	const confirmAndSave = async (stage: number) => {
+		// Advance through every applicable confirmation before saving.
 		if (isEditing) {
 			// Check 1: Name change confirmation
-			if (name !== originalName) {
+			if (stage < 1 && name !== originalName) {
 				setShowNameChangeConfirm(true);
 				return;
 			}
 
 			// Check 2: Data provider swap confirmation
-			if (dataProviderId !== originalDataProviderId) {
+			if (stage < 2 && dataProviderId !== originalDataProviderId) {
 				// Count affected mappings (those with entity_id values)
 				const affectedMappingsCount =
-					initialData?.mappings?.filter((m) => m.entity_id).length ||
-					0;
+					existingIntegration?.mappings?.filter((m) => m.entity_id)
+						.length || 0;
 				if (affectedMappingsCount > 0) {
 					setShowDataProviderConfirm(true);
 					return;
@@ -164,7 +171,7 @@ function CreateIntegrationForm({
 			const removedKeys = Array.from(originalConfigSchemaKeys).filter(
 				(k) => !currentKeys.has(k),
 			);
-			if (removedKeys.length > 0) {
+			if (stage < 3 && removedKeys.length > 0) {
 				setRemovedFieldNames(removedKeys);
 				setShowConfigFieldRemovalConfirm(true);
 				return;
@@ -176,16 +183,19 @@ function CreateIntegrationForm({
 	};
 
 	const performSave = async () => {
+		if (isLoading) return;
+		setIsSaving(true);
+		setSaveError(null);
 		try {
 			if (isEditing && editIntegrationId) {
 				await updateMutation.mutateAsync({
 					params: { path: { integration_id: editIntegrationId } },
 					body: {
 						name,
+						description: description.trim() || null,
 						list_entities_data_provider_id:
 							dataProviderId || undefined,
-						config_schema:
-							configSchema.length > 0 ? configSchema : undefined,
+						config_schema: configSchema,
 						default_entity_id: defaultEntityId || undefined,
 					},
 				});
@@ -194,6 +204,7 @@ function CreateIntegrationForm({
 				await createMutation.mutateAsync({
 					body: {
 						name,
+						description: description.trim() || null,
 						config_schema:
 							configSchema.length > 0 ? configSchema : undefined,
 						default_entity_id: defaultEntityId || undefined,
@@ -205,13 +216,14 @@ function CreateIntegrationForm({
 			// Invalidate queries to refresh the list
 			queryClient.invalidateQueries({ queryKey: ["integrations"] });
 			onOpenChange(false);
-		} catch (error: unknown) {
-			console.error("Failed to save integration:", error);
-			toast.error(
+		} catch {
+			setSaveError(
 				isEditing
-					? "Failed to update integration"
-					: "Failed to create integration",
+					? "Could not update integration. Your changes are preserved. Try again."
+					: "Could not create integration. Your changes are preserved. Try again.",
 			);
+		} finally {
+			setIsSaving(false);
 		}
 	};
 
@@ -248,16 +260,17 @@ function CreateIntegrationForm({
 				name: string;
 			}>
 		)?.flatMap((provider) =>
-			provider.id
-				? [{ value: provider.id, label: provider.name }]
-				: [],
+			provider.id ? [{ value: provider.id, label: provider.name }] : [],
 		) || []),
 	];
 
 	return (
 		<>
-			<form onSubmit={handleSubmit}>
-				<DialogHeader>
+			<form
+				onSubmit={handleSubmit}
+				className="flex min-h-0 flex-1 flex-col"
+			>
+				<DialogHeader className="shrink-0">
 					<DialogTitle>
 						{isEditing ? "Edit Integration" : "Create Integration"}
 					</DialogTitle>
@@ -268,221 +281,215 @@ function CreateIntegrationForm({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="space-y-4 py-4">
-					{/* Name */}
-					<div className="space-y-2">
-						<Label htmlFor="name">Integration Name *</Label>
-						<Input
-							id="name"
-							placeholder="e.g., Microsoft 365, Google Workspace"
-							value={name}
-							onChange={(e) => setName(e.target.value)}
-							required
-						/>
-					</div>
-
-					{/* Description */}
-					<div className="space-y-2">
-						<Label htmlFor="description">Description</Label>
-						<Input
-							id="description"
-							placeholder="Brief description of this integration"
-							value={description}
-							onChange={(e) => setDescription(e.target.value)}
-						/>
-					</div>
-
-					{/* Data Provider Selection */}
-					<div className="space-y-2">
-						<Label htmlFor="dataProvider">
-							Entity Data Provider
-						</Label>
-						<Combobox
-							id="dataProvider"
-							options={dataProviderOptions}
-							value={dataProviderId || "none"}
-							onValueChange={(value) =>
-								setDataProviderId(
-									value === "none" || value === ""
-										? null
-										: value,
-								)
-							}
-							placeholder="Select a data provider..."
-							searchPlaceholder="Search data providers..."
-							emptyText="No data providers found."
-							isLoading={isLoadingProviders}
-						/>
-						<p className="text-xs text-muted-foreground">
-							Select a data provider to populate entity options
-							for organization mappings
-						</p>
-					</div>
-
-					{/* Entity ID source (read-only; reset via trash icon) */}
-					{isEditing && existingIntegration?.oauth_config && (
-						<div className="space-y-2">
-							<Label htmlFor="entityIdSource">
-								Entity ID source
-							</Label>
-							<div className="flex gap-2">
-								<Input
-									id="entityIdSource"
-									readOnly
-									value={entityIdSourceDisplay}
-									placeholder="Not set — picker will appear on next OAuth connect"
-									className="font-mono text-xs"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									size="icon"
-									disabled={!existingEntityIdSource}
-									onClick={() => {
-										setResetClearMappings(false);
-										setShowResetEntityIdSource(true);
+				<div className="min-h-0 flex-1 overflow-y-auto py-4">
+					<fieldset
+						disabled={isLoading}
+						className="min-w-0 space-y-4"
+					>
+						{editIntegrationId && (
+							<div className="flex items-center gap-4">
+								<LogoDropZone
+									uploadUrl={`/api/integrations/${editIntegrationId}/logo`}
+									deleteUrl={`/api/integrations/${editIntegrationId}/logo`}
+									previewUrl={
+										existingIntegration?.logo_url ??
+										`/api/integrations/${editIntegrationId}/logo`
+									}
+									fallback={<Plug className="size-8" />}
+									size={80}
+									ariaLabel="Upload integration logo"
+									onChange={() => {
+										bumpEntityLogo(
+											"integration",
+											editIntegrationId,
+										);
+										void queryClient.invalidateQueries({
+											queryKey: [
+												"get",
+												"/api/integrations",
+											],
+										});
+										void queryClient.invalidateQueries({
+											queryKey: [
+												"get",
+												"/api/integrations/{integration_id}",
+											],
+										});
 									}}
-									title="Reset Entity ID source"
-								>
-									<Trash2 className="h-4 w-4" />
-								</Button>
+								/>
+								<div>
+									<p className="text-sm font-medium">
+										Integration logo
+									</p>
+									<p className="text-sm text-muted-foreground">
+										PNG, JPEG, or SVG. Logo changes save
+										immediately.
+									</p>
+								</div>
 							</div>
+						)}
+						{/* Name */}
+						<div className="space-y-2">
+							<Label htmlFor="name">Integration Name *</Label>
+							<Input
+								className="min-h-11"
+								id="name"
+								placeholder="e.g., Microsoft 365, Google Workspace"
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								required
+							/>
+						</div>
+
+						{/* Description */}
+						<div className="space-y-2">
+							<Label htmlFor="description">Description</Label>
+							<Input
+								className="min-h-11"
+								id="description"
+								placeholder="Brief description of this integration"
+								value={description}
+								onChange={(e) => setDescription(e.target.value)}
+							/>
+						</div>
+
+						{/* Data Provider Selection */}
+						<div className="space-y-2">
+							<Label htmlFor="dataProvider">
+								Entity Data Provider
+							</Label>
+							<Combobox
+								id="dataProvider"
+								className="min-h-11 sm:min-h-11"
+								disabled={
+									isLoading ||
+									(providersError && !dataProviders)
+								}
+								options={dataProviderOptions}
+								value={dataProviderId || "none"}
+								onValueChange={(value) =>
+									setDataProviderId(
+										value === "none" || value === ""
+											? null
+											: value,
+									)
+								}
+								placeholder={
+									dataProviderId
+										? "Current provider unavailable"
+										: "Select a data provider..."
+								}
+								searchPlaceholder="Search data providers..."
+								emptyText="No data providers found."
+								isLoading={isLoadingProviders}
+							/>
+							{providersError && (
+								<IntegrationReadError
+									resource="data providers"
+									cached={Boolean(dataProviders)}
+									pending={fetchingProviders}
+									onRetry={() => {
+										void refetchProviders();
+									}}
+								/>
+							)}
 							<p className="text-xs text-muted-foreground">
-								Where new connections auto-capture the entity
-								ID from. Set by picking a field in the OAuth
-								callback popup.
+								Select a data provider to populate entity
+								options for organization mappings
 							</p>
 						</div>
-					)}
 
-					{/* Default Entity ID */}
-					<div className="space-y-2">
-						<Label htmlFor="defaultEntityId">
-							Default Entity ID
-						</Label>
-						<Input
-							id="defaultEntityId"
-							placeholder="e.g., common"
-							value={defaultEntityId}
-							onChange={(e) => setDefaultEntityId(e.target.value)}
-						/>
-						<p className="text-xs text-muted-foreground">
-							Default value for entity_id in URL templates (used
-							when org mapping doesn't specify one)
-						</p>
-					</div>
-
-					{/* Config Schema */}
-					<div className="space-y-2">
-						<div className="flex items-center justify-between">
-							<Label>Configuration Schema</Label>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={addConfigField}
-							>
-								<Plus className="h-4 w-4 mr-1" />
-								Add Field
-							</Button>
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Define configuration fields required for each
-							organization mapping
-						</p>
-
-						<div className="space-y-3">
-							{configSchema.map((field, index) => (
-								<div
-									key={index}
-									className="flex gap-2 items-start rounded-md bg-muted/50 p-3 ring-1 ring-foreground/5"
-								>
-									<div className="flex-1 space-y-2">
-										<Input
-											placeholder="Field key (e.g., tenant_id)"
-											value={field.key}
-											onChange={(e) =>
-												updateConfigField(index, {
-													key: e.target.value,
-												})
-											}
-											required
-										/>
-										<div className="flex gap-2">
-											<Select
-												value={field.type}
-												onValueChange={(value) =>
-													updateConfigField(index, {
-														type: value as ConfigSchemaItem["type"],
-													})
-												}
-											>
-												<SelectTrigger className="w-32">
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="string">
-														String
-													</SelectItem>
-													<SelectItem value="int">
-														Integer
-													</SelectItem>
-													<SelectItem value="bool">
-														Boolean
-													</SelectItem>
-													<SelectItem value="json">
-														JSON
-													</SelectItem>
-													<SelectItem value="secret">
-														Secret
-													</SelectItem>
-												</SelectContent>
-											</Select>
-											<label className="flex items-center gap-2 text-sm">
-												<Checkbox
-													checked={field.required}
-													onCheckedChange={(checked) =>
-														updateConfigField(
-															index,
-															{
-																required:
-																	checked === true,
-															},
-														)
-													}
-												/>
-												Required
-											</label>
-										</div>
-									</div>
+						{/* Entity ID source (read-only; reset via trash icon) */}
+						{isEditing && existingIntegration?.oauth_config && (
+							<div className="space-y-2">
+								<Label htmlFor="entityIdSource">
+									Entity ID source
+								</Label>
+								<div className="flex gap-2">
+									<Input
+										className="min-h-11"
+										id="entityIdSource"
+										readOnly
+										value={entityIdSourceDisplay}
+										placeholder="Not set — picker will appear on next OAuth connect"
+									/>
 									<Button
 										type="button"
-										variant="ghost"
+										variant="outline"
 										size="icon"
-										onClick={() => removeConfigField(index)}
-										className="text-destructive"
+										disabled={!existingEntityIdSource}
+										onClick={() => {
+											setResetClearMappings(false);
+											setShowResetEntityIdSource(true);
+										}}
+										title="Reset Entity ID source"
 									>
 										<Trash2 className="h-4 w-4" />
 									</Button>
 								</div>
-							))}
-						</div>
-					</div>
-				</div>
+								<p className="text-xs text-muted-foreground">
+									Where new connections auto-capture the
+									entity ID from. Set by picking a field in
+									the OAuth callback popup.
+								</p>
+							</div>
+						)}
 
-				<DialogFooter>
+						{/* Default Entity ID */}
+						<div className="space-y-2">
+							<Label htmlFor="defaultEntityId">
+								Default Entity ID
+							</Label>
+							<Input
+								className="min-h-11"
+								id="defaultEntityId"
+								placeholder="e.g., common"
+								value={defaultEntityId}
+								onChange={(e) =>
+									setDefaultEntityId(e.target.value)
+								}
+							/>
+							<p className="text-xs text-muted-foreground">
+								Default value for entity_id in URL templates
+								(used when org mapping doesn't specify one)
+							</p>
+						</div>
+
+						<IntegrationSchemaEditor
+							fields={configSchema}
+							onAdd={addConfigField}
+							onUpdate={updateConfigField}
+							onRemove={removeConfigField}
+						/>
+					</fieldset>
+				</div>
+				{saveError && (
+					<p
+						role="alert"
+						className="my-3 shrink-0 text-sm text-destructive"
+					>
+						{saveError}
+					</p>
+				)}
+
+				<DialogFooter className="shrink-0 border-t pt-4">
 					<Button
 						type="button"
 						variant="outline"
+						className="min-h-11"
 						onClick={() => onOpenChange(false)}
 						disabled={isLoading}
 					>
 						Cancel
 					</Button>
-					<Button type="submit" disabled={isLoading}>
+					<Button
+						className="min-h-11"
+						type="submit"
+						disabled={isLoading}
+					>
 						{isLoading ? (
 							<>
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 								{isEditing ? "Updating..." : "Creating..."}
 							</>
 						) : isEditing ? (
@@ -504,10 +511,11 @@ function CreateIntegrationForm({
 						<AlertDialogTitle>
 							Change Data Provider?
 						</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							Changing the data provider may orphan{" "}
-							{initialData?.mappings?.filter((m) => m.entity_id)
-								.length || 0}{" "}
+							{existingIntegration?.mappings?.filter(
+								(m) => m.entity_id,
+							).length || 0}{" "}
 							existing entity mapping(s). The entity IDs will be
 							preserved but may not match entities from the new
 							provider.
@@ -516,9 +524,10 @@ function CreateIntegrationForm({
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
+							className="min-h-11"
 							onClick={() => {
 								setShowDataProviderConfirm(false);
-								performSave();
+								void confirmAndSave(2);
 							}}
 						>
 							Keep Mappings
@@ -535,7 +544,7 @@ function CreateIntegrationForm({
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Rename Integration?</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							Renaming this integration will break any SDK calls
 							using the name '{originalName}'. Workflows and
 							scripts will need to be updated to use '{name}'.
@@ -544,9 +553,10 @@ function CreateIntegrationForm({
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
+							className="min-h-11"
 							onClick={() => {
 								setShowNameChangeConfirm(false);
-								performSave();
+								void confirmAndSave(1);
 							}}
 						>
 							Rename Anyway
@@ -565,7 +575,7 @@ function CreateIntegrationForm({
 						<AlertDialogTitle>
 							Remove Configuration Fields?
 						</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							Removing config field(s) will delete all stored
 							values for: {removedFieldNames.join(", ")}. This
 							cannot be undone.
@@ -578,7 +588,7 @@ function CreateIntegrationForm({
 								setShowConfigFieldRemovalConfirm(false);
 								performSave();
 							}}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							Delete Fields
 						</AlertDialogAction>
@@ -656,7 +666,7 @@ function CreateIntegrationForm({
 									},
 								);
 							}}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
 						>
 							{resetEntityIdSource.isPending
 								? "Clearing…"
@@ -674,12 +684,18 @@ function CreateIntegrationDialogContent({
 	onOpenChange,
 	editIntegrationId,
 	initialData,
-}: Omit<CreateIntegrationDialogProps, "open">) {
+	isSaving,
+	setIsSaving,
+}: Omit<CreateIntegrationDialogProps, "open"> & {
+	isSaving: boolean;
+	setIsSaving: (saving: boolean) => void;
+}) {
 	// Only fetch if we don't have initialData and we're editing
 	const {
 		data: fetchedIntegration,
 		isLoading,
-		dataUpdatedAt,
+		isFetching,
+		refetch,
 	} = useIntegration(initialData ? "" : editIntegrationId || "");
 
 	// Use initialData if provided, otherwise use fetched data
@@ -708,19 +724,38 @@ function CreateIntegrationDialogContent({
 		);
 	}
 
-	// Use dataUpdatedAt in key so form remounts when fresh data arrives
-	// (e.g., after saving and re-opening the dialog with stale cache)
-	const formKey = needsFetch
-		? `${existingIntegration?.id}-${dataUpdatedAt}`
-		: existingIntegration?.id || "new";
+	if (needsFetch && !existingIntegration) {
+		return (
+			<>
+				<DialogHeader>
+					<DialogTitle>Edit Integration</DialogTitle>
+					<DialogDescription>
+						Load the integration settings before editing.
+					</DialogDescription>
+				</DialogHeader>
+				<IntegrationReadError
+					resource="integration"
+					cached={false}
+					pending={isFetching}
+					onRetry={() => {
+						void refetch();
+					}}
+				/>
+			</>
+		);
+	}
+
+	// Keep the draft mounted across background refreshes; reopening resets it.
+	const formKey = existingIntegration?.id || "new";
 
 	return (
 		<CreateIntegrationForm
 			key={formKey}
+			isSaving={isSaving}
+			setIsSaving={setIsSaving}
 			onOpenChange={onOpenChange}
 			editIntegrationId={editIntegrationId}
 			existingIntegration={existingIntegration}
-			initialData={initialData}
 		/>
 	);
 }
@@ -734,14 +769,22 @@ export function CreateIntegrationDialog({
 }: CreateIntegrationDialogProps) {
 	// Create a stable key that changes when dialog opens or when editing a different integration
 	// This forces a remount of the inner component, resetting all form state
+	const [isSaving, setIsSaving] = useState(false);
 	const dialogKey = open ? `open-${editIntegrationId || "new"}` : "closed";
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!isSaving) onOpenChange(nextOpen);
+			}}
+		>
+			<DialogContent className="flex max-w-2xl max-h-[90dvh] flex-col overflow-hidden">
 				{open && (
 					<CreateIntegrationDialogContent
 						key={dialogKey}
+						isSaving={isSaving}
+						setIsSaving={setIsSaving}
 						onOpenChange={onOpenChange}
 						editIntegrationId={editIntegrationId}
 						initialData={initialData}

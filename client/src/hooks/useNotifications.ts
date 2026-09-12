@@ -35,7 +35,7 @@ export function useNotifications() {
 	);
 
 	// Fetch initial notifications
-	const { isLoading, error } = useQuery({
+	const { isLoading, error, refetch, isFetching } = useQuery({
 		queryKey: ["notifications"],
 		queryFn: async () => {
 			const data = await getNotifications();
@@ -103,6 +103,8 @@ export function useNotifications() {
 		completedNotifications,
 		isLoading,
 		error,
+		refetch,
+		isFetching,
 		dismiss,
 		clearAll: clearNotifications,
 	};

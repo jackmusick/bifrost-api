@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formatBytes,
 	formatChartDateLabel,
+	formatChartDateTick,
 	formatCpuSeconds,
 	formatCurrency,
 	formatNumber,
@@ -18,6 +19,11 @@ describe("report formatters", () => {
 		);
 	});
 
+	it("keeps date-only bucket labels on their calendar day", () => {
+		expect(formatChartDateTick("2026-08-10")).toBe("Aug 10");
+		expect(formatChartDateLabel("2026-08-10")).toBe("August 10th, 2026");
+	});
+
 	it("rejects non-primitive chart labels", () => {
 		expect(() => formatChartDateLabel(undefined)).toThrow(
 			"Chart date label must be a string or number",
@@ -28,6 +34,7 @@ describe("report formatters", () => {
 	});
 
 	it("formats currency and numeric values", () => {
+		expect(formatCurrency(0.00128)).toBe("$0.00128");
 		expect(formatCurrency("1234.5")).toBe("$1,234.50");
 		expect(formatCurrency(undefined)).toBe("$0.00");
 		expect(formatCurrency("not-a-number")).toBe("$0.00");

@@ -1,7 +1,22 @@
 import { useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Menu, Plus, Upload } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { FilesInspector } from "./FilesInspector";
+import {
+	ChevronLeft,
+	Menu,
+	Plus,
+	Upload,
+	Info,
+	FolderOpen,
+	ShieldCheck,
+	HardDrive,
+} from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import {
 	Sheet,
 	SheetContent,
@@ -9,13 +24,10 @@ import {
 	SheetTitle,
 	SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
-import {
-	deleteFilePolicy,
-	type FilePolicy,
-} from "@/services/filePolicies";
+import { type FilePolicy } from "@/services/filePolicies";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useOrganizations } from "@/hooks/useOrganizations";
@@ -23,17 +35,19 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { EffectiveAccessPanel } from "./EffectiveAccessPanel";
 import { FilePreview } from "./FilePreview";
 import { FolderListing, type ListingRowAction } from "./FolderListing";
+import {
+	DeleteConfirmation,
+	type FileDeleteTarget,
+} from "./DeleteConfirmation";
 import { NewShareDialog } from "./NewShareDialog";
 import { PoliciesView } from "./PoliciesView";
-import { PolicyEditorModal } from "./PolicyEditorModal";
+import { PolicyEditorPanel } from "./PolicyEditorModal";
+import { SharesOverview } from "./SharesOverview";
 import { ShareTree, type ShareTreeAction } from "./ShareTree";
-import { TestAccessModal } from "./TestAccessModal";
+import { TestAccessPanel } from "./TestAccessModal";
 import { useFileUpload } from "./useFileUpload";
 
 const READ_ONLY_LOCATIONS = new Set(["uploads"]);
-// Canonical surface for each explorer pane (matches shadcn Card: rounded-4xl
-// ring instead of a hard border so it reads as part of the theme).
-const PANE = "flex min-h-0 flex-col overflow-hidden rounded-[min(var(--radius-4xl),24px)] bg-card ring-1 ring-foreground/5 dark:ring-foreground/10";
 
 interface FilesExplorerProps {
 	/**
@@ -54,10 +68,23 @@ export function FilesExplorer({
 	embedded = false,
 }: FilesExplorerProps = {}) {
 	const { isPlatformAdmin } = useAuth();
+	const explorerRef = useRef<HTMLDivElement>(null);
+	const detailTriggerRef = useRef<HTMLElement | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<FileDeleteTarget | null>(
+		null,
+	);
+	const queryClient = useQueryClient();
+	function refreshFiles() {
+		void queryClient.invalidateQueries({ queryKey: ["file-structure"] });
+		void queryClient.invalidateQueries({ queryKey: ["file-shares"] });
+		setRefreshKey((key) => key + 1);
+	}
 	const { data: organizations = [] } = useOrganizations({
 		enabled: isPlatformAdmin && !install,
 	});
 	const isWide = useMediaQuery("(min-width: 1024px)");
+	const isThreePane = useMediaQuery("(min-width: 1280px)");
+	const isWideToolWorkspace = useMediaQuery("(min-width: 1440px)");
 
 	// When `install` is set, scope and location are pinned — not user-controlled.
 	// Otherwise selectorScope is what OrganizationSelect speaks: null = Global.
@@ -74,40 +101,73 @@ export function FilesExplorer({
 
 	const [treeOpen, setTreeOpen] = useState(false);
 	const [detailOpen, setDetailOpen] = useState(false);
+	const [detailTab, setDetailTab] = useState("preview");
 	const [newShareOpen, setNewShareOpen] = useState(false);
 	const [testOpen, setTestOpen] = useState(false);
 	const [policyOpen, setPolicyOpen] = useState(false);
-	// The (location, path) a modal targets — may be a folder prefix or a file.
-	const [modalTarget, setModalTarget] = useState<{ location: string; path: string }>(
-		{ location: "", path: "" },
-	);
+	const [inspectorBusy, setInspectorBusy] = useState(false);
+	const returnToDetails = useRef(false);
+	// Target of the embedded policy editor or access check.
+	const [modalTarget, setModalTarget] = useState<{
+		location: string;
+		path: string;
+		exactPath?: string;
+	}>({ location: "", path: "" });
 	// Bump to force ShareTree/FolderListing to refetch after a mutation.
 	const [refreshKey, setRefreshKey] = useState(0);
 
 	const solutionReadOnly = Boolean(install);
 	const readOnly =
-		solutionReadOnly || (location !== null && READ_ONLY_LOCATIONS.has(location));
+		solutionReadOnly ||
+		(location !== null && READ_ONLY_LOCATIONS.has(location));
 	const canUpload = view === "browse" && location !== null && !readOnly;
 	const uploadInputRef = useRef<HTMLInputElement>(null);
-	const { uploading, uploadFiles } = useFileUpload(
-		canUpload ? location : null,
-		scope,
-		prefix,
-		() => setRefreshKey((k) => k + 1),
-	);
+	const {
+		uploading,
+		uploadFiles,
+		progress: uploadProgress,
+		error: uploadError,
+		retryUpload,
+	} = useFileUpload(canUpload ? location : null, scope, prefix, refreshFiles);
 	const scopeLabel = useMemo(() => {
 		if (install) return "Solution";
 		if (selectorScope === null) return "Global";
 		return (
-			organizations.find((o) => o.id === selectorScope)?.name ?? "Organization"
+			organizations.find((o) => o.id === selectorScope)?.name ??
+			"Organization"
 		);
 	}, [install, selectorScope, organizations]);
 	const segments = prefix ? prefix.replace(/\/$/, "").split("/") : [];
 
+	function openDetails() {
+		detailTriggerRef.current =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
+		setDetailOpen(true);
+	}
+
+	function closeDetails() {
+		if (inspectorBusy) return;
+		setTestOpen(false);
+		setPolicyOpen(false);
+		// Remove inert before restoring focus to the directory on small screens.
+		flushSync(() => setDetailOpen(false));
+		const opener = detailTriggerRef.current;
+		if (opener?.isConnected && opener !== document.body)
+			opener.focus({ preventScroll: true });
+		else explorerRef.current?.focus({ preventScroll: true });
+	}
+
 	function resetTo(nextLocation: string | null, nextPrefix: string) {
+		if (inspectorBusy) return;
+		setTestOpen(false);
+		setPolicyOpen(false);
 		setLocation(nextLocation);
 		setPrefix(nextPrefix);
 		setSelectedFile(null);
+		setDetailTab("access");
+		setDetailOpen(false);
 	}
 
 	function handleScopeChange(next: string | null | undefined) {
@@ -139,26 +199,29 @@ export function FilesExplorer({
 	}
 
 	function openTest(loc: string, path: string) {
+		returnToDetails.current = detailOpen && !testOpen && !policyOpen;
+		setPolicyOpen(false);
+		openDetails();
 		setModalTarget({ location: loc, path });
 		setTestOpen(true);
 	}
 
-	function openPolicy(loc: string, path: string) {
+	function openPolicy(loc: string, path: string, exact = false) {
 		if (solutionReadOnly) return;
-		setModalTarget({ location: loc, path });
+		if (!policyOpen) returnToDetails.current = detailOpen && !testOpen;
+		setTestOpen(false);
+		openDetails();
+		setModalTarget({
+			location: loc,
+			path,
+			exactPath: exact ? path : undefined,
+		});
 		setPolicyOpen(true);
 	}
 
-	async function handleDeletePolicy(policy: FilePolicy) {
-		try {
-			await deleteFilePolicy(policy);
-			toast.success("File policy deleted");
-			setRefreshKey((k) => k + 1);
-		} catch (err) {
-			toast.error("Failed to delete file policy", {
-				description: err instanceof Error ? err.message : String(err),
-			});
-		}
+	function handleDeletePolicy(policy: FilePolicy) {
+		if (solutionReadOnly) return;
+		setDeleteTarget({ kind: "policy", policy });
 	}
 
 	function handleTreeAction(
@@ -168,14 +231,24 @@ export function FilesExplorer({
 	) {
 		if (action === "effective") {
 			handleSelect(loc, treePrefix);
+			openDetails();
 		} else if (action === "test") {
 			openTest(loc, treePrefix);
 		} else if (action === "newPolicy") {
 			if (solutionReadOnly) return;
-			openPolicy(loc, treePrefix);
+			openPolicy(
+				loc,
+				treePrefix ? `${treePrefix.replace(/\/+$/, "")}/` : "",
+				true,
+			);
 		} else if (action === "upload") {
-			if (solutionReadOnly) return;
-			handleSelect(loc, treePrefix);
+			if (solutionReadOnly || READ_ONLY_LOCATIONS.has(loc)) return;
+			// Commit the destination before invoking the browser file chooser.
+			flushSync(() => {
+				setView("browse");
+				handleSelect(loc, treePrefix);
+			});
+			uploadInputRef.current?.click();
 		}
 	}
 
@@ -184,31 +257,21 @@ export function FilesExplorer({
 		if (readOnly && (action === "policy" || action === "delete")) return;
 		if (action === "preview") {
 			setSelectedFile(path);
-			if (!isWide) setDetailOpen(true);
+			setDetailTab("preview");
+			openDetails();
 		} else if (action === "test") {
 			openTest(location, path);
 		} else if (action === "policy") {
 			openPolicy(location, path);
 		} else if (action === "delete") {
-			void deleteFile(path);
-		}
-	}
-
-	async function deleteFile(path: string) {
-		if (location === null || readOnly) return;
-		const { files } = await import("@/lib/app-sdk/files");
-		try {
-			await files.delete(path, { location, scope });
-			if (selectedFile === path) setSelectedFile(null);
-			setRefreshKey((k) => k + 1);
-		} catch {
-			// surfaced by the SDK toast layer elsewhere; ignore here
+			setDeleteTarget({ kind: "file", location, scope, path });
 		}
 	}
 
 	function selectFile(path: string) {
 		setSelectedFile(path);
-		if (!isWide) setDetailOpen(true);
+		setDetailTab("preview");
+		openDetails();
 	}
 
 	const tree = (
@@ -223,224 +286,543 @@ export function FilesExplorer({
 		/>
 	);
 
+	const preview = (
+		<FilePreview
+			location={location ?? ""}
+			scope={scope}
+			path={selectedFile}
+		/>
+	);
+	const access = readOnly ? (
+		<EffectiveAccessPanel
+			key={refreshKey}
+			location={location ?? ""}
+			scope={scope}
+			path={selectedFile ?? (location ? prefix : null)}
+			readOnly={readOnly}
+			managedBySolution={solutionReadOnly}
+			solutionId={install}
+			onOpenTest={() => openTest(location ?? "", selectedFile ?? prefix)}
+			onOpenPolicy={
+				readOnly
+					? undefined
+					: (policy) => openPolicy(policy.location, policy.path, true)
+			}
+			onManagePolicy={() =>
+				openPolicy(
+					location ?? "",
+					selectedFile ??
+						(prefix ? `${prefix.replace(/\/+$/, "")}/` : ""),
+					true,
+				)
+			}
+		/>
+	) : (
+		<PolicyEditorPanel
+			key={refreshKey}
+			location={location ?? ""}
+			scope={scope}
+			path={
+				selectedFile ?? (prefix ? `${prefix.replace(/\/+$/, "")}/` : "")
+			}
+			onSaved={refreshFiles}
+			onOpenSource={(policy) =>
+				openPolicy(policy.location, policy.path, true)
+			}
+			onBusyChange={setInspectorBusy}
+		/>
+	);
+
 	const detail = (
-		<div className="flex h-full min-h-0 flex-col" data-testid="detail-pane">
-			<div className="min-h-0 flex-1 overflow-hidden border-b">
-				<FilePreview location={location ?? ""} scope={scope} path={selectedFile} />
-			</div>
-			<div className="min-h-0 flex-1 overflow-hidden">
-				<EffectiveAccessPanel
+		<Tabs
+			key={selectedFile ?? "access"}
+			value={detailTab}
+			onValueChange={(tab) => {
+				if (!inspectorBusy) setDetailTab(tab);
+			}}
+			className="flex min-h-0 flex-1 flex-col gap-0"
+			data-testid="detail-pane"
+		>
+			<TabsList
+				variant="line"
+				aria-label="File details"
+				className="mx-4 mt-2 shrink-0"
+				inert={inspectorBusy || undefined}
+			>
+				{selectedFile && (
+					<TabsTrigger value="preview" className="min-h-11">
+						Preview
+					</TabsTrigger>
+				)}
+				<TabsTrigger value="access" className="min-h-11">
+					Access
+				</TabsTrigger>
+				<TabsTrigger value="test" className="min-h-11">
+					Test
+				</TabsTrigger>
+			</TabsList>
+			<TabsContent
+				value="preview"
+				className="min-h-0 flex-1 overflow-hidden"
+			>
+				{preview}
+			</TabsContent>
+			<TabsContent
+				value="access"
+				className="min-h-0 flex-1 overflow-hidden"
+			>
+				{access}
+			</TabsContent>
+			<TabsContent
+				value="test"
+				className="min-h-0 flex-1 overflow-hidden"
+			>
+				<TestAccessPanel
+					scopeLabel={scopeLabel}
 					location={location ?? ""}
 					scope={scope}
-					path={selectedFile ?? (location ? prefix : null)}
-					readOnly={readOnly}
-					managedBySolution={solutionReadOnly}
-					solutionId={install}
-					onOpenTest={() =>
-						openTest(location ?? "", selectedFile ?? prefix)
-					}
-					onManagePolicy={() =>
-						openPolicy(location ?? "", selectedFile ?? prefix)
-					}
+					path={selectedFile ?? prefix}
 				/>
-			</div>
-		</div>
+			</TabsContent>
+		</Tabs>
 	);
 	const solutionTitle = installName ?? "Solution";
-	const solutionBreadcrumbItems =
-		location === null ? [] : [location, ...segments];
+	const showTree =
+		isWide &&
+		(!detailOpen ||
+			(isThreePane &&
+				((!policyOpen && !testOpen && detailTab === "preview") ||
+					isWideToolWorkspace)));
+	const toolOpen = testOpen || policyOpen;
+	function closeTool() {
+		setInspectorBusy(false);
+		setTestOpen(false);
+		setPolicyOpen(false);
+		if (!returnToDetails.current) {
+			setDetailOpen(false);
+			requestAnimationFrame(() =>
+				detailTriggerRef.current?.focus({ preventScroll: true }),
+			);
+		}
+	}
+	const inspectorTitle = toolOpen
+		? (modalTarget.path.split("/").filter(Boolean).at(-1) ??
+			modalTarget.location)
+		: (selectedFile?.split("/").pop() ??
+			segments.at(-1) ??
+			location ??
+			"Details");
+	const inspectorPath = toolOpen
+		? `${modalTarget.location}/${modalTarget.path}`
+		: `${location ?? ""}/${selectedFile ?? prefix}`;
+	const toolContent = policyOpen ? (
+		<PolicyEditorPanel
+			location={modalTarget.location}
+			scope={scope}
+			path={modalTarget.path}
+			exactPath={modalTarget.exactPath}
+			onOpenChange={closeTool}
+			onSaved={refreshFiles}
+			onOpenSource={(policy) =>
+				openPolicy(policy.location, policy.path, true)
+			}
+			onBusyChange={setInspectorBusy}
+		/>
+	) : testOpen ? (
+		<TestAccessPanel
+			scopeLabel={scopeLabel}
+			location={modalTarget.location}
+			scope={scope}
+			path={modalTarget.path}
+		/>
+	) : (
+		detail
+	);
+
+	const inspectorContent = toolOpen ? (
+		<Tabs
+			value={policyOpen ? "access" : "test"}
+			onValueChange={(tab) => {
+				if (inspectorBusy) return;
+				setPolicyOpen(tab === "access");
+				setTestOpen(tab === "test");
+			}}
+			className="flex min-h-0 flex-1 flex-col gap-0"
+		>
+			<TabsList
+				variant="line"
+				aria-label="File details"
+				className="mx-4 mt-2 shrink-0"
+				inert={inspectorBusy || undefined}
+			>
+				<TabsTrigger
+					value="access"
+					disabled={readOnly}
+					className="min-h-11"
+				>
+					Access
+				</TabsTrigger>
+				<TabsTrigger value="test" className="min-h-11">
+					Test
+				</TabsTrigger>
+			</TabsList>
+			<TabsContent
+				value={policyOpen ? "access" : "test"}
+				className="flex min-h-0 flex-1 flex-col overflow-hidden"
+			>
+				{toolContent}
+			</TabsContent>
+		</Tabs>
+	) : (
+		detail
+	);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-3">
-			<header className="flex shrink-0 flex-wrap items-center gap-2">
-				<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-					{install && !embedded && (
-						<>
-							<Button asChild variant="outline" size="sm">
-								<Link
-									to={`/solutions/${install}`}
-									data-testid="files-solution-back"
-									aria-label="Back to Solution"
-								>
-									<ChevronLeft data-icon="inline-start" />
-									Back
-								</Link>
-							</Button>
-							<span
-								className="min-w-0 truncate text-sm font-semibold text-foreground"
-								title={solutionTitle}
-							>
-								{solutionTitle}
-							</span>
-						</>
-					)}
-					{!isWide && (
-						<Sheet open={treeOpen} onOpenChange={setTreeOpen}>
-							<SheetTrigger asChild>
-								<Button
-									type="button"
-									variant="outline"
-									size="icon-sm"
-									aria-label="Open shares"
-								>
-									<Menu className="h-4 w-4" />
-								</Button>
-							</SheetTrigger>
-							<SheetContent side="left" className="w-72 p-0">
-								<SheetHeader className="px-3 py-2">
-									<SheetTitle>Shares</SheetTitle>
-								</SheetHeader>
-								<div className="flex min-h-0 flex-1 flex-col">{tree}</div>
-							</SheetContent>
-						</Sheet>
-					)}
-					{isPlatformAdmin && !install && (
-						<div className="w-56 shrink-0">
-							<OrganizationSelect
-								value={selectorScope}
-								onChange={handleScopeChange}
-								showGlobal
-								showAll={false}
-							/>
-						</div>
-					)}
-					{view === "browse" && !install && (
-						<div className="min-w-0 flex-1">
-							<Breadcrumbs
-								scopeLabel={scopeLabel}
-								location={location}
-								segments={segments}
-								onNavigate={handleBreadcrumb}
-							/>
-						</div>
-					)}
-					{view === "browse" && install && solutionBreadcrumbItems.length > 0 && (
-						<nav
-							aria-label="Breadcrumb"
-							className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5"
+		<div
+			ref={explorerRef}
+			tabIndex={-1}
+			role="region"
+			aria-label="Files explorer"
+			className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border bg-card outline-none"
+		>
+			<header
+				inert={inspectorBusy || undefined}
+				className="flex shrink-0 flex-wrap items-center border-b bg-muted/20"
+			>
+				{install && !embedded && (
+					<div className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2">
+						<Button
+							asChild
+							variant="ghost"
+							size="icon"
+							aria-label="Back to Solution"
 						>
-							{solutionBreadcrumbItems.map((item, index) => (
-								<span key={`${item}-${index}`} className="flex min-w-0 items-center">
-									{index > 0 && (
-										<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-									)}
-									<button
-										type="button"
-										onClick={() => handleBreadcrumb(index)}
-										title={item}
-										className={
-											"max-w-[12rem] truncate rounded px-1 text-sm hover:bg-muted " +
-											(index === solutionBreadcrumbItems.length - 1
-												? "font-medium text-foreground"
-												: "text-muted-foreground")
-										}
-									>
-										{item}
-									</button>
-								</span>
-							))}
-						</nav>
-					)}
-				</div>
-				<div className="ml-auto flex shrink-0 items-center gap-2">
-					{!install && (
-						<>
-							<Tabs
-								value={view}
-								onValueChange={(value) =>
-									setView(value as "browse" | "policies")
-								}
+							<Link
+								to={`/solutions/${install}`}
+								data-testid="files-solution-back"
 							>
-								<TabsList>
-									<TabsTrigger value="browse">Browse</TabsTrigger>
-									<TabsTrigger value="policies">Policies</TabsTrigger>
-								</TabsList>
-							</Tabs>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								onClick={() => setNewShareOpen(true)}
-							>
-								<Plus className="h-4 w-4" /> New Share
-							</Button>
-						</>
-					)}
-					{canUpload && (
-						<>
-							<input
-								ref={uploadInputRef}
-								type="file"
-								multiple
-								className="hidden"
-								onChange={(event) => {
-									if (event.target.files?.length)
-										void uploadFiles(event.target.files);
-									event.target.value = "";
-								}}
-							/>
-							<Button
-								type="button"
-								size="sm"
-								onClick={() => uploadInputRef.current?.click()}
-								disabled={uploading}
-							>
-								<Upload className="h-4 w-4" />{" "}
-								{uploading ? "Uploading…" : "Upload"}
-							</Button>
-						</>
-					)}
-				</div>
-			</header>
-
-			{view === "policies" && !install ? (
-				<div className="min-h-0 flex-1 overflow-hidden">
-					<PoliciesView
-						scope={scope}
-						refreshKey={refreshKey}
-						onEdit={(policy) => openPolicy(policy.location, policy.path)}
-						onDelete={(policy) => void handleDeletePolicy(policy)}
-					/>
-				</div>
-			) : (
-				<div className="grid min-h-0 flex-1 gap-3 overflow-hidden lg:grid-cols-[18rem_minmax(0,1fr)_24rem]">
-					{isWide && <div className={PANE}>{tree}</div>}
-					{/* No PANE here: FolderListing's DataTable is its own card —
-					    wrapping it in PANE would nest a card in a card. */}
-					<div className="flex min-h-0 flex-col overflow-hidden">
-						<FolderListing
-							key={`listing-${scope}-${location}-${prefix}-${refreshKey}`}
-							scope={scope}
-							location={location}
-							prefix={prefix}
-							readOnly={readOnly}
-							managedBySolution={solutionReadOnly}
-							solutionId={install}
-							onOpenFolder={(next) => resetTo(location, next)}
-							onSelectFile={selectFile}
-							onRowAction={handleRowAction}
-							onFolderAction={(action, folderPrefix) =>
-								location !== null &&
-								handleTreeAction(action, location, folderPrefix)
-							}
-							onUploaded={() => setRefreshKey((k) => k + 1)}
+								<ChevronLeft className="size-4" />
+							</Link>
+						</Button>
+						<span
+							className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]"
+							title={solutionTitle}
+						>
+							{solutionTitle}
+						</span>
+					</div>
+				)}
+				{isPlatformAdmin && !install && (
+					<div className="flex min-w-0 w-full items-stretch border-b sm:w-[17rem] sm:shrink-0 sm:self-stretch sm:border-b-0 sm:border-r">
+						<OrganizationSelect
+							aria-label="File scope"
+							triggerClassName="h-full min-h-14 rounded-none border-0 bg-transparent px-4 py-3 shadow-none hover:bg-muted/50 focus-visible:ring-inset lg:min-h-14"
+							value={selectorScope}
+							onChange={handleScopeChange}
+							showGlobal
+							showAll={false}
 						/>
 					</div>
-					{isWide && <div className={PANE}>{detail}</div>}
-				</div>
-			)}
-
-			{!isWide && (
-				<Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-					<SheetContent side="right" className="w-full p-0 sm:max-w-md">
-						<SheetHeader className="px-3 py-2">
-							<SheetTitle>Details</SheetTitle>
-						</SheetHeader>
-						<div className="flex h-[calc(100%-3rem)] min-h-0 flex-col">
-							{detail}
+				)}
+				{!install && (
+					<div className="flex min-w-0 flex-1 basis-64 items-stretch gap-3 pl-4">
+						<Tabs
+							value={view}
+							onValueChange={(value) => {
+								setView(value as "browse" | "policies");
+								setDetailOpen(false);
+								setTestOpen(false);
+								setPolicyOpen(false);
+							}}
+							className="flex min-w-0 items-center py-2"
+						>
+							<TabsList
+								variant="line"
+								aria-label="Files workspace"
+							>
+								<TabsTrigger
+									value="browse"
+									className="min-h-11"
+								>
+									<FolderOpen className="size-4" />
+									Files
+								</TabsTrigger>
+								<TabsTrigger
+									value="policies"
+									className="min-h-11"
+								>
+									<ShieldCheck className="size-4" />
+									Access Policies
+								</TabsTrigger>
+							</TabsList>
+						</Tabs>
+						<WorkspacePrimaryAction
+							type="button"
+							aria-label="New Share"
+							className="ml-auto"
+							onClick={() => setNewShareOpen(true)}
+						>
+							<Plus className="size-4" />
+							<span className="hidden sm:inline">New Share</span>
+						</WorkspacePrimaryAction>
+					</div>
+				)}
+			</header>
+			<div className="relative flex min-h-0 flex-1 overflow-hidden">
+				{showTree && (
+					<aside
+						aria-label="Share navigation"
+						inert={inspectorBusy || undefined}
+						className="flex w-[17rem] shrink-0 flex-col border-r bg-muted/10"
+					>
+						<div className="flex h-14 shrink-0 items-center gap-2 border-b px-4 text-sm font-semibold">
+							<HardDrive className="size-4 text-primary" />
+							Shares
 						</div>
-					</SheetContent>
-				</Sheet>
+						{tree}
+					</aside>
+				)}
+				<div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+					<div
+						inert={
+							inspectorBusy || (!isWide && detailOpen)
+								? true
+								: undefined
+						}
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						{
+							<div className="flex min-h-14 shrink-0 flex-wrap items-stretch gap-2 border-b pl-3 sm:pl-4 lg:h-14 lg:flex-nowrap">
+								{!showTree && (
+									<Sheet
+										open={treeOpen}
+										onOpenChange={setTreeOpen}
+									>
+										<SheetTrigger asChild>
+											<Button
+												variant="outline"
+												size="icon"
+												aria-label="Open shares"
+												className="my-2"
+											>
+												<Menu className="size-4" />
+											</Button>
+										</SheetTrigger>
+										<SheetContent
+											side="left"
+											className="w-72 p-0"
+										>
+											<SheetHeader>
+												<SheetTitle>Shares</SheetTitle>
+											</SheetHeader>
+											<div className="flex min-h-0 flex-1 flex-col">
+												{tree}
+											</div>
+										</SheetContent>
+									</Sheet>
+								)}
+								<div className="flex min-w-0 flex-1 items-center py-2">
+									<Breadcrumbs
+										scopeLabel={
+											install ? solutionTitle : scopeLabel
+										}
+										includeScopeRoot={!install}
+										location={location}
+										segments={segments}
+										onNavigate={handleBreadcrumb}
+									/>
+								</div>
+								{location !== null && (
+									<Button
+										aria-label="Folder Details"
+										variant="ghost"
+										size="sm"
+										className="my-2 min-h-10"
+										onClick={() => {
+											setSelectedFile(null);
+											setDetailTab("access");
+											openDetails();
+										}}
+									>
+										<Info className="size-4" />
+										<span className="hidden xl:inline">
+											Folder Details
+										</span>
+									</Button>
+								)}
+								{canUpload && (
+									<>
+										<input
+											ref={uploadInputRef}
+											type="file"
+											multiple
+											className="hidden"
+											onChange={(event) => {
+												if (event.target.files?.length)
+													void uploadFiles(
+														event.target.files,
+													);
+												event.target.value = "";
+											}}
+										/>
+										<WorkspacePrimaryAction
+											onClick={() =>
+												uploadInputRef.current?.click()
+											}
+											disabled={uploading}
+										>
+											<Upload className="size-4" />
+											{uploading
+												? "Uploading…"
+												: "Upload"}
+										</WorkspacePrimaryAction>
+									</>
+								)}
+							</div>
+						}
+						{uploadProgress && (
+							<p
+								role="status"
+								className="border-b px-4 py-2 text-sm text-muted-foreground [overflow-wrap:anywhere]"
+							>
+								{uploadProgress}
+							</p>
+						)}
+						{uploadError && (
+							<Alert variant="destructive" className="m-3 w-auto">
+								<AlertTitle>Upload failed</AlertTitle>
+								<AlertDescription>
+									<p>{uploadError}</p>
+									<Button
+										variant="outline"
+										className="mt-2"
+										disabled={uploading}
+										onClick={() => void retryUpload()}
+									>
+										Retry upload
+									</Button>
+								</AlertDescription>
+							</Alert>
+						)}
+						{view === "policies" && !install ? (
+							<PoliciesView
+								scope={scope}
+								refreshKey={refreshKey}
+								location={location}
+								prefix={prefix}
+								onEdit={(policy) =>
+									openPolicy(
+										policy.location,
+										policy.path,
+										true,
+									)
+								}
+								onDelete={handleDeletePolicy}
+							/>
+						) : location === null ? (
+							<SharesOverview
+								scope={scope}
+								readOnly={solutionReadOnly}
+								onSelect={handleSelect}
+							/>
+						) : (
+							<FolderListing
+								key={`listing-${scope}-${location}-${prefix}`}
+								scope={scope}
+								location={location}
+								prefix={prefix}
+								readOnly={readOnly}
+								managedBySolution={solutionReadOnly}
+								solutionId={install}
+								selectedPath={detailOpen ? selectedFile : null}
+								onOpenFolder={(next) => resetTo(location, next)}
+								onSelectFile={selectFile}
+								onRowAction={handleRowAction}
+								onFolderAction={(action, folderPrefix) =>
+									handleTreeAction(
+										action,
+										location,
+										folderPrefix,
+									)
+								}
+								onUploaded={refreshFiles}
+							/>
+						)}
+					</div>
+					{!isWide && (
+						<AnimatePresence initial={false}>
+							{detailOpen && (
+								<FilesInspector
+									key="file-inspector"
+									inline={false}
+									title={inspectorTitle}
+									path={inspectorPath}
+									isFile={Boolean(selectedFile)}
+									onClose={closeDetails}
+									busy={inspectorBusy}
+									width={
+										(toolOpen || detailTab !== "preview") &&
+										isThreePane
+											? 480
+											: 384
+									}
+								>
+									{inspectorContent}
+								</FilesInspector>
+							)}
+						</AnimatePresence>
+					)}
+				</div>
+				{isWide && (
+					<AnimatePresence initial={false}>
+						{detailOpen && (
+							<FilesInspector
+								key="file-inspector"
+								inline
+								title={inspectorTitle}
+								path={inspectorPath}
+								isFile={Boolean(selectedFile)}
+								onClose={closeDetails}
+								busy={inspectorBusy}
+								width={
+									(toolOpen || detailTab !== "preview") &&
+									isThreePane
+										? 480
+										: 384
+								}
+							>
+								{inspectorContent}
+							</FilesInspector>
+						)}
+					</AnimatePresence>
+				)}
+			</div>
+
+			{deleteTarget && (
+				<DeleteConfirmation
+					target={deleteTarget}
+					onClose={() => setDeleteTarget(null)}
+					onRestoreFocus={() => {
+						explorerRef.current?.focus({ preventScroll: true });
+					}}
+					onDeleted={(target) => {
+						if (
+							target.kind === "file" &&
+							target.location === location &&
+							target.scope === scope &&
+							target.path === selectedFile
+						) {
+							setSelectedFile(null);
+							setDetailOpen(false);
+						}
+						toast.success(
+							target.kind === "file"
+								? "File deleted"
+								: "File policy deleted",
+						);
+						refreshFiles();
+					}}
+				/>
 			)}
 
 			<NewShareDialog
@@ -448,24 +830,10 @@ export function FilesExplorer({
 				onOpenChange={setNewShareOpen}
 				scope={scope}
 				onCreated={(loc) => {
-					setRefreshKey((k) => k + 1);
+					refreshFiles();
+					setView("browse");
 					handleSelect(loc, "");
 				}}
-			/>
-			<TestAccessModal
-				open={testOpen}
-				onOpenChange={setTestOpen}
-				location={modalTarget.location}
-				scope={scope}
-				path={modalTarget.path}
-			/>
-			<PolicyEditorModal
-				open={policyOpen}
-				onOpenChange={setPolicyOpen}
-				location={modalTarget.location}
-				scope={scope}
-				path={modalTarget.path}
-				onSaved={() => setRefreshKey((k) => k + 1)}
 			/>
 		</div>
 	);

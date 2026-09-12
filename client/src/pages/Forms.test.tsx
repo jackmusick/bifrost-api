@@ -1,3 +1,4 @@
+import { Forms } from "./Forms";
 /**
  * Tests for the Forms page — focused on the SolutionManagedBadge affordance:
  * managed forms show the shared admin-only badge and hide Edit/Delete;
@@ -5,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, within } from "@/test-utils";
 
 const mockUseForms = vi.fn();
@@ -13,6 +15,8 @@ const mockUseUpdateForm = vi.fn();
 const mockPreloadRunFormPage = vi.fn(() =>
 	Promise.resolve({ default: vi.fn() }),
 );
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => true }));
+
 vi.mock("@/hooks/useForms", () => ({
 	useForms: () => mockUseForms(),
 	useDeleteForm: () => mockUseDeleteForm(),
@@ -74,8 +78,17 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Forms } = await import("./Forms");
-	return renderWithProviders(<Forms />);
+	return renderWithProviders(
+		<>
+			<Forms />
+			<LocationProbe />
+		</>,
+	);
+}
+
+function LocationProbe() {
+	const location = useLocation();
+	return <output aria-label="location">{location.pathname}</output>;
 }
 
 describe("Forms — solution-managed badge (grid view)", () => {
@@ -128,7 +141,7 @@ describe("Forms — solution-managed badge (grid view)", () => {
 		);
 		expect(screen.getByRole("menu")).toHaveClass("w-48");
 		for (const item of screen.getAllByRole("menuitem")) {
-			expect(item).toHaveClass("min-h-9", "whitespace-nowrap", "px-3");
+			expect(item).toHaveClass("min-h-11", "whitespace-nowrap", "px-3");
 		}
 		expect(
 			screen.getByRole("menuitem", { name: "Edit Form" }),
@@ -211,7 +224,7 @@ describe("Forms — solution-managed badge (table view)", () => {
 		);
 		expect(screen.getByRole("menu")).toHaveClass("w-48");
 		for (const item of screen.getAllByRole("menuitem")) {
-			expect(item).toHaveClass("min-h-9", "whitespace-nowrap", "px-3");
+			expect(item).toHaveClass("min-h-11", "whitespace-nowrap", "px-3");
 		}
 		expect(
 			screen.getByRole("menuitem", { name: "Edit Form" }),
@@ -223,4 +236,33 @@ describe("Forms — solution-managed badge (table view)", () => {
 			screen.getByRole("menuitem", { name: "Share Form" }),
 		).toBeInTheDocument();
 	});
+
+	it("opens editable forms from the table row", async () => {
+		const user = await renderTable([makeForm()]);
+		const table = document.querySelector("table")!;
+
+		await user.click(
+			within(table).getByRole("row", { name: /Onboarding/i }),
+		);
+
+		expect(screen.getByLabelText("location")).toHaveTextContent(
+			"/forms/form-1/edit",
+		);
+	});
+});
+
+it("distinguishes a failed initial lookup from an empty list and retries", async () => {
+	const refetch = vi.fn();
+	mockUseForms.mockReturnValue({
+		data: undefined,
+		isLoading: false,
+		isError: true,
+		isFetching: false,
+		refetch,
+	});
+	const { user } = await renderPage();
+	expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load");
+	expect(screen.queryByText(/No .* found/i)).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry loading" }));
+	expect(refetch).toHaveBeenCalledTimes(1);
 });

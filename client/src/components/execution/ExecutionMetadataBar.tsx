@@ -1,4 +1,4 @@
-import { User, Building2, Clock, Timer } from "lucide-react";
+import type { ReactNode } from "react";
 import { RunStatusBadge } from "./RunStatusBadge";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import type { components } from "@/lib/v1";
@@ -43,59 +43,32 @@ export function ExecutionMetadataBar({
 	availableMemoryMb,
 	requiredMemoryMb,
 }: ExecutionMetadataBarProps) {
+	const active = status === "Running" || status === "Cancelling";
+	const waiting = status === "Pending" || status === "Scheduled";
 	return (
-		<div className="space-y-1.5">
-			{/* Workflow name + status */}
-			<div className="flex items-center gap-2 min-w-0">
-				<h3 className="font-mono text-base font-semibold truncate">
-					{workflowName}
-				</h3>
-				<RunStatusBadge
-					status={status}
-					queuePosition={queuePosition}
-					waitReason={waitReason}
-					availableMemoryMb={availableMemoryMb}
-					requiredMemoryMb={requiredMemoryMb}
-				/>
+		<section aria-label="Execution metadata" className="@container min-w-0 space-y-4">
+			<div className="flex min-w-0 flex-col items-start gap-2">
+				<h3 className="min-w-0 font-display text-xl font-semibold leading-tight [overflow-wrap:anywhere]">{workflowName}</h3>
+				<RunStatusBadge status={status} queuePosition={queuePosition} waitReason={waitReason} availableMemoryMb={availableMemoryMb} requiredMemoryMb={requiredMemoryMb} />
 			</div>
-			{/* Inline metadata */}
-			<div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-				<span className="flex items-center gap-1">
-					<User className="h-3 w-3" />
-					{executedByName || "Unknown"}
-				</span>
-				<span className="flex items-center gap-1">
-					<Building2 className="h-3 w-3" />
-					{orgName || "Global"}
-				</span>
-				<span
-					className="flex items-center gap-1"
-					{...(startedAt ? { title: formatDate(startedAt) } : {})}
-				>
-					<Clock className="h-3 w-3" />
-					{startedAt ? formatRelativeTime(startedAt) : "Not started"}
-				</span>
-				{totalDurationMs != null && (
-					<span
-						className="flex items-center gap-1"
-						title="Total platform time from worker start through persisted completion"
-					>
-						<Timer className="h-3 w-3" />
-						<span>Total</span>
-						<span>{formatDuration(totalDurationMs)}</span>
-					</span>
-				)}
-				<span
-					className="flex items-center gap-1"
-					title="Time spent executing workflow code"
-				>
-					<Timer className="h-3 w-3" />
-					<span>Workflow</span>
-					{durationMs != null
-						? <span>{formatDuration(durationMs)}</span>
-						: "In progress..."}
-				</span>
-			</div>
-		</div>
+			<dl className="grid min-w-0 grid-cols-1 gap-3 border-t pt-4 @md:grid-cols-2 @md:gap-x-6">
+				<MetadataField label="Executed by">{executedByName || "Unknown"}</MetadataField>
+				<MetadataField label="Organization">{orgName || "Global"}</MetadataField>
+				<MetadataField label="Started">
+					{startedAt ? <><time dateTime={startedAt}>{formatDate(startedAt)}</time><span className="block text-xs text-muted-foreground">{formatRelativeTime(startedAt)}</span></> : "Not started"}
+				</MetadataField>
+				{totalDurationMs != null && <MetadataField label="Total" description="Total platform time from worker start through persisted completion">{formatDuration(totalDurationMs)}</MetadataField>}
+				<MetadataField label="Workflow" description="Time spent executing workflow code">
+					{durationMs != null ? formatDuration(durationMs) : active ? "In progress..." : waiting ? "Not started" : "Not available"}
+				</MetadataField>
+			</dl>
+		</section>
 	);
+}
+
+function MetadataField({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
+	return <div className="min-w-0 space-y-1">
+		<dt className="text-xs text-muted-foreground" title={description}>{label}</dt>
+		<dd className="min-w-0 text-sm [overflow-wrap:anywhere]">{children}</dd>
+	</div>;
 }

@@ -14,8 +14,8 @@
  * absent.
  */
 
-import { useState } from "react";
-import { CheckCircle2, Circle } from "lucide-react";
+import { useRef, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SolutionSetupItem } from "@/services/solutions";
 import {
@@ -77,48 +77,51 @@ export function SolutionSetupWizard({
 	}
 
 	const [stepIndex, setStepIndex] = useState(0);
+	const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+	const activeIndex = Math.min(stepIndex, Math.max(0, steps.length - 1));
+	const goToStep = (index: number) => {
+		setStepIndex(index);
+		requestAnimationFrame(() => stepHeadingRef.current?.focus());
+	};
 
 	if (steps.length === 0) {
 		return (
-			<div className="rounded-lg border py-12 text-center text-sm text-muted-foreground">
+			<div className="rounded-[var(--bf-radius-surface)] border py-12 text-center text-sm text-muted-foreground">
 				This Solution declares no setup requirements.
 			</div>
 		);
 	}
 
-	const current = steps[Math.min(stepIndex, steps.length - 1)];
-	const isFirst = stepIndex === 0;
-	const isLast = stepIndex >= steps.length - 1;
+	const current = steps[activeIndex];
+	const isFirst = activeIndex === 0;
+	const isLast = activeIndex >= steps.length - 1;
 
 	const configsSatisfied = configItems.every((i) => !i.required || i.is_set);
 
 	return (
 		<div className="space-y-4">
 			{/* Progress header */}
-			<div className="flex items-center justify-between gap-3">
+			<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 				<div>
 					<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-						Step {stepIndex + 1} of {steps.length}
+						Step {activeIndex + 1} of {steps.length}
 					</p>
-					<h3 className="text-base font-semibold">{current.title}</h3>
+					<h3 ref={stepHeadingRef} tabIndex={-1} className="text-base font-semibold outline-none">{current.title}</h3>
 				</div>
 				{steps.length > 1 && (
-					<ol className="flex items-center gap-2">
+					<ol aria-label="Setup steps" className="flex flex-wrap items-center gap-x-4 gap-y-2">
 						{steps.map((step, i) => (
 							<li
 								key={step.id}
+								aria-current={i === activeIndex ? "step" : undefined}
 								className={
 									"flex items-center gap-1.5 text-xs " +
-									(i === stepIndex
+									(i === activeIndex
 										? "font-medium text-foreground"
 										: "text-muted-foreground")
 								}
 							>
-								{i < stepIndex ? (
-									<CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-500" />
-								) : (
-									<Circle className="h-3.5 w-3.5" />
-								)}
+								<span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center rounded-full border border-current text-[10px]">{i + 1}</span>
 								{step.title}
 							</li>
 						))}
@@ -129,7 +132,7 @@ export function SolutionSetupWizard({
 			{/* Show the completion banner on the final step so a connections-only
 			    solution surfaces completion too (not just config-first wizards). */}
 			{isLast && setupComplete && (
-				<div className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/5 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+				<div className="flex items-center gap-2 rounded-[var(--bf-radius-surface)] border border-[var(--bf-success)]/40 bg-[var(--bf-success)]/5 px-4 py-3 text-sm text-[var(--bf-success)]">
 					<CheckCircle2 className="h-4 w-4 shrink-0" />
 					All required setup is complete — this Solution is ready to run.
 				</div>
@@ -172,18 +175,19 @@ export function SolutionSetupWizard({
 			<div className="flex items-center justify-between gap-2 pt-1">
 				<Button
 					variant="outline"
+					className="min-h-11"
 					disabled={isFirst}
-					onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+					onClick={() => goToStep(Math.max(0, activeIndex - 1))}
 				>
 					Back
 				</Button>
 				{isLast ? (
 					// Finish is never gated by the OAuth warn-only nudge.
-					<Button onClick={() => onFinish?.()}>
+					<Button className="min-h-11" onClick={() => onFinish?.()}>
 						{setupComplete ? "Done" : "Finish"}
 					</Button>
 				) : (
-					<Button onClick={() => setStepIndex((i) => i + 1)}>Next</Button>
+					<Button className="min-h-11" onClick={() => goToStep(activeIndex + 1)}>Next</Button>
 				)}
 			</div>
 		</div>

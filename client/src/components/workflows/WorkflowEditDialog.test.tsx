@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockUpdateWorkflow = vi.fn();
 const mockAssignRoles = vi.fn();
 const mockRemoveRole = vi.fn();
 const mockWorkflowRolesRefetch = vi.fn();
+const mockUseWorkflowKeys = vi.fn();
+const mockCreateKey = vi.fn();
+const mockRevokeKey = vi.fn();
 
 vi.mock("@/hooks/useRoles", () => ({
 	useRoles: () => ({ data: [] }),
@@ -24,9 +27,9 @@ vi.mock("@/hooks/useWorkflowRoles", () => ({
 }));
 
 vi.mock("@/hooks/useWorkflowKeys", () => ({
-	useWorkflowKeys: () => ({ data: [], refetch: vi.fn() }),
-	useCreateWorkflowKey: () => ({ mutateAsync: vi.fn() }),
-	useRevokeWorkflowKey: () => ({ mutateAsync: vi.fn() }),
+	useWorkflowKeys: () => mockUseWorkflowKeys(),
+	useCreateWorkflowKey: () => ({ mutateAsync: mockCreateKey }),
+	useRevokeWorkflowKey: () => ({ mutateAsync: mockRevokeKey }),
 }));
 
 vi.mock("@/components/forms/OrganizationSelect", () => ({
@@ -96,6 +99,18 @@ beforeEach(() => {
 	mockRemoveRole.mockResolvedValue({});
 	mockWorkflowRolesRefetch.mockReset();
 	mockWorkflowRolesRefetch.mockResolvedValue({ data: { role_ids: [] } });
+	mockUseWorkflowKeys.mockReset();
+	mockCreateKey.mockReset();
+	mockRevokeKey.mockReset();
+	mockUseWorkflowKeys.mockReturnValue({
+		data: [],
+		refetch: vi.fn(),
+	});
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.useRealTimers();
 });
 
 describe("WorkflowEditDialog", () => {
@@ -127,6 +142,51 @@ describe("WorkflowEditDialog", () => {
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 
+	it("requires a successful role read before saving and supports retry", async () => {
+		mockWorkflowRolesRefetch.mockResolvedValueOnce({ data: undefined }).mockResolvedValueOnce({ data: { role_ids: ["role-1"] } });
+		const { user } = renderWithProviders(<WorkflowEditDialog workflow={makeWorkflow({ access_level: "role_based" })} open initialTab="access" onOpenChange={vi.fn()} />);
+		await screen.findByText(/Could not load assigned roles/);
+		expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
+		await user.click(screen.getByRole("button", { name: "Retry loading roles" }));
+		await waitFor(() => expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled());
+		await user.click(screen.getByRole("button", { name: "Remove role-1 role" }));
+		await user.click(screen.getByRole("button", { name: "Save Changes" }));
+		await waitFor(() => expect(mockRemoveRole).toHaveBeenCalledWith("workflow-1", "role-1"));
+	});
+
+	it("keeps the dialog open and prevents duplicate save while a request is pending", async () => {
+		let finish!: () => void;
+		mockUpdateWorkflow.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
+		const onOpenChange = vi.fn();
+		const { user } = renderWithProviders(<WorkflowEditDialog workflow={makeWorkflow()} open onOpenChange={onOpenChange} />);
+		await user.click(screen.getByRole("button", { name: "Save Changes" }));
+		expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+		expect(document.querySelector('[data-slot="tabs"]')).toHaveAttribute("inert");
+		await user.keyboard("{Escape}");
+		expect(onOpenChange).not.toHaveBeenCalled();
+		expect(mockUpdateWorkflow).toHaveBeenCalledOnce();
+		finish();
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+	});
+
+	it("retains the draft and focuses a persistent save error before retry", async () => {
+		mockUpdateWorkflow.mockRejectedValueOnce(new Error("Synthetic update failure"));
+		const onOpenChange = vi.fn();
+		const { user } = renderWithProviders(<WorkflowEditDialog workflow={makeWorkflow()} open onOpenChange={onOpenChange} />);
+		const name = screen.getByLabelText(/tool name/i);
+		await user.clear(name);
+		await user.type(name, "retained_draft");
+		await user.click(screen.getByRole("button", { name: "Save Changes" }));
+		const error = await screen.findByRole("alert");
+		expect(error).toHaveTextContent("Synthetic update failure");
+		expect(error).toHaveFocus();
+		expect(name).toHaveValue("retained_draft");
+		expect(onOpenChange).not.toHaveBeenCalled();
+		await user.click(screen.getByRole("button", { name: "Retry save" }));
+		await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		expect(mockUpdateWorkflow).toHaveBeenCalledTimes(2);
+	});
+
 	it("resets the workflow tool name to the function name when cleared", async () => {
 		const { user } = renderWithProviders(
 			<WorkflowEditDialog
@@ -148,4 +208,87 @@ describe("WorkflowEditDialog", () => {
 			},
 		]);
 	});
+
+	it("exposes an accessible copy control and clears the reset timer on close", async () => {
+		const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+		const clipboard = await import("@/lib/clipboard");
+		const copyToClipboard = vi
+			.spyOn(clipboard, "copyToClipboard")
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(true);
+		mockUseWorkflowKeys.mockReturnValue({
+			data: [{ id: "key-1", masked_key: "abcd-1234" }],
+			refetch: vi.fn(),
+		});
+		const { user, unmount } = renderWithProviders(
+			<WorkflowEditDialog
+				workflow={makeWorkflow({ endpoint_enabled: true })}
+				open={true}
+				onOpenChange={vi.fn()}
+				initialTab="endpoint"
+			/>,
+		);
+
+		const copyButton = screen.getByRole("button", {
+			name: "Copy cURL example",
+		});
+		expect(copyButton).toHaveAttribute("title", "Copy cURL example");
+
+		await user.click(copyButton);
+		expect(await screen.findByRole("alert")).toHaveTextContent(
+			"Could not copy the cURL example",
+		);
+		expect(
+			screen.getByRole("button", { name: "Retry cURL example copy" }),
+		).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Retry cURL example copy" }));
+		await waitFor(() => expect(copyToClipboard).toHaveBeenCalledTimes(2));
+		expect(
+			screen.getByRole("button", { name: "Copied cURL example" }),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+		unmount();
+		expect(clearTimeoutSpy).toHaveBeenCalled();
+		copyToClipboard.mockRestore();
+	});
+});
+
+it("offers key-read recovery without presenting failure as an unconfigured key", async () => {
+	const refetch = vi.fn();
+	mockUseWorkflowKeys.mockReturnValue({ data: undefined, isError: true, refetch });
+	const props = { open: true, onOpenChange: vi.fn(), workflow: makeWorkflow({ endpoint_enabled: true }), initialTab: "endpoint" };
+	const { user, rerender } = renderWithProviders(<WorkflowEditDialog {...props} />);
+	expect(await screen.findByText("Could not load workflow API keys.")).toBeVisible();
+	expect(screen.queryByRole("button", { name: "Generate Key" })).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry API keys" }));
+	expect(refetch).toHaveBeenCalledOnce();
+	mockUseWorkflowKeys.mockReturnValue({ data: [], isError: false, refetch });
+	rerender(<WorkflowEditDialog {...props} />);
+	expect(screen.getByRole("button", { name: "Generate Key" })).toBeVisible();
+	expect(screen.getByRole("switch", { name: "Enable HTTP Endpoint" })).toBeChecked();
+	expect(screen.getByRole("button", { name: "POST" })).toHaveAttribute("aria-pressed", "true");
+});
+
+
+it("protects a pending key rotation and retries creation without repeating revocation", async () => {
+	mockUseWorkflowKeys.mockReturnValue({ data: [{ id: "workflow-1", masked_key: "demo…only" }], refetch: vi.fn() });
+	mockRevokeKey.mockResolvedValue(undefined);
+	let rejectCreate!: (reason: Error) => void;
+	mockCreateKey.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectCreate = reject; })).mockResolvedValueOnce({ raw_key: "synthetic-example" });
+	const onOpenChange = vi.fn();
+	const { user } = renderWithProviders(<WorkflowEditDialog open onOpenChange={onOpenChange} workflow={makeWorkflow({ endpoint_enabled: true })} initialTab="endpoint" />);
+	await user.click(screen.getByRole("button", { name: "Regenerate API key" }));
+	await waitFor(() => expect(mockCreateKey).toHaveBeenCalledOnce());
+	await user.keyboard("{Escape}");
+	expect(onOpenChange).not.toHaveBeenCalled();
+	expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+	rejectCreate(new Error("Synthetic failure"));
+	const error = await screen.findByText(/The previous API key was revoked/);
+	expect(error).toBeVisible();
+	await user.click(screen.getByRole("button", { name: "Retry key generation" }));
+	await waitFor(() => expect(screen.getByRole("textbox", { name: "Workflow API key" })).toHaveValue("synthetic-example"));
+	expect(mockRevokeKey).toHaveBeenCalledOnce();
+	expect(mockCreateKey).toHaveBeenCalledTimes(2);
 });

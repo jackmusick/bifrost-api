@@ -1,5 +1,6 @@
 import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued";
 
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import { TONE_MUTED, TYPE_MUTED } from "./design-tokens";
 
@@ -20,6 +21,7 @@ export function PromptDiffViewer({
 	after,
 	className,
 }: PromptDiffViewerProps) {
+	const split = useMediaQuery("(min-width: 768px)");
 	if (before === after) {
 		return (
 			<div
@@ -40,29 +42,50 @@ export function PromptDiffViewer({
 		<div
 			data-testid="prompt-diff-viewer"
 			className={cn(
-				"overflow-hidden rounded-md ring-1 ring-foreground/5",
+				"min-w-0 overflow-hidden rounded-[var(--bf-radius-surface)] border [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]",
 				className,
 			)}
 		>
 			<ReactDiffViewer
 				oldValue={before}
 				newValue={after}
-				splitView
+				splitView={split}
+				hideLineNumbers={!split}
 				compareMethod={DiffMethod.WORDS}
-				useDarkTheme
+				useDarkTheme={false}
 				styles={{
 					variables: {
-						dark: {
-							diffViewerBackground: "hsl(var(--card))",
-							diffViewerColor: "hsl(var(--foreground))",
-							gutterBackground: "hsl(var(--muted))",
-							gutterColor: "hsl(var(--muted-foreground))",
+						light: {
+							addedBackground: "var(--bf-success-soft)",
+							addedColor: "var(--foreground)",
+							removedBackground: "var(--bf-danger-soft)",
+							removedColor: "var(--foreground)",
+							wordAddedBackground: "var(--bf-success-soft)",
+							wordRemovedBackground: "var(--bf-danger-soft)",
+							addedGutterBackground: "var(--bf-success-soft)",
+							removedGutterBackground: "var(--bf-danger-soft)",
+							addedGutterColor: "var(--bf-success)",
+							removedGutterColor: "var(--bf-danger)",
+							codeFoldBackground: "var(--muted)",
+							codeFoldGutterBackground: "var(--muted)",
+							codeFoldContentColor: "var(--muted-foreground)",
+							emptyLineBackground: "var(--card)",
+							diffViewerBackground: "var(--card)",
+							diffViewerColor: "var(--foreground)",
+							gutterBackground: "var(--muted)",
+							gutterBackgroundDark: "var(--muted)",
+							diffViewerTitleBackground: "var(--muted)",
+							diffViewerTitleColor: "var(--foreground)",
+							diffViewerTitleBorderColor: "var(--border)",
+							changedBackground: "var(--bf-warning-soft)",
+							highlightBackground: "var(--accent)",
+							highlightGutterBackground: "var(--accent)",
+							gutterColor: "var(--muted-foreground)",
 						},
 					},
 					contentText: {
-						fontFamily:
-							"ui-monospace, SFMono-Regular, Menlo, monospace",
-						fontSize: "12px",
+						fontFamily: "var(--font-mono)",
+						fontSize: "14px",
 						lineHeight: "1.5",
 					},
 				}}

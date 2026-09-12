@@ -1,0 +1,21 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, it, vi } from "vitest";
+import { ConflictDiffView } from "./ConflictDiffView";
+vi.mock("@monaco-editor/react",()=>({DiffEditor:()=> <div>Comparison</div>}));
+vi.mock("@/hooks/useBifrostMonacoTheme",()=>({useBifrostMonacoTheme:()=>({theme:"test",options:{}})}));
+afterEach(()=>vi.unstubAllGlobals());
+it("preserves the chosen local version across a failed resolution and allows explicit retry", async()=>{
+ vi.stubGlobal("ResizeObserver",class {observe(){} disconnect(){} });
+ const user=userEvent.setup();const onResolve=vi.fn().mockRejectedValueOnce(new Error("Save failed")).mockResolvedValue(undefined);
+ render(<ConflictDiffView filePath="workflows/file.py" conflict={{current_content:"server",incoming_content:"local",current_etag:"e1",message:"The file changed on the server."}} onResolve={onResolve} />);
+ await user.click(screen.getByRole("button",{name:"Use local version"}));
+ const dialog=screen.getByRole("alertdialog");
+ expect(dialog).toHaveTextContent("Overwrite the server file");
+ await user.click(screen.getAllByRole("button",{name:"Use local version"})[0]);
+ expect(await screen.findByRole("alert")).toHaveTextContent("Save failed");
+ expect(onResolve).toHaveBeenCalledWith("incoming");
+ await user.click(screen.getByRole("button",{name:"Use local version"}));
+ expect(onResolve).toHaveBeenCalledTimes(2);
+ expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+});

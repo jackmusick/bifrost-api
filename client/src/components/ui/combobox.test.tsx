@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Shield } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders, screen } from "@/test-utils";
@@ -5,6 +7,34 @@ import { renderWithProviders, screen } from "@/test-utils";
 import { Combobox } from "./combobox";
 
 describe("Combobox", () => {
+	it("keeps the selected value visible when options are unavailable", () => {
+		renderWithProviders(<Combobox options={[]} value="ticket_id" placeholder="Pick key" />);
+		expect(screen.getByRole("combobox")).toHaveTextContent("ticket_id");
+	});
+	it("connects validation feedback to the trigger", () => {
+		renderWithProviders(<><Combobox options={[]} aria-invalid="true" aria-describedby="lookup-error" /><p id="lookup-error">Could not load values.</p></>);
+		expect(screen.getByRole("combobox")).toHaveAttribute("aria-invalid", "true");
+		expect(screen.getByRole("combobox")).toHaveAccessibleDescription("Could not load values.");
+	});
+	it("renders optional icons for selected and listed options", async () => {
+		const { user } = renderWithProviders(
+			<Combobox
+				options={[
+					{ value: "role_based", label: "Role-based", icon: Shield },
+				]}
+				value="role_based"
+				onValueChange={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByRole("combobox").querySelector("svg")).toBeTruthy();
+		await user.click(screen.getByRole("combobox"));
+		expect(
+			screen.getByRole("option", { name: "Role-based" }).querySelector(
+				"svg",
+			),
+		).toBeTruthy();
+	});
 	it("filters options by literal label and value text", async () => {
 		const { user } = renderWithProviders(
 			<Combobox
@@ -37,5 +67,42 @@ describe("Combobox", () => {
 		expect(
 			screen.queryByRole("option", { name: "Sora" }),
 		).not.toBeInTheDocument();
+	});
+	it("selects and clears a long option by keyboard and restores trigger focus", async () => {
+		const label =
+			"Customer reconciliation administrator with extended support permissions";
+		function Field() {
+			const [value, setValue] = useState("");
+			return (
+				<>
+					<label htmlFor="review-choice">Reviewer</label>
+					<Combobox
+						id="review-choice"
+						options={[{ value: "reviewer-1", label }]}
+						value={value}
+						onValueChange={setValue}
+						placeholder="Choose reviewer"
+						searchPlaceholder="Search reviewers"
+					/>
+				</>
+			);
+		}
+		const { user } = renderWithProviders(<Field />);
+		await user.click(screen.getByLabelText("Reviewer"));
+		expect(
+			await screen.findByPlaceholderText("Search reviewers"),
+		).toHaveAccessibleName("Search reviewers");
+		await user.type(
+			await screen.findByPlaceholderText("Search reviewers"),
+			"reconciliation",
+		);
+		await user.keyboard("{Enter}");
+		expect(screen.getByLabelText("Reviewer")).toHaveTextContent(label);
+		expect(screen.getByLabelText("Reviewer")).toHaveFocus();
+		await user.keyboard("{Enter}");
+		await user.keyboard("{Enter}");
+		expect(screen.getByLabelText("Reviewer")).toHaveTextContent(
+			"Choose reviewer",
+		);
 	});
 });

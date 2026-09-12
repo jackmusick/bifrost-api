@@ -8,7 +8,9 @@ afterEach(() => {
 });
 
 vi.mock("@/services/schedulerDiagnostics", async () => {
-	const actual = await vi.importActual<typeof import("@/services/schedulerDiagnostics")>("@/services/schedulerDiagnostics");
+	const actual = await vi.importActual<
+		typeof import("@/services/schedulerDiagnostics")
+	>("@/services/schedulerDiagnostics");
 	return {
 		...actual,
 		getSchedulerTaskHistory: vi.fn().mockResolvedValue({
@@ -28,8 +30,22 @@ vi.mock("@/services/schedulerDiagnostics", async () => {
 					platform_job_memory_start_bytes: 100,
 					platform_job_memory_peak_bytes: 300,
 					logs: [
-						{ id: 2, source: "scheduler", level: "info", code: "scheduled_task_completed", message: "Second run log", created_at: "2026-08-05T22:15:01Z" },
-						{ id: 1, source: "scheduler", level: "info", code: "scheduled_task_started", message: "Second run started", created_at: "2026-08-05T22:15:00Z" },
+						{
+							id: 2,
+							source: "scheduler",
+							level: "info",
+							code: "scheduled_task_completed",
+							message: "Second run log",
+							created_at: "2026-08-05T22:15:01Z",
+						},
+						{
+							id: 1,
+							source: "scheduler",
+							level: "info",
+							code: "scheduled_task_started",
+							message: "Second run started",
+							created_at: "2026-08-05T22:15:00Z",
+						},
 					],
 				},
 				{
@@ -40,7 +56,16 @@ vi.mock("@/services/schedulerDiagnostics", async () => {
 					completed_at: "2026-08-05T22:00:01Z",
 					duration_ms: 1000,
 					error_message: "First sweep failed",
-					logs: [{ id: 1, source: "scheduler", level: "error", code: "scheduled_task_failed", message: "First run log", created_at: "2026-08-05T22:00:01Z" }],
+					logs: [
+						{
+							id: 1,
+							source: "scheduler",
+							level: "error",
+							code: "scheduled_task_failed",
+							message: "First run log",
+							created_at: "2026-08-05T22:00:01Z",
+						},
+					],
 				},
 			],
 		}),
@@ -65,7 +90,9 @@ describe("SchedulerRunDrawer", () => {
 		const writeText = vi
 			.spyOn(navigator.clipboard, "writeText")
 			.mockResolvedValue(undefined);
-		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
 		render(
 			<QueryClientProvider client={client}>
 				<SchedulerRunDrawer task={task} onClose={vi.fn()} />
@@ -73,12 +100,15 @@ describe("SchedulerRunDrawer", () => {
 		);
 
 		expect(await screen.findByText("Second run log")).toBeInTheDocument();
-		expect(screen.getAllByText(/Second run (started|log)/).map((node) => node.textContent)).toEqual([
-			"Second run started",
-			"Second run log",
-		]);
+		expect(
+			screen
+				.getAllByText(/Second run (started|log)/)
+				.map((node) => node.textContent),
+		).toEqual(["Second run started", "Second run log"]);
 		expect(screen.queryByText("First run log")).not.toBeInTheDocument();
-		expect(screen.getByText("00000000-0000-0000-0000-000000000002")).toBeInTheDocument();
+		expect(
+			screen.getByText("00000000-0000-0000-0000-000000000002"),
+		).toBeInTheDocument();
 		expect(screen.getByText("Container Memory Change")).toBeInTheDocument();
 		expect(screen.getByText("Shared scheduler cgroup")).toBeInTheDocument();
 		expect(screen.getByText("200 B")).toBeInTheDocument();
@@ -86,14 +116,16 @@ describe("SchedulerRunDrawer", () => {
 			screen.getByRole("button", {
 				name: /View Succeeded run 00000000-0000-0000-0000-000000000002/i,
 			}),
-		).toHaveClass("border-l-4", "border-l-green-500");
+		).toHaveClass("border-l-4", "border-l-[var(--bf-success)]");
 		expect(
 			screen.getByRole("button", {
 				name: /View Failed run 00000000-0000-0000-0000-000000000001/i,
 			}),
 		).toHaveClass("border-l-4", "border-l-destructive");
 		await user.click(screen.getByRole("button", { name: "Copy run ID" }));
-		expect(writeText).toHaveBeenCalledWith("00000000-0000-0000-0000-000000000002");
+		expect(writeText).toHaveBeenCalledWith(
+			"00000000-0000-0000-0000-000000000002",
+		);
 
 		await user.click(
 			screen.getByRole("button", {
@@ -103,7 +135,9 @@ describe("SchedulerRunDrawer", () => {
 		expect(await screen.findByText("First run log")).toBeInTheDocument();
 		expect(screen.queryByText("Second run log")).not.toBeInTheDocument();
 		expect(screen.getByText("First sweep failed")).toBeInTheDocument();
-		expect(screen.getByText("00000000-0000-0000-0000-000000000001")).toBeInTheDocument();
+		expect(
+			screen.getByText("00000000-0000-0000-0000-000000000001"),
+		).toBeInTheDocument();
 		expect(screen.getByText("Not recorded")).toBeInTheDocument();
 	});
 });

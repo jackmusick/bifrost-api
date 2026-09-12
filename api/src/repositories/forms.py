@@ -7,7 +7,7 @@ Repository for Form CRUD operations with organization scoping and role-based acc
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from src.core.org_filter import OrgFilterType
 from src.models import Form as FormORM
@@ -48,7 +48,11 @@ class FormRepository(OrgScopedRepository[FormORM]):
             List of Form ORM objects with fields eager-loaded
         """
         # Build base query with cascade scoping
-        query = select(self.model).options(selectinload(self.model.fields))
+        query = select(self.model).options(
+            selectinload(self.model.fields),
+            defer(self.model.logo_data),
+            defer(self.model.logo_thumbnail_data),
+        )
         query = self._apply_cascade_scope(query)
 
         if active_only:
@@ -91,7 +95,11 @@ class FormRepository(OrgScopedRepository[FormORM]):
         Returns:
             List of Form ORM objects with fields eager-loaded
         """
-        query = select(self.model).options(selectinload(self.model.fields))
+        query = select(self.model).options(
+            selectinload(self.model.fields),
+            defer(self.model.logo_data),
+            defer(self.model.logo_thumbnail_data),
+        )
 
         # Apply org filtering based on filter type
         if filter_type == OrgFilterType.ALL:

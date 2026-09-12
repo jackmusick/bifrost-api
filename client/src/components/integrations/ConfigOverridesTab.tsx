@@ -1,15 +1,8 @@
 import { useState, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
+import { OverrideValueEditor } from "./OverrideValueEditor";
+import { ConfigurationOverrideRecord } from "./ConfigurationOverrideRecord";
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,7 +13,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Settings, Loader2, Check, X, Trash2 } from "lucide-react";
+import { Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type {
 	ConfigSchemaItem,
@@ -71,9 +64,14 @@ export function ConfigOverridesTab({
 	configSchema,
 	integrationId,
 }: ConfigOverridesTabProps) {
+	const [saveError, setSaveError] = useState<string | null>(null);
 	const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 	const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
 	const [deleteConfirm, setDeleteConfirm] = useState<ConfigRow | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
+	const isDeleting =
+		deleteConfirm !== null &&
+		savingRows.has(`${deleteConfirm.orgId}:${deleteConfirm.configKey}`);
 
 	const updateMutation = useUpdateMapping();
 
@@ -122,7 +120,8 @@ export function ConfigOverridesTab({
 	const getRowKey = (row: ConfigRow) => `${row.orgId}:${row.configKey}`;
 
 	const handleCellClick = (row: ConfigRow) => {
-		if (savingRows.has(getRowKey(row))) return;
+		if (savingRows.size > 0) return;
+		setSaveError(null);
 		// Start with current value or empty - never show defaults
 		setEditingCell({
 			rowKey: getRowKey(row),
@@ -137,22 +136,15 @@ export function ConfigOverridesTab({
 		}
 
 		const rowKey = getRowKey(row);
+		if (savingRows.has(rowKey)) return;
+		setSaveError(null);
 		setSavingRows((prev) => new Set(prev).add(rowKey));
 
 		try {
-			// Build updated config - merge current with new value
-			const updatedConfig = { ...row.currentConfig };
-
-			// If value is empty, remove the key (fall back to integration default)
-			if (
-				newValue === "" ||
-				newValue === null ||
-				newValue === undefined
-			) {
-				delete updatedConfig[row.configKey];
-			} else {
-				updatedConfig[row.configKey] = newValue;
-			}
+			const updatedConfig = {
+				[row.configKey]:
+					newValue === "" || newValue == null ? null : newValue,
+			};
 
 			await updateMutation.mutateAsync({
 				params: {
@@ -174,9 +166,10 @@ export function ConfigOverridesTab({
 
 			setEditingCell(null);
 			// Query invalidation in useUpdateMapping handles refresh
-		} catch (error) {
-			console.error("Failed to save config:", error);
-			toast.error(`Failed to save ${row.configKey} for ${row.orgName}`);
+		} catch {
+			setSaveError(
+				"Unable to save this value. Your edit is retained; try again.",
+			);
 		} finally {
 			setSavingRows((prev) => {
 				const next = new Set(prev);
@@ -187,13 +180,15 @@ export function ConfigOverridesTab({
 	};
 
 	const handleDeleteClick = (row: ConfigRow) => {
+		setDeleteError(null);
 		// Show confirmation dialog
 		setDeleteConfirm(row);
 	};
 
 	const handleDeleteConfirm = async () => {
 		const row = deleteConfirm;
-		if (!row) return;
+		if (!row || isDeleting) return;
+		setDeleteError(null);
 
 		// Delete the override by sending null for the key
 		if (!row.mappingId || !row.mapping) {
@@ -204,12 +199,10 @@ export function ConfigOverridesTab({
 
 		const rowKey = getRowKey(row);
 		setSavingRows((prev) => new Set(prev).add(rowKey));
-		setDeleteConfirm(null);
 
 		try {
 			// Send null for the key to delete it from the database
 			const configToSave = {
-				...row.currentConfig,
 				[row.configKey]: null, // This tells backend to delete this key
 			};
 
@@ -228,13 +221,15 @@ export function ConfigOverridesTab({
 				},
 			});
 
+			setDeleteConfirm(null);
 			toast.success(
 				`Removed ${row.configKey} override for ${row.orgName}`,
 			);
 			// Query invalidation in useUpdateMapping handles refresh
-		} catch (error) {
-			console.error("Failed to delete config:", error);
-			toast.error(`Failed to delete ${row.configKey} for ${row.orgName}`);
+		} catch {
+			setDeleteError(
+				"Unable to delete this override. Try again to restore the integration default.",
+			);
 		} finally {
 			setSavingRows((prev) => {
 				const next = new Set(prev);
@@ -246,19 +241,6 @@ export function ConfigOverridesTab({
 
 	const handleCancel = () => {
 		setEditingCell(null);
-	};
-
-	const handleKeyDown = (
-		e: React.KeyboardEvent,
-		row: ConfigRow,
-		value: unknown,
-	) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			handleSave(row, value);
-		} else if (e.key === "Escape") {
-			handleCancel();
-		}
 	};
 
 	const formatDisplayValue = (
@@ -280,177 +262,6 @@ export function ConfigOverridesTab({
 			return typeof value === "string" ? value : JSON.stringify(value);
 		}
 		return String(value);
-	};
-
-	const renderEditInput = (row: ConfigRow, currentValue: unknown) => {
-		const rowKey = getRowKey(row);
-		const isSaving = savingRows.has(rowKey);
-
-		switch (row.fieldType) {
-			case "bool":
-				return (
-					<div className="flex items-center gap-2">
-						<Checkbox
-							checked={Boolean(currentValue)}
-							onCheckedChange={(checked) => {
-								setEditingCell({ rowKey, value: checked });
-							}}
-							disabled={isSaving}
-							autoFocus
-						/>
-						<span className="text-sm">
-							{currentValue ? "True" : "False"}
-						</span>
-						<div className="flex gap-1 ml-auto">
-							<button
-								type="button"
-								onClick={() => handleSave(row, currentValue)}
-								disabled={isSaving}
-								className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900 text-green-600"
-							>
-								{isSaving ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<Check className="h-4 w-4" />
-								)}
-							</button>
-							<button
-								type="button"
-								onClick={handleCancel}
-								disabled={isSaving}
-								className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
-					</div>
-				);
-
-			case "int":
-				return (
-					<div className="flex items-center gap-2">
-						<Input
-							type="number"
-							value={
-								currentValue !== undefined &&
-								currentValue !== null
-									? (currentValue as number)
-									: ""
-							}
-							onChange={(e) => {
-								const val = e.target.value;
-								setEditingCell({
-									rowKey,
-									value:
-										val === ""
-											? undefined
-											: parseInt(val) || 0,
-								});
-							}}
-							onKeyDown={(e) =>
-								handleKeyDown(e, row, currentValue)
-							}
-							onBlur={() => handleSave(row, currentValue)}
-							disabled={isSaving}
-							className="h-8 w-24"
-							autoFocus
-						/>
-						{isSaving && (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						)}
-					</div>
-				);
-
-			case "json":
-				return (
-					<div className="flex flex-col gap-2">
-						<textarea
-							value={
-								currentValue === undefined ||
-								currentValue === null
-									? ""
-									: typeof currentValue === "string"
-										? currentValue
-										: JSON.stringify(currentValue, null, 2)
-							}
-							onChange={(e) => {
-								const val = e.target.value;
-								if (val === "") {
-									setEditingCell({
-										rowKey,
-										value: undefined,
-									});
-									return;
-								}
-								try {
-									setEditingCell({
-										rowKey,
-										value: JSON.parse(val),
-									});
-								} catch {
-									setEditingCell({ rowKey, value: val });
-								}
-							}}
-							onKeyDown={(e) => {
-								if (e.key === "Escape") handleCancel();
-							}}
-							disabled={isSaving}
-							className="flex min-h-[60px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
-							autoFocus
-						/>
-						<div className="flex gap-1 justify-end">
-							<button
-								type="button"
-								onClick={() => handleSave(row, currentValue)}
-								disabled={isSaving}
-								className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900 text-green-600"
-							>
-								{isSaving ? (
-									<Loader2 className="h-4 w-4 animate-spin" />
-								) : (
-									<Check className="h-4 w-4" />
-								)}
-							</button>
-							<button
-								type="button"
-								onClick={handleCancel}
-								disabled={isSaving}
-								className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
-					</div>
-				);
-
-			case "string":
-			default:
-				return (
-					<div className="flex items-center gap-2">
-						<Input
-							type="text"
-							value={(currentValue as string) ?? ""}
-							onChange={(e) => {
-								const val = e.target.value;
-								setEditingCell({
-									rowKey,
-									value: val === "" ? undefined : val,
-								});
-							}}
-							onKeyDown={(e) =>
-								handleKeyDown(e, row, currentValue)
-							}
-							onBlur={() => handleSave(row, currentValue)}
-							disabled={isSaving}
-							className="h-8"
-							autoFocus
-						/>
-						{isSaving && (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						)}
-					</div>
-				);
-		}
 	};
 
 	if (visibleSchema.length === 0) {
@@ -490,102 +301,86 @@ export function ConfigOverridesTab({
 				Organization-specific configuration overrides. Click to edit, or
 				delete to revert to integration default.
 			</p>
-			<div className="overflow-x-auto">
-				<DataTable>
-					<DataTableHeader>
-						<DataTableRow>
-							<DataTableHead className="w-48">
-								Organization
-							</DataTableHead>
-							<DataTableHead className="w-48">
-								Config Key
-							</DataTableHead>
-							<DataTableHead>Value</DataTableHead>
-							<DataTableHead className="w-16"></DataTableHead>
-						</DataTableRow>
-					</DataTableHeader>
-					<DataTableBody>
-						{rows.map((row) => {
-							const rowKey = getRowKey(row);
-							const isEditing = editingCell?.rowKey === rowKey;
-							const isSaving = savingRows.has(rowKey);
-
-							return (
-								<DataTableRow key={rowKey}>
-									<DataTableCell className="font-medium">
-										{row.orgName}
-									</DataTableCell>
-									<DataTableCell>
-										<div className="flex items-center gap-2">
-											<span className="font-mono text-sm">
-												{row.configKey}
-											</span>
-											<span className="text-muted-foreground text-xs">
-												({row.fieldType})
-											</span>
-										</div>
-									</DataTableCell>
-									<DataTableCell
-										className={`cursor-pointer transition-colors ${
-											isEditing ? "" : "hover:bg-muted/50"
-										} ${isSaving ? "opacity-70" : ""}`}
-										onClick={() =>
-											!isEditing && handleCellClick(row)
-										}
+			<ul aria-label="Configuration overrides" className="divide-y">
+				{rows.map((row) => {
+					const rowKey = getRowKey(row);
+					const isEditing = editingCell?.rowKey === rowKey;
+					const isSaving = savingRows.has(rowKey);
+					return (
+						<ConfigurationOverrideRecord
+							key={rowKey}
+							organization={row.orgName}
+							configKey={row.configKey}
+							type={row.fieldType}
+							actions={
+								!isEditing && (
+									<RecordActionsMenu
+										label={`More actions for ${row.orgName} ${row.configKey}`}
 									>
-										{isEditing ? (
-											renderEditInput(
-												row,
-												editingCell.value,
-											)
-										) : (
-											<span>
-												{formatDisplayValue(
-													row.value,
-													row.fieldType,
-													row.hasOverride,
-												)}
-											</span>
-										)}
-									</DataTableCell>
-									<DataTableCell>
-										{!isEditing && (
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() =>
-													handleDeleteClick(row)
-												}
-												disabled={isSaving}
-												className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-												title="Delete override (revert to default)"
-											>
-												{isSaving ? (
-													<Loader2 className="h-3 w-3 animate-spin" />
-												) : (
-													<Trash2 className="h-3 w-3" />
-												)}
-											</Button>
-										)}
-									</DataTableCell>
-								</DataTableRow>
-							);
-						})}
-					</DataTableBody>
-				</DataTable>
-			</div>
+										<DropdownMenuItem
+											variant="destructive"
+											className="min-h-11"
+											disabled={savingRows.size > 0}
+											onSelect={(event) => {
+												event.preventDefault();
+												handleDeleteClick(row);
+											}}
+										>
+											<Trash2 className="size-4" />
+											Delete override
+										</DropdownMenuItem>
+									</RecordActionsMenu>
+								)
+							}
+						>
+							{isEditing ? (
+								<OverrideValueEditor
+									name={row.configKey}
+									type={row.fieldType}
+									value={editingCell.value}
+									pending={isSaving}
+									error={saveError}
+									onChange={(value) =>
+										setEditingCell({ rowKey, value })
+									}
+									onSave={(value) => {
+										void handleSave(row, value);
+									}}
+									onCancel={handleCancel}
+								/>
+							) : (
+								<button
+									type="button"
+									disabled={savingRows.size > 0}
+									aria-label={`Edit ${row.configKey} for ${row.orgName}`}
+									onClick={() => handleCellClick(row)}
+									className="min-h-11 w-full rounded-[var(--bf-radius-control)] border border-border/70 bg-background px-3 py-3 text-left text-sm whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25"
+								>
+									{formatDisplayValue(
+										row.value,
+										row.fieldType,
+										row.hasOverride,
+									)}
+								</button>
+							)}
+						</ConfigurationOverrideRecord>
+					);
+				})}
+			</ul>
 
 			{/* Delete Confirmation Dialog */}
 			<AlertDialog
 				open={deleteConfirm !== null}
-				onOpenChange={(open) => !open && setDeleteConfirm(null)}
+				onOpenChange={(open) => {
+					if (!open && !isDeleting) setDeleteConfirm(null);
+				}}
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
 							Delete Configuration Override
 						</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogDescription className="[overflow-wrap:anywhere]">
 							Are you sure you want to delete the{" "}
 							<span className="font-mono font-semibold">
 								{deleteConfirm?.configKey}
@@ -594,13 +389,34 @@ export function ConfigOverridesTab({
 							revert to the integration default value.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDeleteConfirm}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+					{deleteError && (
+						<p
+							role="alert"
+							className="text-sm text-destructive [overflow-wrap:anywhere]"
 						>
-							Delete
+							{deleteError}
+						</p>
+					)}
+					<AlertDialogFooter>
+						<AlertDialogCancel
+							className="min-h-11 lg:min-h-11"
+							disabled={isDeleting}
+						>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							disabled={isDeleting}
+							onClick={(event) => {
+								event.preventDefault();
+								void handleDeleteConfirm();
+							}}
+							className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						>
+							{isDeleting
+								? "Deleting…"
+								: deleteError
+									? "Retry deletion"
+									: "Delete"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

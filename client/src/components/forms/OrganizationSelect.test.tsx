@@ -1,3 +1,4 @@
+import { OrganizationSelect } from "./OrganizationSelect";
 /**
  * Component tests for OrganizationSelect.
  *
@@ -36,7 +37,7 @@ beforeEach(() => {
 });
 
 async function renderSelect(overrides: Record<string, unknown> = {}) {
-	const { OrganizationSelect } = await import("./OrganizationSelect");
+
 	const onChange = vi.fn();
 	const utils = renderWithProviders(
 		<OrganizationSelect value={null} onChange={onChange} {...overrides} />,
@@ -146,4 +147,34 @@ describe("OrganizationSelect", () => {
 			screen.queryByPlaceholderText("Search organizations..."),
 		).not.toBeInTheDocument();
 	});
+	it("describes an unavailable selection instead of waiting forever", async () => {
+		useOrganizationsMock.mockReturnValue({ data: [], isLoading: false });
+		await renderSelect({ value: "missing-organization" });
+		expect(screen.getByText("Organization unavailable")).toBeVisible();
+		expect(screen.getByText("missing-organization")).toBeVisible();
+		expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+	});
+	it("forwards form identity and description to the trigger", async () => {
+		const ref = { current: null };
+		await renderSelect({
+			label: "Customer scope",
+			id: "customer-scope",
+			"aria-describedby": "scope-help",
+			ref,
+		});
+		const trigger = screen.getByRole("combobox", {
+			name: "Customer scope",
+		});
+		expect(trigger).toHaveAttribute("id", "customer-scope");
+		expect(trigger).toHaveAttribute("aria-describedby", "scope-help");
+		expect(ref.current).toBe(trigger);
+	});
 });
+
+ it("offers personal scope only when enabled and returns its explicit value", async () => {
+ const { PERSONAL_SCOPE } = await import("./OrganizationSelect");
+ const { user, onChange } = await renderSelect({ showPersonal: true });
+ await user.click(screen.getByRole("combobox"));
+ await user.click(screen.getByRole("option", { name: /Only me/ }));
+ expect(onChange).toHaveBeenCalledWith(PERSONAL_SCOPE);
+ });

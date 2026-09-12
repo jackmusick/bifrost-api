@@ -1,3 +1,6 @@
+import { PreferredSignIn } from "./oauth/PreferredSignIn";
+import { OAuthReadError } from "./oauth/OAuthReadError";
+import { OAuthProviderCard } from "./oauth/OAuthProviderCard";
 /**
  * OAuth SSO Configuration Settings
  *
@@ -6,50 +9,16 @@
  */
 
 import { useState } from "react";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
 import {
 	Accordion,
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import {
-	Loader2,
-	Shield,
-	CheckCircle2,
-	AlertCircle,
-	Trash2,
-	ExternalLink,
-	Copy,
-	Key,
-} from "lucide-react";
+import { Loader2, ExternalLink } from "lucide-react";
 import {
 	useOAuthConfigs,
 	useUpdateOAuthLoginPreference,
@@ -61,325 +30,6 @@ import {
 } from "@/services/oauth-config";
 
 type OAuthProvider = "microsoft" | "google" | "oidc";
-
-interface ProviderCardProps {
-	provider: OAuthProvider;
-	title: string;
-	description: string;
-	configured: boolean;
-	clientId?: string | null;
-	clientSecretSet: boolean;
-	extraFields?: { label: string; value?: string | null }[];
-	callbackUrl: string;
-	onSave: (data: Record<string, string>) => Promise<void>;
-	onDelete: () => Promise<void>;
-	onTest: () => Promise<{ success: boolean; message: string }>;
-	children: React.ReactNode;
-}
-
-function ProviderCard({
-	provider: _provider,
-	title,
-	description,
-	configured,
-	clientId,
-	clientSecretSet,
-	extraFields,
-	callbackUrl,
-	onSave,
-	onDelete,
-	onTest,
-	children,
-}: ProviderCardProps) {
-	const [isEditing, setIsEditing] = useState(!configured);
-	const [saving, setSaving] = useState(false);
-	const [testing, setTesting] = useState(false);
-	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-	const [testResult, setTestResult] = useState<{
-		success: boolean;
-		message: string;
-	} | null>(null);
-	const [formData, setFormData] = useState<Record<string, string>>({});
-
-	const handleCopyCallback = () => {
-		navigator.clipboard.writeText(callbackUrl);
-		toast.success("Callback URL copied to clipboard");
-	};
-
-	const handleTest = async () => {
-		setTesting(true);
-		setTestResult(null);
-		try {
-			const result = await onTest();
-			setTestResult(result);
-			if (result.success) {
-				toast.success("Connection test passed", {
-					description: result.message,
-				});
-			} else {
-				toast.error("Connection test failed", {
-					description: result.message,
-				});
-			}
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : "Unknown error";
-			setTestResult({ success: false, message });
-			toast.error("Test failed", { description: message });
-		} finally {
-			setTesting(false);
-		}
-	};
-
-	const handleSave = async () => {
-		setSaving(true);
-		try {
-			await onSave(formData);
-			toast.success(`${title} configuration saved`);
-			setIsEditing(false);
-			setFormData({});
-			setTestResult(null);
-		} catch (error) {
-			toast.error("Failed to save configuration", {
-				description:
-					error instanceof Error ? error.message : "Unknown error",
-			});
-		} finally {
-			setSaving(false);
-		}
-	};
-
-	const handleDelete = async () => {
-		setSaving(true);
-		setShowDeleteConfirm(false);
-		try {
-			await onDelete();
-			toast.success(`${title} configuration removed`);
-			setIsEditing(true);
-			setFormData({});
-			setTestResult(null);
-		} catch (error) {
-			toast.error("Failed to remove configuration", {
-				description:
-					error instanceof Error ? error.message : "Unknown error",
-			});
-		} finally {
-			setSaving(false);
-		}
-	};
-
-	return (
-		<>
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div className="flex items-center gap-2">
-							<Shield className="h-5 w-5" />
-							<CardTitle className="text-lg">{title}</CardTitle>
-							{configured && (
-								<Badge
-									variant="outline"
-									className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-800"
-								>
-									<CheckCircle2 className="h-3 w-3 mr-1" />
-									Configured
-								</Badge>
-							)}
-						</div>
-						{configured && (
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => setShowDeleteConfirm(true)}
-								className="text-destructive hover:text-destructive"
-							>
-								<Trash2 className="h-4 w-4 mr-1" />
-								Remove
-							</Button>
-						)}
-					</div>
-					<CardDescription>{description}</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					{/* Callback URL */}
-					<div className="rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="text-sm font-medium">
-									Callback URL
-								</p>
-								<p className="text-xs text-muted-foreground mt-1 font-mono break-all">
-									{callbackUrl}
-								</p>
-							</div>
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={handleCopyCallback}
-							>
-								<Copy className="h-4 w-4" />
-							</Button>
-						</div>
-					</div>
-
-					{/* Current Configuration (when configured and not editing) */}
-					{configured && !isEditing && (
-						<div className="space-y-3 rounded-lg p-4 ring-1 ring-foreground/5">
-							<div className="grid gap-2">
-								<div className="flex items-center justify-between text-sm">
-									<span className="text-muted-foreground">
-										Client ID
-									</span>
-									<span className="font-mono">
-										{clientId || "Not set"}
-									</span>
-								</div>
-								<div className="flex items-center justify-between text-sm">
-									<span className="text-muted-foreground">
-										Client Secret
-									</span>
-									<span>
-										{clientSecretSet ? (
-											<Badge variant="secondary">
-												<Key className="h-3 w-3 mr-1" />
-												Saved
-											</Badge>
-										) : (
-											"Not set"
-										)}
-									</span>
-								</div>
-								{extraFields?.map((field) => (
-									<div
-										key={field.label}
-										className="flex items-center justify-between text-sm"
-									>
-										<span className="text-muted-foreground">
-											{field.label}
-										</span>
-										<span className="font-mono">
-											{field.value || "Not set"}
-										</span>
-									</div>
-								))}
-							</div>
-							<div className="flex gap-2 pt-2">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setIsEditing(true)}
-								>
-									Edit
-								</Button>
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={handleTest}
-									disabled={testing}
-								>
-									{testing ? (
-										<>
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											Testing...
-										</>
-									) : testResult?.success ? (
-										<>
-											<CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
-											Connected
-										</>
-									) : testResult?.success === false ? (
-										<>
-											<AlertCircle className="h-4 w-4 mr-2 text-destructive" />
-											Failed
-										</>
-									) : (
-										"Test Connection"
-									)}
-								</Button>
-							</div>
-							{testResult && !testResult.success && (
-								<p className="text-sm text-destructive mt-2">
-									{testResult.message}
-								</p>
-							)}
-						</div>
-					)}
-
-					{/* Edit Form */}
-					{isEditing && (
-						<div className="space-y-4">
-							{children}
-							<div className="flex gap-2 pt-2">
-								{configured && (
-									<Button
-										variant="outline"
-										onClick={() => {
-											setIsEditing(false);
-											setFormData({});
-											setTestResult(null);
-										}}
-									>
-										Cancel
-									</Button>
-								)}
-								<Button onClick={handleSave} disabled={saving}>
-									{saving ? (
-										<>
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											Saving...
-										</>
-									) : (
-										"Save Configuration"
-									)}
-								</Button>
-							</div>
-						</div>
-					)}
-				</CardContent>
-			</Card>
-
-			{/* Delete Confirmation Dialog */}
-			<Dialog
-				open={showDeleteConfirm}
-				onOpenChange={setShowDeleteConfirm}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Remove {title} Configuration</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to remove {title} SSO? Users
-							will no longer be able to sign in with {title} until
-							reconfigured.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setShowDeleteConfirm(false)}
-							disabled={saving}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleDelete}
-							disabled={saving}
-						>
-							{saving ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Removing...
-								</>
-							) : (
-								"Remove Configuration"
-							)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</>
-	);
-}
 
 export function OAuth() {
 	// Form state for each provider
@@ -404,7 +54,13 @@ export function OAuth() {
 	} | null>(null);
 
 	// Load configurations
-	const { data: configData, isLoading, refetch } = useOAuthConfigs();
+	const {
+		data: configData,
+		isLoading,
+		isError,
+		isFetching,
+		refetch,
+	} = useOAuthConfigs();
 
 	// Mutations
 	const updateMicrosoft = useUpdateMicrosoftConfig();
@@ -416,18 +72,35 @@ export function OAuth() {
 
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center py-12">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+			<div
+				role="status"
+				aria-label="Loading SSO configuration"
+				className="flex items-center justify-center py-12"
+			>
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
+
+	const readError = isError ? (
+		<OAuthReadError
+			cached={!!configData}
+			pending={isFetching}
+			onRetry={() => {
+				void refetch();
+			}}
+		/>
+	) : null;
+	if (!configData) return readError;
 
 	const providers = configData?.providers || [];
 
 	const microsoftConfig = providers.find((p) => p.provider === "microsoft");
 	const googleConfig = providers.find((p) => p.provider === "google");
 	const oidcConfig = providers.find((p) => p.provider === "oidc");
-	const configuredProviders = providers.filter((provider) => provider.configured);
+	const configuredProviders = providers.filter(
+		(provider) => provider.configured,
+	);
 	const autoRedirectToSso =
 		loginPreferenceDraft?.auto_redirect_to_sso ??
 		configData?.login_preference.auto_redirect_to_sso ??
@@ -437,6 +110,7 @@ export function OAuth() {
 		: (configData?.login_preference.default_sso_provider ?? null);
 
 	const saveLoginPreference = async () => {
+		if (updateLoginPreference.isPending) return;
 		try {
 			await updateLoginPreference.mutateAsync({
 				body: {
@@ -457,101 +131,36 @@ export function OAuth() {
 
 	return (
 		<div className="space-y-6">
-			<Card>
-				<CardHeader>
-					<CardTitle>Preferred sign-in</CardTitle>
-					<CardDescription>
-						Optionally send users to one configured provider before
-						showing the full sign-in screen. Going Back or cancelling
-						shows all available sign-in options.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-5">
-					<div className="flex items-center justify-between gap-6">
-						<div className="space-y-0.5">
-							<Label htmlFor="preferred-sso-redirect" className="text-base">
-								Prefer SSO on login
-							</Label>
-							<p className="text-sm text-muted-foreground">
-								Try the selected provider once before presenting the
-								standard login screen.
-							</p>
-						</div>
-						<Switch
-							id="preferred-sso-redirect"
-							checked={autoRedirectToSso}
-							disabled={configuredProviders.length === 0}
-							onCheckedChange={(checked) => {
-								setLoginPreferenceDraft({
-									auto_redirect_to_sso: checked,
-									default_sso_provider:
-										defaultSsoProvider ??
-										(checked
-											? configuredProviders[0]?.provider ?? null
-											: null),
-								});
-							}}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="preferred-sso-provider">
-							Preferred provider
-						</Label>
-						<Select
-							value={defaultSsoProvider ?? ""}
-							onValueChange={(value: OAuthProvider) =>
-								setLoginPreferenceDraft({
-									auto_redirect_to_sso: autoRedirectToSso,
-									default_sso_provider: value,
-								})
-							}
-							disabled={configuredProviders.length === 0}
-						>
-							<SelectTrigger id="preferred-sso-provider">
-								<SelectValue placeholder="Select a configured provider" />
-							</SelectTrigger>
-							<SelectContent>
-								{configuredProviders.map((provider) => (
-									<SelectItem
-										key={provider.provider}
-										value={provider.provider}
-									>
-										{provider.provider === "microsoft"
-											? "Microsoft Entra ID"
-											: provider.provider === "google"
-												? "Google"
-												: provider.display_name || "OIDC Provider"}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						{configuredProviders.length === 0 && (
-							<p className="text-sm text-muted-foreground">
-								Configure a provider below before enabling preferred
-								sign-in.
-							</p>
-						)}
-					</div>
-
-					<Button
-						onClick={saveLoginPreference}
-						disabled={
-							updateLoginPreference.isPending ||
-							(autoRedirectToSso && !defaultSsoProvider)
-						}
-					>
-						{updateLoginPreference.isPending && (
-							<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-						)}
-						Save preference
-					</Button>
-				</CardContent>
-			</Card>
+			{readError}
+			<PreferredSignIn
+				configuredProviders={configuredProviders}
+				autoRedirectToSso={autoRedirectToSso}
+				defaultSsoProvider={defaultSsoProvider}
+				pending={updateLoginPreference.isPending}
+				failed={updateLoginPreference.isError}
+				onChange={setLoginPreferenceDraft}
+				onSave={() => {
+					void saveLoginPreference();
+				}}
+			/>
 
 			{/* Microsoft */}
-			<ProviderCard
+			<OAuthProviderCard
 				provider="microsoft"
+				onEdit={() =>
+					setMicrosoftForm({
+						client_id: microsoftConfig?.client_id ?? "",
+						client_secret: "",
+						tenant_id: microsoftConfig?.tenant_id ?? "common",
+					})
+				}
+				onCancel={() =>
+					setMicrosoftForm({
+						client_id: "",
+						client_secret: "",
+						tenant_id: "common",
+					})
+				}
 				title="Microsoft Entra ID"
 				description="Allow users to sign in with their Microsoft work, school, or personal accounts."
 				configured={microsoftConfig?.configured || false}
@@ -569,12 +178,22 @@ export function OAuth() {
 						body: microsoftForm,
 					});
 					await refetch();
+					setMicrosoftForm({
+						client_id: "",
+						client_secret: "",
+						tenant_id: "common",
+					});
 				}}
 				onDelete={async () => {
 					await deleteConfig.mutateAsync({
 						params: { path: { provider: "microsoft" } },
 					});
 					await refetch();
+					setMicrosoftForm({
+						client_id: "",
+						client_secret: "",
+						tenant_id: "common",
+					});
 				}}
 				onTest={async () => {
 					const result = await testConfig.mutateAsync({
@@ -691,11 +310,20 @@ export function OAuth() {
 						</AccordionItem>
 					</Accordion>
 				</div>
-			</ProviderCard>
+			</OAuthProviderCard>
 
 			{/* Google */}
-			<ProviderCard
+			<OAuthProviderCard
 				provider="google"
+				onEdit={() =>
+					setGoogleForm({
+						client_id: googleConfig?.client_id ?? "",
+						client_secret: "",
+					})
+				}
+				onCancel={() =>
+					setGoogleForm({ client_id: "", client_secret: "" })
+				}
 				title="Google"
 				description="Allow users to sign in with their Google accounts."
 				configured={googleConfig?.configured || false}
@@ -707,12 +335,14 @@ export function OAuth() {
 						body: googleForm,
 					});
 					await refetch();
+					setGoogleForm({ client_id: "", client_secret: "" });
 				}}
 				onDelete={async () => {
 					await deleteConfig.mutateAsync({
 						params: { path: { provider: "google" } },
 					});
 					await refetch();
+					setGoogleForm({ client_id: "", client_secret: "" });
 				}}
 				onTest={async () => {
 					const result = await testConfig.mutateAsync({
@@ -806,11 +436,27 @@ export function OAuth() {
 						</AccordionItem>
 					</Accordion>
 				</div>
-			</ProviderCard>
+			</OAuthProviderCard>
 
 			{/* OIDC */}
-			<ProviderCard
+			<OAuthProviderCard
 				provider="oidc"
+				onEdit={() =>
+					setOidcForm({
+						client_id: oidcConfig?.client_id ?? "",
+						client_secret: "",
+						discovery_url: oidcConfig?.discovery_url ?? "",
+						display_name: oidcConfig?.display_name ?? "SSO",
+					})
+				}
+				onCancel={() =>
+					setOidcForm({
+						client_id: "",
+						client_secret: "",
+						discovery_url: "",
+						display_name: "SSO",
+					})
+				}
 				title="OIDC Provider"
 				description="Allow users to sign in with any OpenID Connect provider (Okta, Auth0, Keycloak, etc.)."
 				configured={oidcConfig?.configured || false}
@@ -832,12 +478,24 @@ export function OAuth() {
 						body: oidcForm,
 					});
 					await refetch();
+					setOidcForm({
+						client_id: "",
+						client_secret: "",
+						discovery_url: "",
+						display_name: "SSO",
+					});
 				}}
 				onDelete={async () => {
 					await deleteConfig.mutateAsync({
 						params: { path: { provider: "oidc" } },
 					});
 					await refetch();
+					setOidcForm({
+						client_id: "",
+						client_secret: "",
+						discovery_url: "",
+						display_name: "SSO",
+					});
 				}}
 				onTest={async () => {
 					const result = await testConfig.mutateAsync({
@@ -954,7 +612,7 @@ export function OAuth() {
 								<p className="mt-2 font-medium">
 									Discovery URL Examples:
 								</p>
-								<ul className="list-disc ml-4 font-mono text-xs">
+								<ul className="list-disc ml-4 font-mono text-sm [overflow-wrap:anywhere]">
 									<li>
 										Okta:
 										https://your-org.okta.com/.well-known/openid-configuration
@@ -972,7 +630,7 @@ export function OAuth() {
 						</AccordionItem>
 					</Accordion>
 				</div>
-			</ProviderCard>
+			</OAuthProviderCard>
 		</div>
 	);
 }

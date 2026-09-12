@@ -87,7 +87,9 @@ import { EditUserDialog } from "./EditUserDialog";
 
 type User = Parameters<typeof EditUserDialog>[0]["user"];
 
-function makeUser(overrides: Partial<NonNullable<User>> = {}): NonNullable<User> {
+function makeUser(
+	overrides: Partial<NonNullable<User>> = {},
+): NonNullable<User> {
 	return {
 		id: "u-1",
 		email: "alice@example.com",
@@ -136,11 +138,18 @@ beforeEach(() => {
 describe("EditUserDialog", () => {
 	it("pre-fills the display name from the user prop", () => {
 		renderWithProviders(
-			<EditUserDialog user={makeUser()} open={true} onOpenChange={vi.fn()} />,
+			<EditUserDialog
+				user={makeUser()}
+				open={true}
+				onOpenChange={vi.fn()}
+			/>,
 		);
 
 		expect(screen.getByLabelText(/display name/i)).toHaveValue("Alice");
 		expect(screen.getByLabelText(/email address/i)).toBeDisabled();
+		expect(
+			screen.getByRole("button", { name: /close dialog/i }),
+		).toBeInTheDocument();
 	});
 
 	it("shows 'editing your own account' notice when editing self", () => {
@@ -154,6 +163,29 @@ describe("EditUserDialog", () => {
 		expect(
 			screen.getByText(/editing your own account/i),
 		).toBeInTheDocument();
+	});
+
+	it("allows self name edits when the account has no organization", async () => {
+		const account = makeUser({ organization_id: null });
+		mockAuth.mockReturnValue({
+			user: { id: account.id, email: account.email },
+		});
+		const { user } = renderWithProviders(
+			<EditUserDialog user={account} open onOpenChange={vi.fn()} />,
+		);
+		await user.clear(screen.getByLabelText(/display name/i));
+		await user.type(
+			screen.getByLabelText(/display name/i),
+			"Updated Self Name",
+		);
+		await user.click(screen.getByRole("button", { name: /save changes/i }));
+		await waitFor(() => expect(mockUpdateMutate).toHaveBeenCalled());
+		expect(mockUpdateMutate.mock.calls[0][0].body).toMatchObject({
+			name: "Updated Self Name",
+			organization_id: null,
+			is_superuser: null,
+			is_active: null,
+		});
 	});
 
 	it("submits only the name delta when just the name is changed", async () => {
@@ -173,6 +205,9 @@ describe("EditUserDialog", () => {
 		await user.click(screen.getByRole("button", { name: /save changes/i }));
 
 		await waitFor(() => expect(mockUpdateMutate).toHaveBeenCalled());
+		expect(
+			screen.getByRole("button", { name: /save changes/i }),
+		).toHaveClass("h-11");
 		const call = mockUpdateMutate.mock.calls[0]![0];
 		expect(call.params).toEqual({ path: { user_id: "u-1" } });
 		expect(call.body.name).toBe("Alice Updated");
@@ -215,7 +250,91 @@ describe("EditUserDialog", () => {
 		);
 
 		expect(
-			await screen.findByText(/promoting this user to platform administrator/i),
+			await screen.findByText(
+				/promoting this user to platform administrator/i,
+			),
 		).toBeInTheDocument();
 	});
+});
+
+it("keeps a pending save open and preserves the draft after failure", async () => {
+	let rejectSave!: (error: Error) => void;
+	mockUpdateMutate.mockImplementationOnce(
+		() =>
+			new Promise((_resolve, reject) => {
+				rejectSave = reject;
+			}),
+	);
+	const onOpenChange = vi.fn();
+	const { user } = renderWithProviders(
+		<EditUserDialog user={makeUser()} open onOpenChange={onOpenChange} />,
+	);
+	await user.clear(screen.getByLabelText(/display name/i));
+	await user.type(screen.getByLabelText(/display name/i), "Preserved draft");
+	await user.click(screen.getByRole("button", { name: "Save Changes" }));
+	await user.keyboard("{Escape}");
+	expect(onOpenChange).not.toHaveBeenCalled();
+	expect(screen.getByRole("button", { name: "Close dialog" })).toBeDisabled();
+	expect(
+		screen.getByLabelText(/display name/i).closest("[inert]"),
+	).not.toBeNull();
+	rejectSave(new Error("Synthetic user save failure"));
+	const error = await screen.findByRole("alert");
+	await waitFor(() => expect(error).toHaveFocus());
+	expect(screen.getByLabelText(/display name/i)).toHaveValue(
+		"Preserved draft",
+	);
+	expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+});
+
+it("requires a recoverable role read before saving another user's access", async () => {
+	const refetch = vi.fn().mockResolvedValue({});
+	mockUserRoles.mockReturnValue({ isError: true, refetch });
+	mockRoles.mockReturnValue({ data: [], refetch });
+	const props = { user: makeUser(), open: true, onOpenChange: vi.fn() };
+	const { user, rerender } = renderWithProviders(
+		<EditUserDialog {...props} />,
+	);
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Load them before saving",
+	);
+	expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
+	await user.click(screen.getByRole("button", { name: "Retry roles" }));
+	expect(refetch).toHaveBeenCalledTimes(2);
+	mockUserRoles.mockReturnValue({ data: { role_ids: [] }, refetch });
+	rerender(<EditUserDialog {...props} />);
+	expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled();
+});
+
+it("does not repeat completed role removals after a partial save failure", async () => {
+	mockRoles.mockReturnValue({
+		data: [
+			{ id: "r1", name: "Reviewer" },
+			{ id: "r2", name: "Operator" },
+		],
+	});
+	mockUserRoles.mockReturnValue({ data: { role_ids: ["r1", "r2"] } });
+	mockRemoveMutate
+		.mockResolvedValueOnce({})
+		.mockRejectedValueOnce(new Error("Synthetic role removal failure"))
+		.mockResolvedValueOnce({});
+	const { user } = renderWithProviders(
+		<EditUserDialog user={makeUser()} open onOpenChange={vi.fn()} />,
+	);
+	await user.click(
+		screen.getByRole("button", { name: "Remove Reviewer role" }),
+	);
+	await user.click(
+		screen.getByRole("button", { name: "Remove Operator role" }),
+	);
+	await user.click(screen.getByRole("button", { name: "Save Changes" }));
+	expect(await screen.findByRole("alert")).toHaveTextContent(
+		"Synthetic role removal failure",
+	);
+	await user.click(screen.getByRole("button", { name: "Save Changes" }));
+	await waitFor(() => expect(mockRemoveMutate).toHaveBeenCalledTimes(3));
+	expect(
+		mockRemoveMutate.mock.calls.map(([args]) => args.params.path.role_id),
+	).toEqual(["r1", "r2", "r2"]);
+	expect(mockUpdateMutate).not.toHaveBeenCalled();
 });

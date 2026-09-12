@@ -1,3 +1,5 @@
+import { registerMonacoTheme, watchMonacoTheme } from "@/lib/monaco-theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 /**
  * App Code Editor Component
  *
@@ -58,11 +60,28 @@ export function AppCodeEditor({
 }: AppCodeEditorProps) {
 	const { theme } = useTheme();
 	const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+	const saveRef = useRef(onSave);
+	useEffect(() => {
+		saveRef.current = onSave;
+	}, [onSave]);
 	const monacoRef = useRef<typeof Monaco | null>(null);
+	const themeCleanupRef = useRef<(() => void) | null>(null);
 	const monacoInitializedRef = useRef<boolean>(false);
 
 	// Determine Monaco theme based on app theme
-	const monacoTheme = theme === "light" ? "vs" : "vs-dark";
+	const monacoTheme = `bifrost-${theme}`;
+	const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+	const compactViewport = useMediaQuery("(max-width: 767px)");
+	useEffect(() => {
+		if (monacoRef.current) {
+			themeCleanupRef.current?.();
+			themeCleanupRef.current = watchMonacoTheme(
+				monacoRef.current,
+				theme,
+			);
+		}
+		return () => themeCleanupRef.current?.();
+	}, [theme]);
 
 	// Ensure path has .tsx extension for Monaco to recognize TypeScript+JSX
 	const monacoPath = path
@@ -73,6 +92,7 @@ export function AppCodeEditor({
 
 	// Configure Monaco BEFORE it mounts
 	const handleEditorWillMount: BeforeMount = async (monaco) => {
+		registerMonacoTheme(monaco, theme);
 		if (!monacoInitializedRef.current) {
 			monacoInitializedRef.current = true;
 			await initializeMonaco(monaco);
@@ -83,10 +103,16 @@ export function AppCodeEditor({
 	const handleEditorMount: OnMount = (editor, monaco) => {
 		editorRef.current = editor;
 		monacoRef.current = monaco;
+		themeCleanupRef.current?.();
+		themeCleanupRef.current = watchMonacoTheme(monaco, theme);
+		editor.onDidDispose(() => {
+			themeCleanupRef.current?.();
+			themeCleanupRef.current = null;
+		});
 
 		// Register Cmd/Ctrl+S for save
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-			onSave?.();
+			saveRef.current?.();
 		});
 
 		// Focus the editor
@@ -145,14 +171,18 @@ export function AppCodeEditor({
 				theme={monacoTheme}
 				options={{
 					// Display
-					minimap: { enabled: true },
+					minimap: { enabled: !compactViewport },
 					scrollBeyondLastLine: false,
 					fontSize: 14,
+					fontFamily:
+						'"JetBrains Mono", "SFMono-Regular", Consolas, monospace',
+					lineHeight: 22,
+					padding: { top: 16, bottom: 16 },
 					wordWrap: "on",
 					automaticLayout: true,
 					renderWhitespace: "selection",
-					cursorBlinking: "smooth",
-					smoothScrolling: true,
+					cursorBlinking: reducedMotion ? "solid" : "blink",
+					smoothScrolling: !reducedMotion,
 
 					// Indentation
 					tabSize: 2,
@@ -200,7 +230,7 @@ export function AppCodeEditor({
 				loading={
 					<div className="flex h-full items-center justify-center">
 						<div className="text-center">
-							<Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+							<Loader2 className="h-8 w-8 motion-safe:animate-spin text-muted-foreground mx-auto mb-2" />
 							<p className="text-sm text-muted-foreground">
 								Loading editor...
 							</p>

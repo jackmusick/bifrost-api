@@ -17,10 +17,11 @@ describe("ListPagination", () => {
 			/>,
 		);
 
-		expect(screen.getByText("26–50 of 72")).toBeInTheDocument();
-		expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
-		await user.click(screen.getByRole("link", { name: /previous/i }));
-		await user.click(screen.getByRole("link", { name: /next/i }));
+		expect(
+			screen.getByText("26–50 of 72 · Page 2 of 3"),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /previous/i }));
+		await user.click(screen.getByRole("button", { name: /next/i }));
 		expect(onPageChange).toHaveBeenNthCalledWith(1, 0);
 		expect(onPageChange).toHaveBeenNthCalledWith(2, 50);
 	});
@@ -37,13 +38,28 @@ describe("ListPagination", () => {
 		);
 
 		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
-		expect(screen.getByRole("link", { name: /previous/i })).toHaveAttribute(
-			"aria-disabled",
-			"true",
+		expect(
+			screen.getByRole("button", { name: /previous/i }),
+		).toBeDisabled();
+		expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
+	});
+
+	it("keeps the summary but hides controls for a single page", () => {
+		render(
+			<ListPagination
+				offset={0}
+				limit={25}
+				total={1}
+				onPageChange={vi.fn()}
+			/>,
 		);
-		expect(screen.getByRole("link", { name: /next/i })).toHaveAttribute(
-			"aria-disabled",
-			"true",
-		);
+
+		expect(screen.getByText("1–1 of 1 · Page 1 of 1")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /previous/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /next/i }),
+		).not.toBeInTheDocument();
 	});
 });

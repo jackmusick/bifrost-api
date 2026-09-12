@@ -1,5 +1,6 @@
+import { SolutionCaptureDialog } from "./SolutionCaptureDialog";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen } from "@/test-utils";
+import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 
 const mockGetSolutionCaptureCandidates = vi.fn();
 const mockCaptureSolutionEntities = vi.fn();
@@ -19,7 +20,7 @@ vi.mock("@/services/solutions", () => ({
 }));
 
 async function renderDialog() {
-	const { SolutionCaptureDialog } = await import("./SolutionCaptureDialog");
+
 	return renderWithProviders(
 		<SolutionCaptureDialog
 			open
@@ -131,5 +132,68 @@ describe("SolutionCaptureDialog", () => {
 			"sol-1",
 			expect.objectContaining({ include_imports: true }),
 		);
+	});
+
+	it("blocks dismissal while capture is pending", async () => {
+		let resolveCapture!: (value: unknown) => void;
+		mockCaptureSolutionEntities.mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveCapture = resolve;
+			}),
+		);
+
+		const { user } = await renderDialog();
+		await screen.findByRole("heading", { name: /capture existing entities/i });
+		await user.click(screen.getByLabelText(/capture sync tickets/i));
+		await user.click(screen.getByRole("button", { name: /capture 1/i }));
+
+		expect(screen.getByRole("button", { name: /capture 1/i })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+		const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+		expect(overlay).toBeTruthy();
+		if (overlay) {
+			fireEvent.pointerDown(overlay);
+		}
+		fireEvent.keyDown(document, { key: "Escape" });
+		expect(mockOnClose).not.toHaveBeenCalled();
+		resolveCapture({
+			solution_id: "sol-1",
+			workflows_captured: 1,
+			apps_captured: 0,
+			forms_captured: 0,
+			agents_captured: 0,
+			tables_captured: 0,
+			claims_captured: 0,
+			config_declarations_captured: 0,
+		});
+		await waitFor(() => expect(mockOnCaptured).toHaveBeenCalled());
+		await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
+	});
+
+	it("keeps selections visible and allows retry after capture failure", async () => {
+		mockCaptureSolutionEntities
+			.mockRejectedValueOnce(new Error("capture failed"))
+			.mockResolvedValueOnce({
+				solution_id: "sol-1",
+				workflows_captured: 1,
+				apps_captured: 0,
+				forms_captured: 0,
+				agents_captured: 0,
+				tables_captured: 0,
+				claims_captured: 0,
+				config_declarations_captured: 0,
+			});
+
+		const { user } = await renderDialog();
+		await screen.findByRole("heading", { name: /capture existing entities/i });
+		await user.click(screen.getByLabelText(/capture sync tickets/i));
+		await user.click(screen.getByRole("button", { name: /capture 1/i }));
+
+		expect(await screen.findByText(/capture failed/i)).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /capture 1/i })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /retry capture/i }));
+		expect(mockCaptureSolutionEntities).toHaveBeenCalledTimes(2);
+		expect(mockOnCaptured).toHaveBeenCalled();
+		expect(mockOnClose).toHaveBeenCalled();
 	});
 });

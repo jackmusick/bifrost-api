@@ -433,12 +433,12 @@ describe("tool labels", () => {
 		);
 	});
 
-	it("does not invent a label from an unknown executor identifier", () => {
+	it("preserves identifying words when a tool has no recognized verb", () => {
 		expect(humanizeToolAction("vendor_internal_opaque_command")).toBe(
-			"Completed an action",
+			"Vendor internal opaque command",
 		);
 		expect(humanizeToolReference("vendor_internal_opaque_command")).toBe(
-			"Agent action",
+			"Vendor internal opaque command",
 		);
 	});
 });

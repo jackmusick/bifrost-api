@@ -89,7 +89,8 @@ export function useUpdateWorkflow() {
 			if (!response.ok) {
 				const error = await response.json().catch(() => ({}));
 				throw new Error(
-					error.detail || `Failed to update workflow: ${response.status}`,
+					error.detail ||
+						`Failed to update workflow: ${response.status}`,
 				);
 			}
 
@@ -159,6 +160,8 @@ export function useWorkflowsMetadata(options?: { enabled?: boolean }) {
 	return {
 		data,
 		isLoading: workflowsQuery.isLoading,
+		isFetching: workflowsQuery.isFetching,
+		hasData: workflowsQuery.data !== undefined,
 		isError: workflowsQuery.isError,
 		error: workflowsQuery.error,
 		refetch: workflowsQuery.refetch,
@@ -254,7 +257,15 @@ export async function registerWorkflow(
 	path: string,
 	functionName: string,
 	organizationId?: string | null,
-): Promise<{ id: string; name: string; function_name: string; path: string; type: string; description?: string | null; organization_id?: string | null }> {
+): Promise<{
+	id: string;
+	name: string;
+	function_name: string;
+	path: string;
+	type: string;
+	description?: string | null;
+	organization_id?: string | null;
+}> {
 	const body: Record<string, string> = { path, function_name: functionName };
 	if (organizationId) {
 		body.organization_id = organizationId;
@@ -280,8 +291,18 @@ export async function registerWorkflow(
  */
 export async function runPreflight(): Promise<{
 	valid: boolean;
-	issues: Array<{ level: string; category: string; detail: string; path?: string | null }>;
-	warnings: Array<{ level: string; category: string; detail: string; path?: string | null }>;
+	issues: Array<{
+		level: string;
+		category: string;
+		detail: string;
+		path?: string | null;
+	}>;
+	warnings: Array<{
+		level: string;
+		category: string;
+		detail: string;
+		path?: string | null;
+	}>;
 }> {
 	const response = await authFetch("/api/maintenance/preflight", {
 		method: "POST",
@@ -289,9 +310,7 @@ export async function runPreflight(): Promise<{
 
 	if (!response.ok) {
 		const error = await response.json().catch(() => ({}));
-		throw new Error(
-			error.detail || `Preflight failed: ${response.status}`,
-		);
+		throw new Error(error.detail || `Preflight failed: ${response.status}`);
 	}
 
 	return response.json();

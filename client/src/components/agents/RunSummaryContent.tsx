@@ -15,6 +15,7 @@ import {
 	formatNumber,
 	formatRelativeTime,
 } from "@/lib/utils";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import type { components } from "@/lib/v1";
 
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
@@ -33,22 +34,22 @@ const STATUS_PRESENTATION = {
 	completed: {
 		label: "Completed",
 		icon: CheckCircle,
-		className: "bg-emerald-500/15 text-emerald-500",
+		className: "bg-[var(--bf-success-soft)] text-[var(--bf-success)]",
 	},
 	failed: {
 		label: "Failed",
 		icon: XCircle,
-		className: "bg-rose-500/15 text-rose-500",
+		className: "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]",
 	},
 	running: {
 		label: "Running",
 		icon: Loader2,
-		className: "bg-sky-500/15 text-sky-500",
+		className: "bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
 	},
 	budget_exceeded: {
 		label: "Budget exceeded",
 		icon: AlertTriangle,
-		className: "bg-amber-500/15 text-amber-500",
+		className: "bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]",
 	},
 } as const;
 
@@ -74,7 +75,7 @@ function RunStatusIndicator({ status }: { status: string }) {
 				aria-hidden="true"
 				className={cn(
 					"h-3.5 w-3.5",
-					normalized === "running" && "animate-spin",
+					normalized === "running" && "motion-safe:animate-spin",
 				)}
 			/>
 		</span>
@@ -115,15 +116,19 @@ export function RunSummaryContent({
 					density === "compact" ? "gap-0.5" : "gap-1.5",
 				)}
 			>
-				<div className="flex min-w-0 items-center gap-2">
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
 					<div
 						className={cn(
-							"min-w-0 flex-1 truncate",
-							density === "compact" ? "text-[13px]" : "text-sm",
+							"min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] font-medium",
+							"text-sm leading-6",
 						)}
-						title={run.asked ?? undefined}
 					>
-						{run.asked || (
+						{run.asked ? (
+							<MarkdownContent
+								content={run.asked}
+								variant="preview"
+							/>
+						) : (
 							<SummaryPlaceholder
 								status={run.summary_status}
 								runStatus={run.status}
@@ -131,8 +136,8 @@ export function RunSummaryContent({
 						)}
 					</div>
 					{run.parent_run_id ? (
-						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700 ring-1 ring-violet-500/20 dark:text-violet-300">
-							<GitBranch aria-hidden="true" className="h-2.5 w-2.5" />
+						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--bf-info-soft)] px-2 py-0.5 text-xs font-medium text-[var(--bf-info)]">
+							<GitBranch aria-hidden="true" className="h-3 w-3" />
 							Delegated
 						</span>
 					) : null}
@@ -140,12 +145,13 @@ export function RunSummaryContent({
 				</div>
 				<div
 					className={cn(
-						"min-w-0 truncate text-muted-foreground",
-						density === "compact" ? "text-[12px]" : "text-sm",
+						"min-w-0 [overflow-wrap:anywhere] text-muted-foreground",
+						"text-sm leading-6",
 					)}
-					title={bodyText ?? undefined}
 				>
-					{bodyText || (
+					{bodyText ? (
+						<MarkdownContent content={bodyText} variant="preview" />
+					) : (
 						<SummaryPlaceholder
 							status={run.summary_status}
 							runStatus={run.status}
@@ -190,21 +196,23 @@ export function RunSummaryContent({
 									key={key}
 									title={`${key}=${value}`}
 									className={cn(
-										"inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px]",
+										"inline-flex min-w-0 max-w-full flex-wrap items-start gap-x-1 rounded-[var(--bf-radius-surface)] border px-2 py-1 text-xs [overflow-wrap:anywhere]",
 										isHit
-											? "border-transparent bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
+											? "border-transparent bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]"
 											: "border-border bg-card text-foreground",
 									)}
 								>
 									<span className="text-muted-foreground">
 										{key}
 									</span>
-									<span className="font-mono">{value}</span>
+									<span className="min-w-0 font-mono">
+										{value}
+									</span>
 								</span>
 							);
 						})}
 						{overflow > 0 ? (
-							<span className="inline-flex items-center rounded border border-border bg-card px-1.5 py-0.5 text-[11px]">
+							<span className="inline-flex items-center rounded border border-border bg-card px-1.5 py-0.5 text-xs">
 								+{overflow}
 							</span>
 						) : null}

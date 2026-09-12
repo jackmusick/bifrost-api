@@ -6,7 +6,7 @@
  * (which default to YAML).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as yaml from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/tables/CodeEditor";
@@ -35,32 +35,50 @@ export function PolicyExampleBlock({
 	index,
 }: PolicyExampleBlockProps) {
 	const [format, setFormat] = useState<Format>("yaml");
-	const [copied, setCopied] = useState(false);
+	const [copyStatus, setCopyStatus] = useState<
+		"idle" | "copying" | "copied" | "error"
+	>("idle");
 	const text = serialize(policy, format);
 
-	function handleCopy() {
-		// Guard the clipboard call so jsdom (no navigator.clipboard) doesn't
-		// throw; the button still flips to "Copied!" for user feedback.
+	useEffect(() => {
+		if (copyStatus !== "copied") return;
+		const timer = setTimeout(() => setCopyStatus("idle"), 1500);
+		return () => clearTimeout(timer);
+	}, [copyStatus]);
+
+	async function handleCopy() {
+		if (copyStatus === "copying") return;
+		setCopyStatus("copying");
 		try {
-			void navigator.clipboard?.writeText(text);
+			if (!navigator.clipboard?.writeText)
+				throw new Error("Clipboard unavailable");
+			await navigator.clipboard.writeText(text);
+			setCopyStatus("copied");
 		} catch {
-			// no-op; visual state still updates
+			setCopyStatus("error");
 		}
-		setCopied(true);
-		setTimeout(() => setCopied(false), 1500);
+	}
+
+	function changeFormat(next: Format) {
+		setFormat(next);
+		setCopyStatus("idle");
 	}
 
 	return (
-		<div className="space-y-1">
-			<div className="flex items-center justify-between gap-2">
-				<h5 className="font-mono text-sm font-semibold">{heading}</h5>
-				<div className="flex items-center gap-1">
-					<div className="flex overflow-hidden rounded-md border text-[11px]">
+		<div className="min-w-0 space-y-2">
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<h5 className="min-w-0 font-mono text-sm font-semibold [overflow-wrap:anywhere]">
+					{heading}
+				</h5>
+				<div className="flex flex-wrap items-center gap-1">
+					<div className="flex overflow-hidden rounded-[var(--bf-radius-control)] border text-[11px]">
 						<button
 							type="button"
-							onClick={() => setFormat("yaml")}
+							onClick={() => changeFormat("yaml")}
+							disabled={copyStatus === "copying"}
+							aria-pressed={format === "yaml"}
 							className={
-								"px-2 py-0.5 " +
+								"min-h-11 min-w-11 px-2 py-0.5 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none sm:min-h-8 " +
 								(format === "yaml"
 									? "bg-muted font-medium text-foreground"
 									: "text-muted-foreground")
@@ -70,9 +88,11 @@ export function PolicyExampleBlock({
 						</button>
 						<button
 							type="button"
-							onClick={() => setFormat("json")}
+							onClick={() => changeFormat("json")}
+							disabled={copyStatus === "copying"}
+							aria-pressed={format === "json"}
 							className={
-								"px-2 py-0.5 " +
+								"min-h-11 min-w-11 px-2 py-0.5 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none sm:min-h-8 " +
 								(format === "json"
 									? "bg-muted font-medium text-foreground"
 									: "text-muted-foreground")
@@ -85,13 +105,31 @@ export function PolicyExampleBlock({
 						type="button"
 						variant="ghost"
 						size="xs"
+						className="min-h-11 min-w-11 sm:min-h-8"
 						onClick={handleCopy}
+						aria-label={`Copy ${heading} as ${format.toUpperCase()}`}
+						disabled={copyStatus === "copying"}
 					>
-						{copied ? "Copied!" : "Copy"}
+						{copyStatus === "copying"
+							? "Copying…"
+							: copyStatus === "copied"
+								? "Copied!"
+								: "Copy"}
 					</Button>
 				</div>
 			</div>
 			<p className="text-xs text-muted-foreground">{description}</p>
+			{copyStatus === "error" && (
+				<p role="alert" className="text-xs leading-5 text-destructive">
+					Could not copy. Select and copy the example text, or try
+					again.
+				</p>
+			)}
+			<span role="status" className="sr-only">
+				{copyStatus === "copied"
+					? `${format.toUpperCase()} copied to clipboard.`
+					: ""}
+			</span>
 			<CodeEditor
 				mode={format}
 				text={text}

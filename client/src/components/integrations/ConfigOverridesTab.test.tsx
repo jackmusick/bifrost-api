@@ -169,19 +169,20 @@ describe("ConfigOverridesTab — delete flow", () => {
 			/>,
 		);
 
-		// Icon-only delete button carries a title.
-		const deleteBtn = screen
-			.getAllByRole("button")
-			.find(
-				(b) =>
-					b.getAttribute("title") ===
-					"Delete override (revert to default)",
-			);
-		expect(deleteBtn).toBeDefined();
-		await user.click(deleteBtn!);
+		await user.click(
+			screen.getByRole("button", {
+				name: "More actions for Acme tenant_id",
+			}),
+		);
+
+		await user.click(
+			screen.getByRole("menuitem", { name: "Delete override" }),
+		);
 
 		// Confirm the destructive action
-		await user.click(screen.getByRole("button", { name: /^delete$/i }));
+		await user.click(
+			screen.getByRole("button", { name: /^delete$/i }),
+		);
 
 		await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1));
 		const payload = mockMutateAsync.mock.calls[0]![0];

@@ -12,7 +12,7 @@
  * file tree functionality without the upload features for now.
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useId } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FileTree } from "./FileTree";
@@ -37,7 +37,12 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { FileNode, FileContent, EditorCallbacks, FileTreeConfig } from "./types";
+import type {
+	FileNode,
+	FileContent,
+	EditorCallbacks,
+	FileTreeConfig,
+} from "./types";
 import type { components } from "@/lib/v1";
 
 type WorkflowIdConflict = components["schemas"]["WorkflowIdConflict"];
@@ -57,7 +62,8 @@ function toFileMetadata(file: FileNode): FileMetadata {
 		entity_type: (file.entityType as FileMetadata["entity_type"]) ?? null,
 		entity_id: file.entityId ?? null,
 		// Include organization_id from metadata if present
-		organization_id: (file.metadata?.organizationId as string | undefined) ?? null,
+		organization_id:
+			(file.metadata?.organizationId as string | undefined) ?? null,
 	};
 }
 
@@ -68,6 +74,7 @@ function toFileMetadata(file: FileNode): FileMetadata {
  * For other contexts (JSX editor, org-scoped), use the generic FileTree component.
  */
 export function WorkspaceFileTree({ className }: { className?: string }) {
+	const includeGlobalId = useId();
 	const tabs = useEditorStore((state) => state.tabs);
 	const activeTabIndex = useEditorStore((state) => state.activeTabIndex);
 	const setOpenFile = useEditorStore((state) => state.setOpenFile);
@@ -87,25 +94,14 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 	);
 
 	// Filter state - undefined means "All", null means "Global only", string is org ID
-	const [selectedOrgId, setSelectedOrgId] = useState<string | null | undefined>(
-		undefined,
-	);
+	const [selectedOrgId, setSelectedOrgId] = useState<
+		string | null | undefined
+	>(undefined);
 	const [includeGlobal, setIncludeGlobal] = useState(true);
 
-	// Manual refresh counter — bumped whenever an action wants to force the
-	// file tree to drop its cached folder contents (e.g. after the user
-	// changes an entity's organization scope).
+	// Same-scope refresh preserves cached files; changing scope starts a fresh tree.
 	const [manualRefreshTick, setManualRefreshTick] = useState(0);
-
-	// Refresh trigger derived from current scope plus the manual counter.
-	// Whenever scope changes we want the FileTree to drop its cached folder
-	// contents; encoding scope directly as the trigger means "trigger value
-	// changed" iff scope changed (or someone bumped the manual tick).
-	const refreshTrigger = useMemo(
-		() =>
-			`${selectedOrgId ?? "__none__"}:${includeGlobal}:${manualRefreshTick}`,
-		[selectedOrgId, includeGlobal, manualRefreshTick],
-	);
+	const scopeKey = `${selectedOrgId === undefined ? "all" : selectedOrgId === null ? "global" : selectedOrgId}:${includeGlobal}`;
 
 	// Create org-scoped file operations adapter with current filter settings
 	const operations = useMemo(
@@ -138,32 +134,37 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 	} | null>(null);
 
 	// Change Scope dialog state
-	const [changeScopeFile, setChangeScopeFile] = useState<FileNode | null>(null);
-	const [newScopeOrgId, setNewScopeOrgId] = useState<string | null | undefined>(
-		undefined,
+	const [changeScopeFile, setChangeScopeFile] = useState<FileNode | null>(
+		null,
 	);
+	const [newScopeOrgId, setNewScopeOrgId] = useState<
+		string | null | undefined
+	>(undefined);
 	const [isChangingScope, setIsChangingScope] = useState(false);
 
 	// Handle scope change request from context menu
 	const handleChangeScope = useCallback((file: FileNode) => {
 		setChangeScopeFile(file);
 		// Initialize with current org
-		const currentOrgId = file.metadata?.organizationId as string | null | undefined;
+		const currentOrgId = file.metadata?.organizationId as
+			string | null | undefined;
 		setNewScopeOrgId(currentOrgId ?? null);
 	}, []);
 
 	// Handle scope change confirmation
 	const handleConfirmScopeChange = useCallback(async () => {
-		if (!changeScopeFile || !changeScopeFile.entityType || !changeScopeFile.entityId) {
+		if (
+			!changeScopeFile ||
+			!changeScopeFile.entityType ||
+			!changeScopeFile.entityId
+		) {
 			return;
 		}
 
 		const currentOrgId = changeScopeFile.metadata?.organizationId as
-			| string
-			| null
-			| undefined;
+			string | null | undefined;
 		// Don't do anything if scope hasn't changed
-		if (newScopeOrgId === currentOrgId) {
+		if ((newScopeOrgId ?? null) === (currentOrgId ?? null)) {
 			setChangeScopeFile(null);
 			return;
 		}
@@ -175,13 +176,17 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 				changeScopeFile.entityId,
 				newScopeOrgId ?? null,
 			);
-			toast.success(`Changed scope to ${newScopeOrgId === null ? "Global" : organizations.find((o) => o.id === newScopeOrgId)?.name ?? "organization"}`);
+			toast.success(
+				`Changed scope to ${newScopeOrgId === null ? "Global" : (organizations.find((o) => o.id === newScopeOrgId)?.name ?? "organization")}`,
+			);
 			setChangeScopeFile(null);
 			// Trigger refresh
 			setManualRefreshTick((prev) => prev + 1);
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Failed to change scope",
+				error instanceof Error
+					? error.message
+					: "Failed to change scope",
 			);
 		} finally {
 			setIsChangingScope(false);
@@ -193,7 +198,12 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 		() => ({
 			onFileOpen: (file: FileNode, content: FileContent) => {
 				const metadata = toFileMetadata(file);
-				setOpenFile(metadata, content.content, content.encoding, content.etag);
+				setOpenFile(
+					metadata,
+					content.content,
+					content.encoding,
+					content.etag,
+				);
 			},
 			onFileDeleted: (path: string, isFolder: boolean) => {
 				closeTabsByPath(path, isFolder);
@@ -208,7 +218,13 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 				setLoadingFile(isLoading);
 			},
 		}),
-		[openFilePath, setOpenFile, closeTabsByPath, updateTabPath, setLoadingFile],
+		[
+			openFilePath,
+			setOpenFile,
+			closeTabsByPath,
+			updateTabPath,
+			setLoadingFile,
+		],
 	);
 
 	// Configuration for workspace file tree
@@ -226,30 +242,31 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 	);
 
 	return (
-		<div className={cn("flex h-full flex-col", className)}>
+		<div className={cn("flex h-full min-h-0 min-w-0 flex-col", className)}>
 			{/* Organization filter controls */}
-			<div className="border-b">
+			<div className="border-b p-2">
 				<OrganizationSelect
+					aria-label="File organization"
 					value={selectedOrgId}
 					onChange={setSelectedOrgId}
 					showAll={true}
 					showGlobal={true}
-					triggerClassName="rounded-none border-0 border-b"
-					contentClassName="z-[101] rounded-none"
+					triggerClassName="min-h-11 lg:min-h-11"
+					contentClassName="z-[101]"
 				/>
 				{/* Show "Include Global" checkbox when filtering by a specific org */}
 				{selectedOrgId !== undefined && selectedOrgId !== null && (
 					<div className="flex items-center gap-2 px-3 py-2 border-t">
 						<Checkbox
-							id="include-global"
+							id={includeGlobalId}
 							checked={includeGlobal}
 							onCheckedChange={(checked) =>
 								setIncludeGlobal(checked === true)
 							}
 						/>
 						<Label
-							htmlFor="include-global"
-							className="text-sm text-muted-foreground cursor-pointer"
+							htmlFor={includeGlobalId}
+							className="flex min-h-11 flex-1 items-center text-sm text-muted-foreground cursor-pointer"
 						>
 							Include Global
 						</Label>
@@ -259,12 +276,13 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 
 			{/* File tree */}
 			<FileTree
+				key={scopeKey}
 				operations={operations}
 				iconResolver={defaultIconResolver}
 				editor={editorCallbacks}
 				config={config}
 				className="flex-1 min-h-0"
-				refreshTrigger={refreshTrigger}
+				refreshTrigger={manualRefreshTick}
 				onChangeScope={handleChangeScope}
 			/>
 
@@ -306,19 +324,26 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 			{/* Change Scope Dialog */}
 			<Dialog
 				open={!!changeScopeFile}
-				onOpenChange={(open) => !open && setChangeScopeFile(null)}
+				onOpenChange={(open) => {
+					if (!open && !isChangingScope) setChangeScopeFile(null);
+				}}
 			>
 				<DialogContent className="z-[101]">
 					<DialogHeader>
 						<DialogTitle>Change Scope</DialogTitle>
-						<DialogDescription>
-							Change the organization scope for "{changeScopeFile?.name}".
-							This will change which organization has access to this{" "}
+						<DialogDescription className="[overflow-wrap:anywhere]">
+							Change the organization scope for "
+							{changeScopeFile?.name}". This will change which
+							organization has access to this{" "}
 							{changeScopeFile?.entityType}.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="py-4">
 						<OrganizationSelect
+							aria-label="Organization"
+							label="Organization"
+							disabled={isChangingScope}
+							triggerClassName="min-h-11 lg:min-h-11"
 							value={newScopeOrgId}
 							onChange={setNewScopeOrgId}
 							showAll={false}
@@ -328,6 +353,8 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 					</div>
 					<DialogFooter>
 						<Button
+							type="button"
+							className="min-h-11"
 							variant="outline"
 							onClick={() => setChangeScopeFile(null)}
 							disabled={isChangingScope}
@@ -335,6 +362,8 @@ export function WorkspaceFileTree({ className }: { className?: string }) {
 							Cancel
 						</Button>
 						<Button
+							type="button"
+							className="min-h-11"
 							onClick={handleConfirmScopeChange}
 							disabled={isChangingScope}
 						>

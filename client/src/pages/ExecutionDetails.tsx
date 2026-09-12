@@ -1,21 +1,18 @@
+import { ExecutionActivityFeed } from "@/components/execution/ExecutionActivityFeed";
+import "@/components/execution/execution-details.css";
+import { ExecutionInspector } from "@/components/execution/ExecutionInspector";
+import { RunDetailHeading } from "@/components/execution/RunDetailHeading";
+import { ExecutionPageHeader } from "@/components/execution/ExecutionPageHeader";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
-import {
-	ArrowLeft,
-	XCircle,
-	Loader2,
-	Code2,
-	RefreshCw,
-	ChevronDown,
-	Copy,
-} from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { XCircle, Loader2, RefreshCw, ChevronDown, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ExecutionReadError } from "@/components/execution/ExecutionReadError";
 import { PageLoader } from "@/components/PageLoader";
 import { useExecution, cancelExecution } from "@/hooks/useExecutions";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,7 +29,7 @@ import {
 	ExecutionSidebar,
 	ExecutionCancelDialog,
 	ExecutionRerunDialog,
-	ExecutionMetadataBar,
+	ExecutionActivityTrace,
 	RunStatusBadge,
 	PrettyInputDisplay,
 	type LogEntry,
@@ -45,15 +42,12 @@ import {
 } from "@/lib/executionLogs";
 import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
-import { parseBackendDate } from "@/lib/utils";
 import type { StreamingLog } from "@/stores/executionStreamStore";
 
 type ExecutionStatus =
-	| components["schemas"]["ExecutionStatus"]
-	| "Cancelling"
-	| "Cancelled";
+	components["schemas"]["ExecutionStatus"] | "Cancelling" | "Cancelled";
 type WorkflowExecution = components["schemas"]["WorkflowExecution"];
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
 type FileMetadata = components["schemas"]["FileMetadata"];
@@ -69,6 +63,20 @@ interface WorkflowsMetadataResponse {
 // Stable empty array so the merged-logs memo doesn't recompute every
 // render while no stream is attached.
 const NO_STREAMING_LOGS: StreamingLog[] = [];
+const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
+	"Success",
+	"Failed",
+	"CompletedWithErrors",
+	"Timeout",
+	"Cancelled",
+]);
+
+function isTerminalExecutionStatus(status: unknown): status is ExecutionStatus {
+	return (
+		typeof status === "string" &&
+		TERMINAL_EXECUTION_STATUSES.has(status as ExecutionStatus)
+	);
+}
 
 /** Copy with the secure/insecure-context-aware helper; only toast success when it worked. */
 async function copyWithToast(text: string, successMessage: string) {
@@ -104,11 +112,21 @@ export function ExecutionDetails({
 	const { isPlatformAdmin, hasRole } = useAuth();
 	const isEmbed = hasRole("EmbedUser");
 	const queryClient = useQueryClient();
+	const executionQueryKey = useMemo(
+		() => [
+			"get",
+			"/api/executions/{execution_id}",
+			{ params: { path: { execution_id: executionId } } },
+		],
+		[executionId],
+	);
+	const hasCachedExecution = !!queryClient.getQueryData(executionQueryKey);
 
 	// Check if we came from an execution trigger (has navigation state).
 	// location.state persists across browser refreshes (React Router uses history.state),
 	// so we clear it immediately after reading to prevent deferred-fetch on refresh.
 	const [hasNavigationState] = useState(() => location.state != null);
+	const shouldDeferInitialFetch = hasNavigationState && !hasCachedExecution;
 	useEffect(() => {
 		if (location.state != null) {
 			navigate(location.pathname, { replace: true, state: null });
@@ -120,7 +138,7 @@ export function ExecutionDetails({
 
 	// Fallback timer - enable fetch after 5s if WebSocket hasn't received updates
 	const [fetchFallbackEnabled, setFetchFallbackEnabled] = useState(
-		!hasNavigationState,
+		!shouldDeferInitialFetch,
 	);
 
 	// Get streaming logs from store
@@ -136,19 +154,19 @@ export function ExecutionDetails({
 	const [prevExecutionId, setPrevExecutionId] = useState(executionId);
 	if (prevExecutionId !== executionId) {
 		setPrevExecutionId(executionId);
-		setFetchFallbackEnabled(!hasNavigationState);
+		setFetchFallbackEnabled(!shouldDeferInitialFetch);
 	}
 
 	// Fallback timer — set 5s fallback for navigation state. Timer-based
 	// state transitions are a legitimate effect since they happen after a
 	// scheduled callback (not synchronously in the effect body).
 	useEffect(() => {
-		if (hasNavigationState) {
+		if (shouldDeferInitialFetch) {
 			const timer = setTimeout(() => setFetchFallbackEnabled(true), 5000);
 			return () => clearTimeout(timer);
 		}
 		return undefined;
-	}, [executionId, hasNavigationState]);
+	}, [executionId, shouldDeferInitialFetch]);
 
 	// Determine if we should fetch from API
 	// Fetch when:
@@ -160,9 +178,25 @@ export function ExecutionDetails({
 
 	// State for confirmation dialogs
 	const [showCancelDialog, setShowCancelDialog] = useState(false);
+	const [isCancelling, setIsCancelling] = useState(false);
+	const [cancelError, setCancelError] = useState<string>();
+	const cancelBusy = useRef(false);
 	const [showRerunDialog, setShowRerunDialog] = useState(false);
 	const [isRerunning, setIsRerunning] = useState(false);
+	const [rerunError, setRerunError] = useState<string>();
+	const rerunBusy = useRef(false);
 	const [isOpeningInEditor, setIsOpeningInEditor] = useState(false);
+	const [selectedContentState, setSelectedContentState] = useState<{
+		executionId: string | undefined;
+		tab: "result" | "input" | "logs";
+	}>({ executionId, tab: "result" });
+	const selectedContentTab =
+		selectedContentState.executionId === executionId
+			? selectedContentState.tab
+			: "result";
+	const setSelectedContentTab = (tab: "result" | "input" | "logs") => {
+		setSelectedContentState({ executionId, tab });
+	};
 
 	// Editor store actions
 	const openFileInTab = useEditorStore((state) => state.openFileInTab);
@@ -180,13 +214,9 @@ export function ExecutionDetails({
 	const handleStreamComplete = useCallback(() => {
 		// Refetch full execution data when complete
 		queryClient.invalidateQueries({
-			queryKey: [
-				"get",
-				"/api/executions/{execution_id}",
-				{ params: { path: { execution_id: executionId } } },
-			],
+			queryKey: executionQueryKey,
 		});
-	}, [queryClient, executionId]);
+	}, [queryClient, executionQueryKey]);
 
 	// Real-time updates via WebSocket (only for running/pending/cancelling executions)
 	const { isConnected } = useExecutionStream({
@@ -200,6 +230,8 @@ export function ExecutionDetails({
 		data: executionData,
 		isLoading,
 		error,
+		isFetching,
+		refetch,
 	} = useExecution(shouldFetchExecution ? executionId : undefined, {
 		// Disable polling when WebSocket is connected AND execution is not complete
 		// This prevents duplicate API calls while streaming
@@ -211,25 +243,21 @@ export function ExecutionDetails({
 
 	// Execution status and completion check
 	const executionStatus = execution?.status as ExecutionStatus | undefined;
+	const reduceMotion = useReducedMotion();
+	const isCancelled = executionStatus === "Cancelled";
+	const outcomeTone = isCancelled
+		? "border-border bg-muted/50 text-muted-foreground"
+		: "border-destructive/30 bg-destructive/10 text-destructive";
 	const isComplete =
 		executionStatus === "Success" ||
 		executionStatus === "Failed" ||
 		executionStatus === "CompletedWithErrors" ||
 		executionStatus === "Timeout" ||
 		executionStatus === "Cancelled";
-	const totalDurationMs = (() => {
-		if (!execution?.started_at || !execution.completed_at) return null;
-		const startedAt = parseBackendDate(execution.started_at).getTime();
-		const completedAt = parseBackendDate(execution.completed_at).getTime();
-		if (
-			Number.isNaN(startedAt) ||
-			Number.isNaN(completedAt) ||
-			completedAt < startedAt
-		) {
-			return null;
-		}
-		return completedAt - startedAt;
-	})();
+	const isActive =
+		executionStatus === "Running" ||
+		executionStatus === "Pending" ||
+		executionStatus === "Cancelling";
 
 	// Data now comes from single API call - create adapter variables for compatibility
 	const resultData = execution
@@ -237,8 +265,7 @@ export function ExecutionDetails({
 		: undefined;
 	const logsData = execution?.logs as ExecutionLogEntry[] | undefined;
 	const variablesData = execution?.variables as
-		| Record<string, unknown>
-		| undefined;
+		Record<string, unknown> | undefined;
 
 	// Loading states - all data comes at once now
 	const isLoadingResult = isLoading;
@@ -270,26 +297,28 @@ export function ExecutionDetails({
 	useEffect(() => {
 		if (streamStatus && executionId) {
 			// Use openapi-react-query's query key format
-			queryClient.setQueryData(
-				[
-					"get",
-					"/api/executions/{execution_id}",
-					{ params: { path: { execution_id: executionId } } },
-				],
-				(old: unknown) => {
-					if (!old || typeof old !== "object") return old;
-					return {
-						...(old as Record<string, unknown>),
-						status: streamStatus,
-					};
-				},
-			);
+			queryClient.setQueryData(executionQueryKey, (old: unknown) => {
+				if (!old || typeof old !== "object") return old;
+				const oldStatus = (old as Record<string, unknown>).status;
+				if (
+					isTerminalExecutionStatus(oldStatus) &&
+					!isTerminalExecutionStatus(streamStatus)
+				) {
+					return old;
+				}
+				return {
+					...(old as Record<string, unknown>),
+					status: streamStatus,
+				};
+			});
 		}
-	}, [streamStatus, executionId, queryClient]);
+	}, [streamStatus, executionId, queryClient, executionQueryKey]);
 
 	const handleCancelExecution = async () => {
-		if (!executionId || !execution) return;
-
+		if (!executionId || !execution || cancelBusy.current) return;
+		cancelBusy.current = true;
+		setIsCancelling(true);
+		setCancelError(undefined);
 		try {
 			await cancelExecution(executionId);
 			toast.success(
@@ -304,14 +333,17 @@ export function ExecutionDetails({
 					{ params: { path: { execution_id: executionId } } },
 				],
 			});
-		} catch (error) {
-			toast.error(`Failed to cancel execution: ${error}`);
-			setShowCancelDialog(false);
+		} catch {
+			setCancelError("Couldn't request cancellation. Try again.");
+		} finally {
+			cancelBusy.current = false;
+			setIsCancelling(false);
 		}
 	};
 
 	const handleRerunExecution = async () => {
-		if (!execution) return;
+		if (!execution || rerunBusy.current) return;
+		setRerunError(undefined);
 
 		// Look up the workflow ID from metadata
 		const workflow = metadata?.workflows?.find(
@@ -319,11 +351,13 @@ export function ExecutionDetails({
 		);
 
 		if (!workflow?.id) {
-			toast.error("Cannot rerun: workflow not found in metadata");
-			setShowRerunDialog(false);
+			setRerunError(
+				"The workflow is unavailable. Close this dialog and refresh before trying again.",
+			);
 			return;
 		}
 
+		rerunBusy.current = true;
 		setIsRerunning(true);
 		try {
 			const result = (await executeWorkflowWithContext(
@@ -349,10 +383,12 @@ export function ExecutionDetails({
 					});
 				}
 			}
-		} catch (error) {
-			toast.error(`Failed to rerun workflow: ${error}`);
-			setShowRerunDialog(false);
+		} catch {
+			setRerunError(
+				"Couldn't start the workflow. Your original input is ready to retry.",
+			);
 		} finally {
+			rerunBusy.current = false;
 			setIsRerunning(false);
 		}
 	};
@@ -474,55 +510,92 @@ export function ExecutionDetails({
 		return <PageLoader message="Loading execution details..." />;
 	}
 
-	if (error || !execution) {
-		if (embedded) {
-			return (
-				<div className="flex flex-col items-center justify-center h-full p-8 text-center">
-					<XCircle className="h-12 w-12 text-destructive" />
-					<p className="text-sm text-destructive mt-4">
-						{error
-							? "Failed to load execution"
-							: "Execution not found"}
-					</p>
-				</div>
-			);
-		}
+	if (!execution) {
 		return (
-			<div className="flex items-center justify-center min-h-[60vh] p-6">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.3 }}
-					className="max-w-md w-full space-y-6"
-				>
-					<div className="flex justify-center">
-						<XCircle className="h-16 w-16 text-destructive" />
-					</div>
-					<Alert variant="destructive">
-						<XCircle className="h-4 w-4" />
-						<AlertTitle>Error</AlertTitle>
-						<AlertDescription>
-							{error
-								? "Failed to load execution details. The execution may not exist or you may not have permission to view it."
-								: "Execution not found"}
-						</AlertDescription>
-					</Alert>
-					<div className="flex justify-center">
-						<Button
-							onClick={() => navigate("/history")}
-							variant="outline"
-						>
-							<ArrowLeft className="mr-2 h-4 w-4" />
-							Back to History
-						</Button>
-					</div>
-				</motion.div>
+			<div className={embedded ? "p-4" : "mx-auto max-w-2xl p-4 sm:p-6"}>
+				<ExecutionReadError
+					pending={isFetching}
+					onRetry={() => void refetch()}
+					onBack={embedded ? undefined : () => navigate("/history")}
+				/>
 			</div>
 		);
 	}
+	const refreshError = error ? (
+		<ExecutionReadError
+			cached
+			pending={isFetching}
+			onRetry={() => void refetch()}
+		/>
+	) : null;
 
-	// Embedded mode — single-column layout for slideout drawer
-	if (embedded) {
+	const runningResult = (
+		<div className="space-y-4">
+			{(mergedLogs.length === 0 ||
+				executionStatus === "Pending" ||
+				executionStatus === "Cancelling") && (
+				<p className="text-sm text-muted-foreground">
+					{executionStatus === "Pending"
+						? "This run is waiting to start. The result will appear here when it completes."
+						: executionStatus === "Cancelling"
+							? "Cancellation has been requested. Any available activity remains below."
+							: "This run is active. The result will appear here when it completes."}
+				</p>
+			)}
+		</div>
+	);
+
+	const resultBody =
+		isComplete &&
+		(execution.result != null || executionStatus === "Success") ? (
+			<ExecutionResultPanel
+				result={resultData?.result}
+				resultType={resultData?.result_type}
+				workflowName={execution.workflow_name}
+				isLoading={isLoadingResult}
+			/>
+		) : isComplete ? (
+			<p className="py-4 text-sm text-muted-foreground">
+				This run did not return a result.
+			</p>
+		) : executionStatus === "Running" && mergedLogs.length > 0 ? null : (
+			runningResult
+		);
+
+	const resultContent = (
+		<div className="space-y-5">
+			{resultBody}
+			<ExecutionActivityFeed
+				key={executionId}
+				logs={mergedLogs}
+				active={isActive}
+				onViewLogs={() => setSelectedContentTab("logs")}
+			/>
+		</div>
+	);
+
+	const inputContent = (
+		<PrettyInputDisplay
+			inputData={(execution.input_data ?? {}) as Record<string, unknown>}
+			showToggle
+			defaultView="pretty"
+		/>
+	);
+
+	const logsContent = (
+		<ExecutionLogsPanel
+			key={executionId}
+			logs={mergedLogs as LogEntry[]}
+			status={executionStatus}
+			isConnected={isConnected}
+			isLoading={isLoadingLogs}
+			isPlatformAdmin={isPlatformAdmin}
+			maxHeight="min(60vh, 42rem)"
+			variant="primary"
+		/>
+	);
+
+	const renderExtraDetails = (triggerClassName?: string) => {
 		const aiUsageList = execution.ai_usage as
 			| {
 					provider: string;
@@ -535,7 +608,8 @@ export function ExecutionDetails({
 		const hasAiUsage = aiUsageList && aiUsageList.length > 0;
 		const hasMetrics =
 			isPlatformAdmin &&
-			(execution.peak_memory_bytes || execution.cpu_total_seconds);
+			(execution.peak_memory_bytes != null ||
+				execution.cpu_total_seconds != null);
 		const hasVariables =
 			isPlatformAdmin &&
 			isComplete &&
@@ -545,356 +619,20 @@ export function ExecutionDetails({
 		const hasExtras =
 			hasAiUsage || hasMetrics || hasVariables || hasExecutionContext;
 
-		const actionButtons = (
-			<>
-				{isPlatformAdmin && isComplete && (
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						onClick={() => setShowRerunDialog(true)}
-						disabled={isRerunning}
-						title="Rerun"
-					>
-						{isRerunning ? (
-							<Loader2 className="h-3.5 w-3.5 animate-spin" />
-						) : (
-							<RefreshCw className="h-3.5 w-3.5" />
-						)}
-					</Button>
-				)}
-				{(execution.status === "Running" ||
-					execution.status === "Pending") && (
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7"
-						onClick={() => setShowCancelDialog(true)}
-						title="Cancel"
-					>
-						<XCircle className="h-3.5 w-3.5" />
-					</Button>
-				)}
-			</>
-		);
+		if (!isComplete || !hasExtras) return null;
 
 		return (
-			<div className="h-full">
-				{actionsContainer &&
-					createPortal(actionButtons, actionsContainer)}
-
-				<div className="p-4 space-y-4">
-					{/* Compact metadata header */}
-					<ExecutionMetadataBar
-						workflowName={execution.workflow_name}
-						status={executionStatus as ExecutionStatus}
-						executedByName={execution.executed_by_name}
-						orgName={execution.org_name}
-						startedAt={execution.started_at}
-						durationMs={execution.duration_ms}
-						totalDurationMs={totalDurationMs}
-						queuePosition={streamState?.queuePosition}
-						waitReason={streamState?.waitReason}
-						availableMemoryMb={streamState?.availableMemoryMb}
-						requiredMemoryMb={streamState?.requiredMemoryMb}
-					/>
-
-					{/* Error message — the triage answer; loud, copyable */}
-					{execution.error_message && (
-						<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
-							<div className="flex items-start gap-2">
-								<XCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
-								<pre className="flex-1 text-sm whitespace-pre-wrap break-words font-mono text-destructive/90">
-									{execution.error_message}
-								</pre>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-6 w-6 flex-shrink-0 text-destructive/70 hover:text-destructive"
-									onClick={() =>
-										void copyWithToast(
-											execution.error_message ?? "",
-											"Error copied",
-										)
-									}
-									title="Copy error"
-								>
-									<Copy className="h-3.5 w-3.5" />
-								</Button>
-							</div>
-						</div>
-					)}
-
-					{/* Result */}
-					{isComplete && execution.result != null && (
-						<ExecutionResultPanel
-							result={resultData?.result}
-							resultType={resultData?.result_type}
-							workflowName={execution.workflow_name}
-							isLoading={isLoadingResult}
-						/>
-					)}
-
-					{/* Input data */}
-					{execution.input_data && (
-						<section>
-							<h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-								Input Parameters
-							</h4>
-							<PrettyInputDisplay
-								inputData={
-									execution.input_data as Record<string, unknown>
-								}
-								showToggle={true}
-								defaultView="pretty"
-							/>
-						</section>
-					)}
-
-					{/* Logs */}
-					<ExecutionLogsPanel
-						logs={mergedLogs as LogEntry[]}
-						status={executionStatus}
-						isConnected={isConnected}
-						isLoading={isLoadingLogs}
-						isPlatformAdmin={isPlatformAdmin}
-						maxHeight="50vh"
-					/>
-
-					{/* Extra details — collapsible */}
-					{isComplete && hasExtras && (
-						<Collapsible>
-							<CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full py-2 [&[data-state=open]>svg]:rotate-180">
-								<ChevronDown className="h-4 w-4 transition-transform duration-200" />
-								More details
-							</CollapsibleTrigger>
-							<CollapsibleContent className="space-y-4 pt-2">
-								<ExecutionSidebar
-									executedByName={
-										execution.executed_by_name
-									}
-									orgName={execution.org_name}
-									startedAt={execution.started_at}
-									completedAt={execution.completed_at}
-									inputData={execution.input_data}
-									isComplete={isComplete}
-									isPlatformAdmin={isPlatformAdmin}
-									isLoading={isLoading}
-									variablesData={variablesData}
-									peakMemoryBytes={
-										execution.peak_memory_bytes
-									}
-									cpuTotalSeconds={
-										execution.cpu_total_seconds
-									}
-									durationMs={execution.duration_ms}
-									aiUsage={execution.ai_usage}
-									aiTotals={execution.ai_totals}
-									executionContext={
-										execution.execution_context
-									}
-									extrasOnly
-								/>
-							</CollapsibleContent>
-						</Collapsible>
-					)}
-				</div>
-
-				<ExecutionCancelDialog
-					open={showCancelDialog}
-					onOpenChange={setShowCancelDialog}
-					workflowName={execution.workflow_name}
-					onConfirm={handleCancelExecution}
-				/>
-
-				<ExecutionRerunDialog
-					open={showRerunDialog}
-					onOpenChange={setShowRerunDialog}
-					workflowName={execution.workflow_name}
-					isRerunning={isRerunning}
-					onConfirm={handleRerunExecution}
-				/>
-			</div>
-		);
-	}
-
-	return (
-		<div className="h-full overflow-y-auto">
-			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
-			{!isEmbed && (
-				<div className="sticky top-0 bg-background/80 backdrop-blur-sm border-b z-10">
-					<div className="px-6 lg:px-8 py-3 space-y-1">
-						{/* Row 1: Back + workflow name + status + action buttons */}
-						<div className="flex items-center gap-3 min-w-0">
-							<Button
-								variant="ghost"
-								size="icon"
-								className="flex-shrink-0 h-8 w-8"
-								onClick={() => navigate("/history")}
-							>
-								<ArrowLeft className="h-4 w-4" />
-							</Button>
-							<h1 className="font-mono text-lg font-semibold tracking-tight truncate">
-								{execution.workflow_name}
-							</h1>
-							<RunStatusBadge
-								status={executionStatus as string}
-								queuePosition={streamState?.queuePosition}
-								waitReason={streamState?.waitReason}
-								availableMemoryMb={streamState?.availableMemoryMb}
-								requiredMemoryMb={streamState?.requiredMemoryMb}
-							/>
-							<div className="flex gap-1.5 flex-wrap ml-auto flex-shrink-0">
-								{metadata?.workflows?.find(
-									(w: WorkflowMetadata) =>
-										w.name === execution.workflow_name,
-								)?.source_file_path && (
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-7 text-xs"
-										onClick={handleOpenInEditor}
-										disabled={isOpeningInEditor}
-									>
-										{isOpeningInEditor ? (
-											<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-										) : (
-											<Code2 className="mr-1.5 h-3.5 w-3.5" />
-										)}
-										Editor
-									</Button>
-								)}
-								{isPlatformAdmin && isComplete && (
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-7 text-xs"
-										onClick={() => setShowRerunDialog(true)}
-										disabled={isRerunning}
-									>
-										{isRerunning ? (
-											<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-										) : (
-											<RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-										)}
-										Rerun
-									</Button>
-								)}
-								{(execution.status === "Running" ||
-									execution.status === "Pending") && (
-									<Button
-										variant="ghost"
-										size="sm"
-										className="h-7 text-xs"
-										onClick={() => setShowCancelDialog(true)}
-									>
-										<XCircle className="mr-1.5 h-3.5 w-3.5" />
-										Cancel
-									</Button>
-								)}
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-7 w-7"
-									onClick={() =>
-										void copyWithToast(
-											execution.execution_id,
-											"Execution ID copied",
-										)
-									}
-									title="Copy execution ID"
-								>
-									<Copy className="h-3.5 w-3.5" />
-								</Button>
-							</div>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{/* Two-column layout: Content on left, Sidebar on right */}
-			<div className="p-6 lg:p-8">
-				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-					{/* Left Column - Main Content (2/3 width) */}
-					<div className="lg:col-span-2 space-y-6">
-						{/* Error — the forensic answer leads the page, full
-						    width in the primary column, copyable. */}
-						{execution.error_message && (
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.3 }}
-								data-testid="execution-error-banner"
-							>
-								<div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-									<div className="flex items-start gap-3">
-										<XCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-										<div className="flex-1 min-w-0">
-											<p className="text-sm font-semibold text-destructive">
-												This run failed
-											</p>
-											<pre className="mt-1 text-sm whitespace-pre-wrap break-words font-mono text-destructive/90">
-												{execution.error_message}
-											</pre>
-										</div>
-										<Button
-											variant="ghost"
-											size="icon"
-											className="h-7 w-7 flex-shrink-0 text-destructive/70 hover:text-destructive"
-											onClick={() =>
-												void copyWithToast(
-													execution.error_message ??
-														"",
-													"Error copied",
-												)
-											}
-											title="Copy error"
-										>
-											<Copy className="h-4 w-4" />
-										</Button>
-									</div>
-								</div>
-							</motion.div>
-						)}
-
-						{/* Result Section — only when there is (or can be) a
-						    result; a failed run with no result renders the
-						    error banner instead of "No result returned". */}
-						{isComplete &&
-							(execution.result != null ||
-								executionStatus === "Success") && (
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ duration: 0.3 }}
-							>
-								<ExecutionResultPanel
-									result={resultData?.result}
-									resultType={resultData?.result_type}
-									workflowName={execution.workflow_name}
-									isLoading={isLoadingResult}
-								/>
-							</motion.div>
-						)}
-
-						{/* Logs Section */}
-						<motion.div
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ duration: 0.3, delay: 0.1 }}
-						>
-							<ExecutionLogsPanel
-								logs={mergedLogs as LogEntry[]}
-								status={executionStatus}
-								isConnected={isConnected}
-								isLoading={isLoadingLogs}
-								isPlatformAdmin={isPlatformAdmin}
-								maxHeight="70vh"
-							/>
-						</motion.div>
-					</div>
-
-					{/* Right Column - Sidebar (1/3 width) */}
+			<Collapsible>
+				<CollapsibleTrigger
+					className={
+						triggerClassName ??
+						"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180"
+					}
+				>
+					<ChevronDown className="h-4 w-4 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none" />
+					More details
+				</CollapsibleTrigger>
+				<CollapsibleContent className="space-y-4 pt-3">
 					<ExecutionSidebar
 						executedByName={execution.executed_by_name}
 						orgName={execution.org_name}
@@ -912,7 +650,316 @@ export function ExecutionDetails({
 						aiUsage={execution.ai_usage}
 						aiTotals={execution.ai_totals}
 						executionContext={execution.execution_context}
+						extrasOnly
 					/>
+				</CollapsibleContent>
+			</Collapsible>
+		);
+	};
+
+	// Embedded mode — single-column layout for slideout drawer
+	if (embedded) {
+		const actionButtons = (
+			<>
+				{isPlatformAdmin && isComplete && (
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => setShowRerunDialog(true)}
+						disabled={isRerunning}
+						title="Rerun"
+						aria-label="Rerun execution"
+					>
+						{isRerunning ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<RefreshCw className="h-3.5 w-3.5" />
+						)}
+						Rerun
+					</Button>
+				)}
+				{(execution.status === "Running" ||
+					execution.status === "Pending") && (
+					<Button
+						variant="ghost"
+						size="icon-lg"
+						onClick={() => setShowCancelDialog(true)}
+						title="Cancel"
+						aria-label="Cancel execution"
+					>
+						<XCircle className="h-3.5 w-3.5" />
+					</Button>
+				)}
+			</>
+		);
+
+		return (
+			<div className="h-full">
+				{actionsContainer ? (
+					createPortal(actionButtons, actionsContainer)
+				) : (
+					<div className="mb-3 flex justify-end gap-2">
+						{actionButtons}
+					</div>
+				)}
+
+				<div className="space-y-4">
+					{refreshError}
+					<div className="space-y-2">
+						<h3 className="font-display text-lg font-semibold [overflow-wrap:anywhere]">
+							{execution.workflow_name}
+						</h3>
+						<RunStatusBadge
+							status={executionStatus as string}
+							queuePosition={streamState?.queuePosition}
+							waitReason={streamState?.waitReason}
+						/>
+					</div>
+					<ExecutionActivityTrace
+						status={executionStatus}
+						startedAt={execution.started_at}
+						completedAt={execution.completed_at}
+						executedByName={execution.executed_by_name}
+						orgName={execution.org_name}
+						isConnected={isConnected}
+						isStreamingEnabled={signalrEnabled}
+						showProgressLine={false}
+					/>
+
+					{/* Error message — the triage answer; loud, copyable */}
+					{execution.error_message && (
+						<div
+							className={`rounded-[var(--bf-radius-surface)] border p-3 ${outcomeTone}`}
+						>
+							<div className="flex items-start gap-2">
+								<XCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+								<pre className="min-w-0 flex-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] font-mono">
+									{execution.error_message}
+								</pre>
+								<Button
+									variant="ghost"
+									size="icon"
+									className="size-11 flex-shrink-0 text-inherit sm:size-7"
+									onClick={() =>
+										void copyWithToast(
+											execution.error_message ?? "",
+											isCancelled
+												? "Cancellation message copied"
+												: "Error copied",
+										)
+									}
+									title={
+										isCancelled
+											? "Copy cancellation message"
+											: "Copy error"
+									}
+									aria-label={
+										isCancelled
+											? "Copy cancellation message"
+											: "Copy error"
+									}
+								>
+									<Copy className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+						</div>
+					)}
+
+					<div
+						className={
+							isActive ? "execution-detail-card p-3" : "min-w-0"
+						}
+						data-active={isActive ? "true" : undefined}
+					>
+						<ExecutionInspector
+							key={executionId}
+							value={selectedContentTab}
+							onValueChange={setSelectedContentTab}
+							result={resultContent}
+							input={inputContent}
+							logs={logsContent}
+							summary={renderExtraDetails(
+								"flex min-h-11 items-center gap-2 rounded-[var(--bf-radius-control)] px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&[data-state=open]>svg]:rotate-180",
+							)}
+						/>
+					</div>
+				</div>
+
+				<ExecutionCancelDialog
+					open={showCancelDialog}
+					onOpenChange={setShowCancelDialog}
+					workflowName={execution.workflow_name}
+					isCancelling={isCancelling}
+					error={cancelError}
+					onConfirm={handleCancelExecution}
+				/>
+
+				<ExecutionRerunDialog
+					open={showRerunDialog}
+					onOpenChange={setShowRerunDialog}
+					workflowName={execution.workflow_name}
+					isRerunning={isRerunning}
+					error={rerunError}
+					onConfirm={handleRerunExecution}
+				/>
+			</div>
+		);
+	}
+
+	return (
+		<div className="execution-shell h-full overflow-y-auto bg-background lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden">
+			{/* Page Header - hidden for embedded users (embedded prop short-circuits earlier) */}
+			{!isEmbed && (
+				<ExecutionPageHeader
+					name={execution.workflow_name}
+					status={
+						<RunStatusBadge
+							status={executionStatus as string}
+							queuePosition={streamState?.queuePosition}
+							waitReason={streamState?.waitReason}
+							availableMemoryMb={streamState?.availableMemoryMb}
+							requiredMemoryMb={streamState?.requiredMemoryMb}
+						/>
+					}
+					onBack={() => navigate("/history")}
+					onCopyId={() =>
+						void copyWithToast(
+							execution.execution_id,
+							"Execution ID copied",
+						)
+					}
+					onOpenEditor={
+						metadata?.workflows?.find(
+							(workflow: WorkflowMetadata) =>
+								workflow.name === execution.workflow_name,
+						)?.source_file_path
+							? handleOpenInEditor
+							: undefined
+					}
+					onRerun={
+						isPlatformAdmin && isComplete
+							? () => setShowRerunDialog(true)
+							: undefined
+					}
+					onCancel={
+						execution.status === "Running" ||
+						execution.status === "Pending"
+							? () => setShowCancelDialog(true)
+							: undefined
+					}
+					openingEditor={isOpeningInEditor}
+					rerunning={isRerunning}
+				/>
+			)}
+
+			{isEmbed && (
+				<header className="border-b px-4 py-4 sm:px-6 lg:px-8">
+					<RunDetailHeading
+						title={execution.workflow_name}
+						metadata={
+							<div role="status" aria-live="polite">
+								<RunStatusBadge
+									status={executionStatus as string}
+								/>
+							</div>
+						}
+						actionsLabel="Execution actions"
+					/>
+				</header>
+			)}
+			<div data-page-scroll className="min-h-0 flex-1 overflow-auto">
+				<div className="mx-auto flex w-full max-w-[84rem] flex-col gap-4 p-4 pb-8 sm:p-5 sm:pb-8 lg:p-6 lg:pb-10">
+					{refreshError}
+					<ExecutionActivityTrace
+						status={executionStatus}
+						startedAt={execution.started_at}
+						completedAt={execution.completed_at}
+						executedByName={execution.executed_by_name}
+						orgName={execution.org_name}
+						isConnected={isConnected}
+						isStreamingEnabled={signalrEnabled}
+						showProgressLine={false}
+					/>
+					{execution.error_message && (
+						<motion.div
+							initial={
+								reduceMotion ? false : { opacity: 0, y: 20 }
+							}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: reduceMotion ? 0 : 0.22 }}
+							data-testid="execution-error-banner"
+						>
+							<div
+								className={`rounded-[var(--bf-radius-surface)] border p-4 ${outcomeTone}`}
+							>
+								<div className="flex items-start gap-3">
+									<XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+									<div className="flex-1 min-w-0">
+										<p className="text-sm font-semibold">
+											{isCancelled
+												? "This run was cancelled"
+												: "This run failed"}
+										</p>
+										<pre className="mt-1 text-sm whitespace-pre-wrap [overflow-wrap:anywhere] font-mono">
+											{execution.error_message}
+										</pre>
+									</div>
+									<Button
+										variant="ghost"
+										size="icon"
+										className="size-11 flex-shrink-0 text-inherit sm:size-7"
+										onClick={() =>
+											void copyWithToast(
+												execution.error_message ?? "",
+												isCancelled
+													? "Cancellation message copied"
+													: "Error copied",
+											)
+										}
+										title={
+											isCancelled
+												? "Copy cancellation message"
+												: "Copy error"
+										}
+										aria-label={
+											isCancelled
+												? "Copy cancellation message"
+												: "Copy error"
+										}
+									>
+										<Copy className="h-4 w-4" />
+									</Button>
+								</div>
+							</div>
+						</motion.div>
+					)}
+
+					<div className="min-w-0">
+						<motion.div
+							initial={
+								reduceMotion ? false : { opacity: 0, y: 16 }
+							}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: reduceMotion ? 0 : 0.22 }}
+							className={
+								isActive
+									? "execution-detail-card w-full min-w-0 p-3 sm:p-4"
+									: "w-full min-w-0"
+							}
+							data-active={isActive ? "true" : undefined}
+						>
+							<ExecutionInspector
+								key={executionId}
+								className="max-h-full"
+								value={selectedContentTab}
+								onValueChange={setSelectedContentTab}
+								result={resultContent}
+								input={inputContent}
+								logs={logsContent}
+								summary={renderExtraDetails()}
+							/>
+						</motion.div>
+					</div>
 				</div>
 			</div>
 
@@ -921,6 +968,8 @@ export function ExecutionDetails({
 				open={showCancelDialog}
 				onOpenChange={setShowCancelDialog}
 				workflowName={execution.workflow_name}
+				isCancelling={isCancelling}
+				error={cancelError}
 				onConfirm={handleCancelExecution}
 			/>
 
@@ -930,6 +979,7 @@ export function ExecutionDetails({
 				onOpenChange={setShowRerunDialog}
 				workflowName={execution.workflow_name}
 				isRerunning={isRerunning}
+				error={rerunError}
 				onConfirm={handleRerunExecution}
 			/>
 		</div>

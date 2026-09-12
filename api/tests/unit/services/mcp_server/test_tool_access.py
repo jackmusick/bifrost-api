@@ -889,3 +889,23 @@ class TestSearchKnowledgeAutoInjection:
         assert result is not None
         tool_ids = {t.id for t in result.tools}
         assert "search_knowledge" not in tool_ids
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_superuser,for_configuration,visible", [
+    (True, True, True), (True, False, False), (False, True, False),
+])
+async def test_configuration_inventory_preserves_runtime_tool_filtering(
+    service, mock_session, mock_agent, is_superuser, for_configuration, visible,
+):
+    agent = mock_agent(system_tools=["execute_workflow"])
+    mock_session.execute = AsyncMock(return_value=mock_query_result([agent]))
+    with patch("src.services.mcp_server.tool_access.MCPConfigService") as config_cls:
+        config_cls.return_value.get_config = AsyncMock(return_value=MagicMock(
+            allowed_tool_ids=None, blocked_tool_ids=["execute_workflow"],
+        ))
+        result = await service.get_accessible_tools(
+            user_roles=[], is_superuser=is_superuser,
+            for_configuration=for_configuration,
+        )
+    assert any(tool.id == "execute_workflow" for tool in result.tools) is visible

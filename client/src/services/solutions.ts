@@ -13,8 +13,7 @@ export type SolutionInstallPreview =
 	components["schemas"]["SolutionInstallPreview"];
 export type SolutionExistingInstall =
 	components["schemas"]["SolutionExistingInstall"];
-export type SolutionUpgradeDiff =
-	components["schemas"]["SolutionUpgradeDiff"];
+export type SolutionUpgradeDiff = components["schemas"]["SolutionUpgradeDiff"];
 export type SolutionDeleteSummary =
 	components["schemas"]["SolutionDeleteSummary"];
 export type SolutionUpdate = components["schemas"]["SolutionUpdate"];
@@ -72,7 +71,8 @@ export async function listSolutions(
 ): Promise<SolutionsList> {
 	const { signal } = options;
 	const { data, error } = await apiClient.GET("/api/solutions", { signal });
-	if (error) throw new Error(getErrorMessage(error, "Failed to list solutions"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to list solutions"));
 	return data;
 }
 
@@ -81,11 +81,15 @@ export async function getSolution(
 	options: RequestOptions = {},
 ): Promise<Solution> {
 	const { signal } = options;
-	const { data, error } = await apiClient.GET("/api/solutions/{solution_id}", {
-		params: { path: { solution_id: solutionId } },
-		signal,
-	});
-	if (error) throw new Error(getErrorMessage(error, "Failed to get solution"));
+	const { data, error } = await apiClient.GET(
+		"/api/solutions/{solution_id}",
+		{
+			params: { path: { solution_id: solutionId } },
+			signal,
+		},
+	);
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to get solution"));
 	return data;
 }
 
@@ -99,7 +103,9 @@ export async function getSolutionSetup(
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to get solution setup status"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get solution setup status"),
+		);
 	}
 	return data;
 }
@@ -114,7 +120,9 @@ export async function getSolutionReadme(
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to get solution readme"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get solution readme"),
+		);
 	}
 	return data;
 }
@@ -127,10 +135,16 @@ export async function putSolutionReadme(
 	const { signal } = options;
 	const { data, error } = await apiClient.PUT(
 		"/api/solutions/{solution_id}/readme",
-		{ params: { path: { solution_id: solutionId } }, body: { readme }, signal },
+		{
+			params: { path: { solution_id: solutionId } },
+			body: { readme },
+			signal,
+		},
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to update solution readme"));
+		throw new Error(
+			getErrorMessage(error, "Failed to update solution readme"),
+		);
 	}
 	return data;
 }
@@ -145,7 +159,9 @@ export async function getSolutionEntities(
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to get solution entities"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get solution entities"),
+		);
 	}
 	return data;
 }
@@ -160,7 +176,8 @@ export async function updateSolution(
 		"/api/solutions/{solution_id}",
 		{ params: { path: { solution_id: solutionId } }, body: update, signal },
 	);
-	if (error) throw new Error(getErrorMessage(error, "Failed to update solution"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to update solution"));
 	return data;
 }
 
@@ -174,11 +191,15 @@ export async function syncSolution(
 	options: RequestOptions = {},
 ): Promise<void> {
 	const { signal } = options;
-	const { error } = await apiClient.POST("/api/solutions/{solution_id}/sync", {
-		params: { path: { solution_id: solutionId } },
-		signal,
-	});
-	if (error) throw new Error(getErrorMessage(error, "Failed to sync solution"));
+	const { error } = await apiClient.POST(
+		"/api/solutions/{solution_id}/sync",
+		{
+			params: { path: { solution_id: solutionId } },
+			signal,
+		},
+	);
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to sync solution"));
 }
 
 /**
@@ -217,7 +238,9 @@ export async function installSolutionFromRepo(
 		{ body, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to install from repository"));
+		throw new Error(
+			getErrorMessage(error, "Failed to install from repository"),
+		);
 	}
 	return pollDeployJobToSolution(data.deploy_job_id, { signal });
 }
@@ -247,7 +270,11 @@ export async function previewSolutionCapture(
 	const { signal } = options;
 	const { data, error } = await apiClient.POST(
 		"/api/solutions/{solution_id}/capture/preview",
-		{ params: { path: { solution_id: solutionId } }, body: request, signal },
+		{
+			params: { path: { solution_id: solutionId } },
+			body: request,
+			signal,
+		},
 	);
 	if (error) {
 		throw new Error(getErrorMessage(error, "Failed to preview capture"));
@@ -263,7 +290,11 @@ export async function captureSolutionEntities(
 	const { signal } = options;
 	const { data, error } = await apiClient.POST(
 		"/api/solutions/{solution_id}/capture",
-		{ params: { path: { solution_id: solutionId } }, body: request, signal },
+		{
+			params: { path: { solution_id: solutionId } },
+			body: request,
+			signal,
+		},
 	);
 	if (error) {
 		throw new Error(getErrorMessage(error, "Failed to capture entities"));
@@ -291,7 +322,8 @@ export async function setSolutionConfig(
 		body: { key, value, type, organization_id: organizationId },
 		signal: options.signal,
 	});
-	if (error) throw new Error(getErrorMessage(error, "Failed to save config value"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to save config value"));
 }
 
 /**
@@ -307,7 +339,8 @@ export async function uninstallSolution(
 		"/api/solutions/{solution_id}/uninstall",
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
-	if (error) throw new Error(getErrorMessage(error, "Failed to uninstall solution"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to uninstall solution"));
 	return data;
 }
 
@@ -325,7 +358,9 @@ export async function getSolutionDeletionSummary(
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to get deletion summary"));
+		throw new Error(
+			getErrorMessage(error, "Failed to get deletion summary"),
+		);
 	}
 	return data;
 }
@@ -350,7 +385,8 @@ export async function deleteSolution(
 			signal,
 		},
 	);
-	if (error) throw new Error(getErrorMessage(error, "Failed to delete solution"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to delete solution"));
 	return data;
 }
 
@@ -369,11 +405,14 @@ export async function exportSolution(
 	// query string (a query-string secret leaks into logs/proxies/history).
 	// mode + content flags are not sensitive and stay in the query.
 	const exportOptions =
-		typeof options === "boolean" ? { includeData: options } : (options ?? {});
+		typeof options === "boolean"
+			? { includeData: options }
+			: (options ?? {});
 	const params = new URLSearchParams({ mode });
 	const includeValues =
 		exportOptions.includeConfigs ?? exportOptions.includeValues;
-	const includeData = exportOptions.includeTables ?? exportOptions.includeData;
+	const includeData =
+		exportOptions.includeTables ?? exportOptions.includeData;
 	if (includeValues !== undefined) {
 		params.set("include_values", String(includeValues));
 	}
@@ -431,7 +470,9 @@ export async function createSolutionExportJob(
 		},
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to queue backup export"));
+		throw new Error(
+			getErrorMessage(error, "Failed to queue backup export"),
+		);
 	}
 	return data;
 }
@@ -446,7 +487,9 @@ export async function listSolutionExportJobs(
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
 	if (error) {
-		throw new Error(getErrorMessage(error, "Failed to list backup exports"));
+		throw new Error(
+			getErrorMessage(error, "Failed to list backup exports"),
+		);
 	}
 	return data;
 }
@@ -476,7 +519,10 @@ export async function downloadSolutionExportJob(
 	);
 	if (!response.ok) {
 		throw new Error(
-			await parseUploadError(response, "Failed to download backup export"),
+			await parseUploadError(
+				response,
+				"Failed to download backup export",
+			),
 		);
 	}
 	const disposition = response.headers.get("Content-Disposition") ?? "";
@@ -538,7 +584,8 @@ export async function getDeployJob(
 		"/api/solutions/deploy-jobs/{job_id}",
 		{ params: { path: { job_id: jobId } }, signal },
 	);
-	if (error) throw new Error(getErrorMessage(error, "Failed to read deploy job"));
+	if (error)
+		throw new Error(getErrorMessage(error, "Failed to read deploy job"));
 	return data;
 }
 
@@ -563,9 +610,12 @@ export async function pollDeployJobToSolution(
 		const job = await getDeployJob(jobId, { signal });
 		if (job.status === "succeeded") {
 			const solutionId =
-				(job.result?.solution_id as string | undefined) ?? job.install_id;
+				(job.result?.solution_id as string | undefined) ??
+				job.install_id;
 			if (!solutionId) {
-				throw new Error("Install succeeded but returned no solution id");
+				throw new Error(
+					"Install succeeded but returned no solution id",
+				);
 			}
 			return getSolution(solutionId, { signal });
 		}
@@ -590,6 +640,8 @@ export async function pollDeployJobToSolution(
  * `replaceSecrets: true` — re-install overwriting existing secret config
  *   values (send when the user confirms the collision prompt on 409).
  * `replaceData: true` — re-install overwriting existing table data.
+ * `reactivate: true` — explicit caller intent to reactivate an existing
+ *   inactive install instead of treating the inactive row as a conflict.
  *
  * NOTE: `password` for full-backup installs is NOT yet wired into the install
  * UI. The server will return 422 if a full-backup zip is uploaded without the
@@ -607,6 +659,7 @@ export async function installSolution(
 		replaceSecrets?: boolean;
 		replaceData?: boolean;
 		password?: string;
+		reactivate?: boolean;
 	},
 	options: RequestOptions = {},
 ): Promise<Solution> {
@@ -618,6 +671,7 @@ export async function installSolution(
 		replaceSecrets,
 		replaceData,
 		password,
+		reactivate,
 	} = params;
 	const formData = new FormData();
 	formData.append("file", file);
@@ -627,8 +681,12 @@ export async function installSolution(
 	if (replaceData) formData.append("replace_data", "true");
 	if (password) formData.append("password", password);
 
-	const url = force
-		? "/api/solutions/install?force=true"
+	const query = new URLSearchParams();
+	if (force) query.set("force", "true");
+	if (reactivate) query.set("reactivate", "true");
+	const suffix = query.toString();
+	const url = suffix
+		? `/api/solutions/install?${suffix}`
 		: "/api/solutions/install";
 	// Install is async server-side: the POST runs fail-fast validation (bad zip,
 	// wrong/missing password → synchronous 422) and returns 202 + a

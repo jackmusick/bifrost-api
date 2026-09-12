@@ -60,6 +60,7 @@ export function TerminalLogMessage({
 	}
 
 	const handleClick = (e: React.MouseEvent, url: string) => {
+		if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -73,14 +74,22 @@ export function TerminalLogMessage({
 		<span className={className}>
 			{parts.map((part, index) => {
 				if (part.type === "link" && part.url) {
+					let url: URL;
+					try { url = new URL(part.url, window.location.href); } catch { return <span key={index}>{part.content}</span>; }
+					if (!["http:", "https:", "mailto:", "tel:"].includes(url.protocol)) return <span key={index}>{part.content}</span>;
+					const internal = url.origin === window.location.origin && ["http:", "https:"].includes(url.protocol);
+					const externalPage = !internal && ["http:", "https:"].includes(url.protocol);
 					return (
 						<a
 							key={index}
-							href={part.url}
-							onClick={(e) => handleClick(e, part.url!)}
-							className="underline text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+							href={url.href}
+							target={externalPage ? "_blank" : undefined}
+							rel={externalPage ? "noopener noreferrer" : undefined}
+							onClick={internal ? (e) => handleClick(e, `${url.pathname}${url.search}${url.hash}`) : undefined}
+							className="underline text-primary decoration-primary/50 underline-offset-4 hover:decoration-primary rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
 						>
 							{part.content}
+							{externalPage && <span className="sr-only"> (opens in a new tab)</span>}
 						</a>
 					);
 				}

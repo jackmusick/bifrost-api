@@ -5,7 +5,6 @@ import {
 	CardContent,
 	CardDescription,
 	CardHeader,
-	CardTitle,
 } from "@/components/ui/card";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,7 @@ export function OAuthCallback() {
 	>("processing");
 	const [message, setMessage] = useState("Processing OAuth callback...");
 	const [warning, setWarning] = useState<string | null>(null);
+	const [pickerError, setPickerError] = useState<string | null>(null);
 	const [pickerCandidates, setPickerCandidates] = useState<Candidate[]>([]);
 	const [triggeringMappingId, setTriggeringMappingId] = useState<
 		string | null
@@ -37,6 +37,15 @@ export function OAuthCallback() {
 	>(null);
 	const hasProcessed = useRef(false);
 	const setEntityIdSource = useSetEntityIdSource();
+
+	const finishPicker = () => {
+		if (window.opener) {
+			window.opener.postMessage({ type: "oauth_success", integrationId }, window.location.origin);
+			window.close();
+		} else {
+			navigate("/integrations", { replace: true });
+		}
+	};
 
 	useEffect(() => {
 		const handleCallback = async () => {
@@ -129,17 +138,15 @@ export function OAuthCallback() {
 				// closing — the admin picks the entity_id field, we PATCH it,
 				// then close. Skipping just closes (picker reappears next connect).
 				const picker = (responseData?.entity_id_picker ?? null) as
-					| Candidate[]
-					| null;
+					Candidate[] | null;
 				if (picker && picker.length > 0) {
 					setPickerCandidates(picker);
 					setTriggeringMappingId(
 						(responseData?.triggering_mapping_id as
-							| string
-							| null
-							| undefined) ?? null,
+							string | null | undefined) ?? null,
 					);
 					setStatus("picker");
+					setMessage("Connection established. Choose an entity ID source below.");
 					return;
 				}
 
@@ -151,13 +158,11 @@ export function OAuthCallback() {
 				// via the provider's configured source, show it and require
 				// manual close so the admin sees what landed in the mapping.
 				const captured =
-					(responseData?.captured_entity_id as string | null | undefined) ??
-					null;
+					(responseData?.captured_entity_id as
+						string | null | undefined) ?? null;
 				const capturedFrom =
 					(responseData?.captured_entity_id_from as
-						| string
-						| null
-						| undefined) ?? null;
+						string | null | undefined) ?? null;
 				if (captured) {
 					setCapturedEntityId(captured);
 					setCapturedEntityIdFrom(capturedFrom);
@@ -179,10 +184,8 @@ export function OAuthCallback() {
 				// admin can confirm the value before closing.
 				if (!captured) {
 					setTimeout(() => {
-						window.close();
-						setTimeout(() => {
-							navigate("/integrations");
-						}, 100);
+						if (window.opener) window.close();
+						else navigate("/integrations", { replace: true });
 					}, 1500);
 				}
 			} catch (err: unknown) {
@@ -213,52 +216,59 @@ export function OAuthCallback() {
 	}, [integrationId, searchParams, navigate]);
 
 	return (
-		<div className="flex items-center justify-center min-h-screen bg-background p-4">
-			<Card className="max-w-md w-full hover:!transform-none">
+		<div className="flex items-center justify-center min-h-svh bg-background px-4 py-8">
+			<Card className="max-w-md w-full rounded-[var(--bf-radius-feature)]">
 				<CardHeader>
-					<div className="flex items-center gap-2">
+					<div className="flex items-start gap-3">
 						{status === "processing" && (
-							<Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+							<Loader2 className="h-6 w-6 shrink-0 animate-spin motion-reduce:animate-none text-primary" />
 						)}
 						{status === "success" && (
-							<CheckCircle2 className="h-6 w-6 text-green-500" />
+							<CheckCircle2 className="h-6 w-6 shrink-0 text-[var(--bf-success)]" />
 						)}
 						{status === "warning" && (
-							<AlertTriangle className="h-6 w-6 text-yellow-600" />
+							<AlertTriangle className="h-6 w-6 shrink-0 text-[var(--bf-warning)]" />
 						)}
 						{status === "error" && (
-							<XCircle className="h-6 w-6 text-red-500" />
+							<XCircle className="h-6 w-6 shrink-0 text-destructive" />
 						)}
-						<CardTitle>
+						<h1 className="font-display text-2xl font-semibold tracking-tight">
 							{status === "processing" &&
 								"Processing OAuth Callback"}
 							{status === "success" && "Authorization Successful"}
 							{status === "warning" && "Warning"}
 							{status === "error" && "Authorization Failed"}
 							{status === "picker" && "Authorization Successful"}
-						</CardTitle>
+						</h1>
 					</div>
 					<CardDescription>
 						Integration:{" "}
-						<code className="font-mono">{integrationId}</code>
+						<code className="font-mono [overflow-wrap:anywhere]">
+							{integrationId}
+						</code>
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<p className="text-sm text-muted-foreground mb-4">
+					<p role={status === "error" ? "alert" : "status"} className="text-sm text-muted-foreground mb-4 [overflow-wrap:anywhere]">
 						{message}
 					</p>
 
 					{/* Warning state */}
 					{status === "warning" && warning && (
 						<>
-							<p className="text-sm mb-4">{warning}</p>
+							<p role="alert" className="text-sm mb-4 [overflow-wrap:anywhere]">{warning}</p>
 							<div className="flex justify-center">
 								<Button
-									onClick={() => window.close()}
+									onClick={() => {
+										if (window.opener) window.close();
+										else navigate("/integrations");
+									}}
 									variant="default"
-									className="w-48"
+									className="min-h-11 w-full sm:w-auto"
 								>
-									Close
+									{window.opener
+										? "Close"
+										: "Return to integrations"}
 								</Button>
 							</div>
 						</>
@@ -277,7 +287,7 @@ export function OAuthCallback() {
 								{capturedEntityIdFrom && (
 									<p className="text-xs text-muted-foreground mt-2">
 										from{" "}
-										<code className="font-mono">
+										<code className="font-mono [overflow-wrap:anywhere]">
 											{capturedEntityIdFrom}
 										</code>
 									</p>
@@ -285,18 +295,23 @@ export function OAuthCallback() {
 							</div>
 							<div className="flex justify-center">
 								<Button
-									onClick={() => window.close()}
+									onClick={() => {
+										if (window.opener) window.close();
+										else navigate("/integrations");
+									}}
 									variant="default"
-									className="w-48"
+									className="min-h-11 w-full sm:w-auto"
 								>
-									Close
+									{window.opener
+										? "Close"
+										: "Return to integrations"}
 								</Button>
 							</div>
 						</>
 					)}
 					{status === "success" && !capturedEntityId && (
 						<p className="text-xs text-muted-foreground">
-							This window will close automatically...
+							{window.opener ? "This window will close automatically…" : "Returning to integrations…"}
 						</p>
 					)}
 
@@ -304,11 +319,16 @@ export function OAuthCallback() {
 					{status === "error" && (
 						<div className="flex justify-center">
 							<Button
-								onClick={() => window.close()}
+								onClick={() => {
+									if (window.opener) window.close();
+									else navigate("/integrations");
+								}}
 								variant="outline"
-								className="w-48"
+								className="min-h-11 w-full sm:w-auto"
 							>
-								Close
+								{window.opener
+									? "Close"
+									: "Return to integrations"}
 							</Button>
 						</div>
 					)}
@@ -318,45 +338,29 @@ export function OAuthCallback() {
 						<EntityIdSourcePicker
 							candidates={pickerCandidates}
 							isPending={setEntityIdSource.isPending}
-							onSkip={() => {
-								if (window.opener) {
-									window.opener.postMessage(
-										{
-											type: "oauth_success",
-											integrationId,
-										},
-										window.location.origin,
-									);
-								}
-								window.close();
-							}}
+							error={pickerError}
+							onSkip={finishPicker}
 							onSelect={(candidate) => {
-								if (!integrationId) return;
+								if (!integrationId || setEntityIdSource.isPending) return;
+								setPickerError(null);
 								setEntityIdSource.mutate(
 									{
 										params: {
-											path: { integration_id: integrationId },
+											path: {
+												integration_id: integrationId,
+											},
 										},
 										body: {
 											type: candidate.type,
 											key: candidate.key,
-											apply_to_mapping_id: triggeringMappingId,
+											apply_to_mapping_id:
+												triggeringMappingId,
 											apply_value: candidate.value,
 										},
 									},
 									{
-										onSuccess: () => {
-											if (window.opener) {
-												window.opener.postMessage(
-													{
-														type: "oauth_success",
-														integrationId,
-													},
-													window.location.origin,
-												);
-											}
-											window.close();
-										},
+										onSuccess: finishPicker,
+										onError: () => setPickerError("Could not save the entity ID source. Your selection is preserved. Try again or skip setup."),
 									},
 								);
 							}}

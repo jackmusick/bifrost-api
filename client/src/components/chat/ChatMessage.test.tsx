@@ -226,4 +226,22 @@ describe("ChatMessage — assistant messages", () => {
 		await user.click(copyButton);
 		expect(writeText).toHaveBeenCalledWith("[Local result](file:///tmp/report.pdf)");
 	});
+	it("shows copy failure and permits retry", async () => {
+		const clipboard = await import("@/lib/clipboard");
+		const copy = vi.spyOn(clipboard, "copyToClipboard").mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+		try {
+			const { user } = renderWithProviders(<ChatMessage message={makeMessage({content:"Copy this result"})} />);
+			await user.click(screen.getByRole("button", {name:"Copy message"}));
+			expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t copy");
+			await user.click(screen.getByRole("button", {name:"Copy message"}));
+			expect(await screen.findByRole("button", {name:"Copied message"})).toBeInTheDocument();
+			expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+		} finally { copy.mockRestore(); }
+	});
+
 });
+
+ it("exposes assistant content separately from conversation navigation", () => {
+  renderWithProviders(<ChatMessage message={makeMessage({ content: "ok" })} />);
+  expect(screen.getByRole("article", { name: "Assistant message" })).toHaveTextContent("ok");
+ });

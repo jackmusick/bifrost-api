@@ -17,14 +17,15 @@ export interface ChipProps {
 const TONE_CLASSES: Record<ChipTone, string> = {
 	muted: "bg-muted/60 text-muted-foreground border-border",
 	primary: "bg-primary/15 text-primary border-transparent",
-	emerald: "bg-emerald-500/15 text-emerald-500 border-transparent",
-	rose: "bg-rose-500/15 text-rose-500 border-transparent",
-	yellow: "bg-yellow-500/15 text-yellow-500 border-transparent",
+	emerald:
+		"bg-[var(--bf-success-soft)] text-[var(--bf-success)] border-transparent",
+	rose: "bg-[var(--bf-danger-soft)] text-[var(--bf-danger)] border-transparent",
+	yellow: "bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] border-transparent",
 };
 
 /**
- * Consistent tag pill for captured metadata (`ticket_id 4822`, `customer Globex`).
- * Rounded, small, supports an optional muted `label` prefix rendered at lower
+ * Consistent metadata tag for captured metadata (`ticket_id 4822`, `customer Globex`).
+ * Supports an optional muted `label` prefix rendered at lower
  * weight. Mono treatment for IDs/hashes.
  */
 export function Chip({
@@ -37,15 +38,24 @@ export function Chip({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11.5px] font-medium",
+				"inline-flex max-w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-[var(--bf-radius-control)] border px-2 py-1 text-sm font-medium",
 				TONE_CLASSES[tone],
 				className,
 			)}
 		>
 			{label ? (
-				<span className="text-muted-foreground/80">{label}</span>
+				<span className="text-muted-foreground [overflow-wrap:anywhere]">
+					{label}
+				</span>
 			) : null}
-			<span className={mono ? TYPE_MONO : undefined}>{children}</span>
+			<span
+				className={cn(
+					mono && TYPE_MONO,
+					"min-w-0 text-sm [overflow-wrap:anywhere]",
+				)}
+			>
+				{children}
+			</span>
 		</span>
 	);
 }

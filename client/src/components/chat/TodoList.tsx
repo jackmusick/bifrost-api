@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Circle, CircleDot, CheckCircle2, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TodoItem } from "@/services/websocket";
@@ -18,45 +18,47 @@ interface TodoListProps {
 
 /** Status icon component with appropriate styling */
 function StatusIcon({ status }: { status: TodoItem["status"] }) {
+	const prefersReducedMotion = useReducedMotion();
 	switch (status) {
 		case "pending":
 			return (
-				<Circle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+				<Circle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
 			);
 		case "in_progress":
 			return (
 				<motion.div
-					animate={{ rotate: 360 }}
+					animate={prefersReducedMotion ? { rotate: 0 } : { rotate: 360 }}
 					transition={{
-						duration: 2,
-						repeat: Infinity,
+						duration: prefersReducedMotion ? 0 : 2,
+						repeat: prefersReducedMotion ? 0 : Infinity,
 						ease: "linear",
 					}}
 				>
-					<CircleDot className="h-4 w-4 text-primary flex-shrink-0" />
+					<CircleDot className="h-4 w-4 flex-shrink-0 text-[var(--bf-info)]" />
 				</motion.div>
 			);
 		case "completed":
 			return (
-				<CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+				<CheckCircle2 className="h-4 w-4 flex-shrink-0 text-[var(--bf-success)]" />
 			);
 	}
 }
 
 /** Individual todo item with animation */
 function TodoItemRow({ todo, index }: { todo: TodoItem; index: number }) {
+	const reducedMotion = useReducedMotion();
 	const isInProgress = todo.status === "in_progress";
 	const isCompleted = todo.status === "completed";
 
 	return (
 		<motion.div
-			initial={{ opacity: 0, x: -10 }}
+			initial={reducedMotion ? false : { opacity: 0, x: -10 }}
 			animate={{ opacity: 1, x: 0 }}
-			exit={{ opacity: 0, x: 10 }}
-			transition={{ delay: index * 0.05 }}
+			exit={reducedMotion ? { opacity: 1, x: 0 } : { opacity: 0, x: 10 }}
+			transition={reducedMotion ? { duration: 0 } : { delay: index * 0.05 }}
 			className={cn(
-				"flex items-start gap-2 py-1.5 px-2 rounded-md transition-colors",
-				isInProgress && "bg-primary/5",
+				"flex items-start gap-2 rounded-[var(--bf-radius-surface)] px-2 py-2 motion-safe:transition-colors",
+				isInProgress && "bg-muted/40",
 				isCompleted && "opacity-60",
 			)}
 		>
@@ -66,7 +68,7 @@ function TodoItemRow({ todo, index }: { todo: TodoItem; index: number }) {
 			<div className="flex-1 min-w-0">
 				<span
 					className={cn(
-						"text-sm leading-relaxed",
+						"text-sm leading-6 [overflow-wrap:anywhere]",
 						isCompleted && "line-through text-muted-foreground",
 						isInProgress && "font-medium text-foreground",
 					)}
@@ -79,6 +81,7 @@ function TodoItemRow({ todo, index }: { todo: TodoItem; index: number }) {
 }
 
 export function TodoList({ todos, className }: TodoListProps) {
+	const reducedMotion = useReducedMotion();
 	// Calculate progress
 	const progress = useMemo(() => {
 		if (todos.length === 0) return { completed: 0, total: 0, percent: 0 };
@@ -97,34 +100,36 @@ export function TodoList({ todos, className }: TodoListProps) {
 	return (
 		<div
 			className={cn(
-				"rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 overflow-hidden max-w-2xl",
+				"max-w-2xl overflow-hidden rounded-[var(--bf-radius-surface)] border border-border bg-card shadow-sm",
 				className,
 			)}
 		>
 			{/* Header with progress */}
-			<div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
+			<div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-muted/30 px-4 py-3">
 				<div className="flex items-center gap-2">
 					<ListTodo className="h-4 w-4 text-muted-foreground" />
-					<span className="text-sm font-medium">Task Progress</span>
+					<span className="text-sm font-medium leading-5">
+						Task Progress
+					</span>
 				</div>
 				<div className="flex items-center gap-2">
-					<span className="text-xs text-muted-foreground">
+					<span className="text-xs leading-5 text-muted-foreground">
 						{progress.completed}/{progress.total}
 					</span>
 					{/* Progress bar */}
-					<div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+					<div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
 						<motion.div
-							className="h-full bg-primary rounded-full"
-							initial={{ width: 0 }}
+							className="h-full rounded-full bg-[var(--bf-info)]"
+							initial={reducedMotion ? false : { width: 0 }}
 							animate={{ width: `${progress.percent}%` }}
-							transition={{ duration: 0.3 }}
+							transition={{ duration: reducedMotion ? 0 : 0.3 }}
 						/>
 					</div>
 				</div>
 			</div>
 
 			{/* Todo items */}
-			<div className="p-2 space-y-0.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+			<div className="max-h-64 space-y-1 overflow-y-auto p-2">
 				<AnimatePresence mode="popLayout">
 					{todos.map((todo, index) => (
 						<TodoItemRow

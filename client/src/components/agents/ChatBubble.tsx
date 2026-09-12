@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,15 +37,16 @@ export function ChatBubble({
 	time,
 	slots,
 	className,
-}: ChatBubbleProps) {
+	...props
+}: ChatBubbleProps & ComponentPropsWithoutRef<"div">) {
 	if (kind === "user") {
 		return (
-			<div className={cn("flex flex-col items-end", className)}>
-				<div className="max-w-[92%] whitespace-pre-wrap rounded-2xl bg-primary/15 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
+			<div className={cn("flex flex-col items-end", className)} {...props}>
+				<div className="min-w-0 max-w-[92%] rounded-[var(--bf-radius-surface)] border border-border/70 bg-card px-3.5 py-3 text-[13.5px] leading-6 text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{children}
 				</div>
 				{time ? (
-					<div className="mt-1 text-[10.5px] text-muted-foreground">
+					<div className="mt-1 text-[10.5px] leading-4 text-muted-foreground">
 						{time}
 					</div>
 				) : null}
@@ -55,8 +56,8 @@ export function ChatBubble({
 
 	if (kind === "system") {
 		return (
-			<div className={cn("flex justify-center", className)}>
-				<div className="rounded-full border bg-muted/40 px-3 py-1 text-[12px] text-muted-foreground">
+			<div className={cn("flex justify-center", className)} {...props}>
+				<div className="max-w-[min(100%,40rem)] rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/30 px-3 py-2 text-[12px] leading-5 text-muted-foreground whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{children}
 				</div>
 			</div>
@@ -65,18 +66,22 @@ export function ChatBubble({
 
 	// assistant
 	return (
-		<div className={cn("flex items-start gap-2", className)}>
+		<div className={cn("flex items-start gap-2", className)} {...props}>
 			<div
 				aria-hidden
-				className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-purple-500 text-background"
+				className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/40 text-primary"
 			>
-				<Sparkles className="h-[11px] w-[11px]" />
+				<Sparkles className="h-3.5 w-3.5" />
 			</div>
-			<div className="min-w-0 flex-1 rounded-2xl bg-muted/40 ring-1 ring-foreground/5 px-3 py-2.5 text-[13.5px] leading-relaxed text-foreground">
-				<div className="whitespace-pre-wrap">{children}</div>
-				{slots ? <div className="mt-3 space-y-2">{slots}</div> : null}
+			<div className="min-w-0 flex-1 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card px-3.5 py-3 text-[13.5px] leading-6 text-foreground shadow-sm">
+				<div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+					{children}
+				</div>
+				{slots ? (
+					<div className="mt-3 min-w-0 space-y-2">{slots}</div>
+				) : null}
 				{time ? (
-					<div className="mt-1 text-[10.5px] text-muted-foreground">
+					<div className="mt-1 text-[10.5px] leading-4 text-muted-foreground">
 						{time}
 					</div>
 				) : null}
@@ -108,23 +113,25 @@ export function ChatBubbleSlot({
 }: ChatBubbleSlotProps) {
 	const titleColor =
 		titleTone === "emerald"
-			? "text-emerald-500"
+			? "text-[var(--bf-success)]"
 			: titleTone === "yellow"
-				? "text-yellow-500"
+				? "text-[var(--bf-warning)]"
 				: "text-primary";
 	return (
-		<div className="rounded-md bg-muted/50 ring-1 ring-foreground/5 p-2.5">
+		<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3">
 			<div
 				className={cn(
-					"mb-2 text-[12px] font-medium",
+					"mb-2 text-[12px] font-medium leading-5",
 					titleColor,
 				)}
 			>
 				{title}
 			</div>
-			<div>{children}</div>
+			<div className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+				{children}
+			</div>
 			{actions ? (
-				<div className="mt-2.5 flex flex-wrap items-center gap-2">
+				<div className="mt-3 flex flex-wrap items-center gap-2">
 					{actions}
 				</div>
 			) : null}

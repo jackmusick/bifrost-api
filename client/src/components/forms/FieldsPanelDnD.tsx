@@ -3,6 +3,7 @@ import {
 	Pencil,
 	Trash2,
 	GripVertical,
+	ArrowUpDown,
 	Plus,
 	Type,
 	Mail,
@@ -36,6 +37,12 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuTrigger,
+	DropdownMenuContent,
+	DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { FieldConfigDialog } from "./FieldConfigDialog";
 import type { components } from "@/lib/v1";
@@ -64,52 +71,41 @@ interface FieldsPanelProps {
 
 // Field type templates for the palette
 const FIELD_TEMPLATES = [
-	{ type: "text", icon: Type, label: "Text Input", color: "bg-blue-500" },
-	{ type: "email", icon: Mail, label: "Email", color: "bg-purple-500" },
-	{ type: "number", icon: Hash, label: "Number", color: "bg-green-500" },
+	{ type: "text", icon: Type, label: "Text Input" },
+	{ type: "email", icon: Mail, label: "Email" },
+	{ type: "number", icon: Hash, label: "Number" },
 	{
 		type: "select",
 		icon: ChevronDown,
 		label: "Dropdown",
-		color: "bg-orange-500",
 	},
 	{
 		type: "checkbox",
 		icon: CheckSquare,
 		label: "Checkbox",
-		color: "bg-pink-500",
 	},
 	{
 		type: "textarea",
 		icon: TextCursorInput,
 		label: "Text Area",
-		color: "bg-indigo-500",
 	},
 	{
 		type: "radio",
 		icon: CircleDot,
 		label: "Radio Buttons",
-		color: "bg-cyan-500",
 	},
 	{
 		type: "datetime",
 		icon: Calendar,
 		label: "Date & Time",
-		color: "bg-amber-500",
 	},
 	{
 		type: "markdown",
 		icon: FileText,
 		label: "Markdown",
-		color: "bg-slate-500",
 	},
-	{ type: "html", icon: Code, label: "HTML Content", color: "bg-red-500" },
-	{
-		type: "file",
-		icon: Upload,
-		label: "File Upload",
-		color: "bg-emerald-500",
-	},
+	{ type: "html", icon: Code, label: "HTML Content" },
+	{ type: "file", icon: Upload, label: "File Upload" },
 ];
 
 interface FieldItemProps {
@@ -118,9 +114,18 @@ interface FieldItemProps {
 	onEdit: () => void;
 	onDelete: () => void;
 	isDraggingNew: boolean;
+	fieldCount: number;
+	onMove: (direction: -1 | 1) => void;
 }
 
-function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
+function FieldItem({
+	field,
+	index,
+	onEdit,
+	onDelete,
+	fieldCount,
+	onMove,
+}: FieldItemProps) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [dragging, setDragging] = useState(false);
 	const [isDraggedOver, setIsDraggedOver] = useState(false);
@@ -168,8 +173,7 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 						source.data["type"] === "workflow-input"
 					) {
 						const position = self.data["position"] as
-							| "before"
-							| "after";
+							"before" | "after";
 						setDropPosition(position);
 					}
 				},
@@ -185,33 +189,6 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 		);
 	}, [index, field]);
 
-	const getFieldTypeBadge = (type: string) => {
-		const colors: Record<string, string> = {
-			text: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-			email: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
-			number: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-			select: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
-			checkbox:
-				"bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
-			textarea:
-				"bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200",
-			radio: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
-			datetime:
-				"bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-			markdown:
-				"bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
-			html: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-			file: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
-		};
-		return (
-			<span
-				className={`px-2 py-1 text-xs font-medium rounded ${colors[type] || "bg-gray-100 text-gray-800"}`}
-			>
-				{type}
-			</span>
-		);
-	};
-
 	return (
 		<div className="relative">
 			{/* Drop indicator line */}
@@ -221,17 +198,19 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 
 			<div
 				ref={ref}
-				className={`flex items-center gap-3 rounded-lg border p-3 transition-all ${
-					dragging ? "opacity-50 scale-95" : ""
+				className={`flex flex-wrap items-center gap-3 rounded-[var(--bf-radius-surface)] border p-3 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none ${
+					dragging ? "opacity-50" : ""
 				} ${isDraggedOver ? "border-primary bg-accent" : "bg-card"} hover:border-primary/50 cursor-move`}
 			>
 				<GripVertical className="h-5 w-5 text-muted-foreground flex-shrink-0" />
 
-				<div className="flex-1 min-w-0">
-					<div className="flex items-center gap-2">
-						<p className="font-medium truncate">{field.label}</p>
+				<div className="min-w-0 flex-1 basis-36">
+					<div className="flex flex-wrap items-center gap-2">
+						<p className="font-medium [overflow-wrap:anywhere]">
+							{field.label}
+						</p>
 						{field.required && (
-							<Badge variant="destructive" className="text-xs">
+							<Badge variant="outline" className="text-xs">
 								Required
 							</Badge>
 						)}
@@ -240,16 +219,48 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 						<p className="font-mono text-xs text-muted-foreground truncate">
 							{field.name}
 						</p>
-						{getFieldTypeBadge(field.type)}
+						<Badge
+							variant="secondary"
+							className="font-mono text-xs"
+						>
+							{field.type}
+						</Badge>
 					</div>
 				</div>
 
 				<div className="flex gap-1 flex-shrink-0">
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-11 sm:size-8"
+								aria-label={`Move ${field.label}`}
+							>
+								<ArrowUpDown className="size-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuItem
+								disabled={index === 0}
+								onSelect={() => onMove(-1)}
+							>
+								Move up
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								disabled={index === fieldCount - 1}
+								onSelect={() => onMove(1)}
+							>
+								Move down
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 					<Button
 						variant="ghost"
 						size="icon"
 						onClick={onEdit}
-						className="h-8 w-8"
+						aria-label={`Edit ${field.label}`}
+						className="size-11 sm:size-8"
 					>
 						<Pencil className="h-4 w-4" />
 					</Button>
@@ -257,7 +268,8 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 						variant="ghost"
 						size="icon"
 						onClick={onDelete}
-						className="h-8 w-8"
+						aria-label={`Delete ${field.label}`}
+						className="size-11 sm:size-8"
 					>
 						<Trash2 className="h-4 w-4" />
 					</Button>
@@ -274,10 +286,11 @@ function FieldItem({ field, index, onEdit, onDelete }: FieldItemProps) {
 
 interface PaletteItemProps {
 	template: (typeof FIELD_TEMPLATES)[0];
+	onChoose: () => void;
 }
 
-function PaletteItem({ template }: PaletteItemProps) {
-	const ref = useRef<HTMLDivElement>(null);
+function PaletteItem({ template, onChoose }: PaletteItemProps) {
+	const ref = useRef<HTMLButtonElement>(null);
 	const [dragging, setDragging] = useState(false);
 	const Icon = template.icon;
 
@@ -297,34 +310,38 @@ function PaletteItem({ template }: PaletteItemProps) {
 	}, [template.type]);
 
 	return (
-		<div
+		<button
+			type="button"
+			onClick={onChoose}
 			ref={ref}
-			className={`flex items-center gap-3 rounded-lg border p-3 cursor-grab active:cursor-grabbing transition-all hover:border-primary hover:shadow-sm ${
-				dragging ? "opacity-50 scale-95" : ""
+			className={`w-full text-left focus-visible:outline-2 focus-visible:outline-ring flex items-center gap-3 rounded-lg border p-3 cursor-grab active:cursor-grabbing transition-all hover:border-primary hover:shadow-sm ${
+				dragging ? "opacity-50" : ""
 			}`}
 		>
-			<div className={`${template.color} p-2 rounded-md`}>
-				<Icon className="h-4 w-4 text-white" />
-			</div>
+				<div className="rounded-md bg-muted p-2 text-muted-foreground">
+					<Icon className="h-4 w-4" />
+				</div>
 			<span className="text-sm font-medium">{template.label}</span>
-		</div>
+		</button>
 	);
 }
 
 interface WorkflowInputItemProps {
+	onChoose: (fieldType: string) => void;
 	param: {
 		name?: string;
 		type?: string;
 		required?: boolean;
 		label?: string | null;
 		helpText?: string | null;
+		description?: string | null;
 		defaultValue?: unknown;
 		dataProvider?: string | null;
 	};
 }
 
-function WorkflowInputItem({ param }: WorkflowInputItemProps) {
-	const ref = useRef<HTMLDivElement>(null);
+function WorkflowInputItem({ param, onChoose }: WorkflowInputItemProps) {
+	const ref = useRef<HTMLButtonElement>(null);
 	const [dragging, setDragging] = useState(false);
 
 	// Map Python types to field types
@@ -358,7 +375,7 @@ function WorkflowInputItem({ param }: WorkflowInputItemProps) {
 				fieldType,
 				fieldName: param.name ?? "",
 				required: param.required ?? false,
-				description: param.helpText ?? undefined,
+				description: param.description ?? param.helpText ?? undefined,
 				dataProvider: param.dataProvider ?? undefined,
 			}),
 			onDragStart: () => setDragging(true),
@@ -367,15 +384,17 @@ function WorkflowInputItem({ param }: WorkflowInputItemProps) {
 	}, [fieldType, param]);
 
 	return (
-		<div
+		<button
+			type="button"
+			onClick={() => onChoose(fieldType)}
 			ref={ref}
-			className={`flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/5 p-3 cursor-grab active:cursor-grabbing transition-all hover:border-primary hover:shadow-sm ${
-				dragging ? "opacity-50 scale-95" : ""
+			className={`w-full text-left focus-visible:outline-2 focus-visible:outline-ring flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/5 p-3 cursor-grab active:cursor-grabbing transition-all hover:border-primary hover:shadow-sm ${
+				dragging ? "opacity-50" : ""
 			}`}
 		>
-			<div className={`${template?.color ?? "bg-blue-500"} p-2 rounded-md`}>
-				<Icon className="h-4 w-4 text-white" />
-			</div>
+				<div className="rounded-md bg-muted p-2 text-muted-foreground">
+					<Icon className="h-4 w-4" />
+				</div>
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center gap-1">
 					<span className="text-xs font-mono font-semibold">
@@ -391,7 +410,7 @@ function WorkflowInputItem({ param }: WorkflowInputItemProps) {
 					</p>
 				)}
 			</div>
-		</div>
+		</button>
 	);
 }
 
@@ -401,6 +420,8 @@ export function FieldsPanelDnD({
 	linkedWorkflow,
 	previewContext,
 }: FieldsPanelProps) {
+	const [paletteExpanded, setPaletteExpanded] = useState(false);
+	const [reorderAnnouncement, setReorderAnnouncement] = useState("");
 	const [selectedField, setSelectedField] = useState<FormField | undefined>();
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -465,8 +486,7 @@ export function FieldsPanelDnD({
 						);
 						if (target?.data["index"] !== undefined) {
 							const position = target.data["position"] as
-								| "before"
-								| "after";
+								"before" | "after";
 							const dropIndex =
 								position === "before"
 									? (target.data["index"] as number)
@@ -488,8 +508,7 @@ export function FieldsPanelDnD({
 						);
 						if (target?.data["index"] !== undefined) {
 							const position = target.data["position"] as
-								| "before"
-								| "after";
+								"before" | "after";
 							const dropIndex =
 								position === "before"
 									? (target.data["index"] as number)
@@ -502,11 +521,9 @@ export function FieldsPanelDnD({
 						setSelectedField(undefined);
 						setEditingIndex(undefined);
 						const description = source.data["description"] as
-							| string
-							| undefined;
+							string | undefined;
 						const dataProvider = source.data["dataProvider"] as
-							| string
-							| undefined;
+							string | undefined;
 						setWorkflowInputData({
 							name: source.data["fieldName"] as string,
 							required: source.data["required"] as boolean,
@@ -583,10 +600,38 @@ export function FieldsPanelDnD({
 		setDeletingIndex(undefined);
 	};
 
+	const chooseTemplate = (
+		fieldType: string,
+		parameter?: WorkflowInputItemProps["param"],
+	) => {
+		setNewFieldType(fieldType);
+		setSelectedField(undefined);
+		setEditingIndex(undefined);
+		setInsertAtIndex(fields.length);
+		setWorkflowInputData(
+			parameter
+				? {
+						name: parameter.name ?? "",
+						required: parameter.required ?? false,
+						helpText:
+							parameter.description ??
+							parameter.helpText ??
+							undefined,
+						dataProvider: parameter.dataProvider ?? undefined,
+					}
+				: undefined,
+		);
+		setIsWorkflowInput(Boolean(parameter));
+		setIsDialogOpen(true);
+	};
+
 	return (
-		<div className="grid grid-cols-1 lg:grid-cols-4 gap-6 w-full h-full">
+		<div className="flex min-h-0 w-full flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)]">
+			<span role="status" className="sr-only">
+				{reorderAnnouncement}
+			</span>
 			{/* Field Palette */}
-			<Card className="lg:col-span-1 flex flex-col h-full overflow-hidden">
+			<Card className="flex shrink-0 flex-col overflow-hidden lg:h-full lg:min-h-0">
 				<CardHeader className="pb-3 flex-shrink-0">
 					<div className="flex items-center gap-2">
 						<WorkflowIcon className="h-4 w-4 text-primary" />
@@ -595,10 +640,23 @@ export function FieldsPanelDnD({
 						</CardTitle>
 					</div>
 					<CardDescription className="text-xs">
-						Drag fields into the form builder
+						Choose a field or drag it into the form
 					</CardDescription>
+					<Button
+						variant="outline"
+						size="sm"
+						className="min-h-11 lg:hidden"
+						aria-expanded={paletteExpanded}
+						onClick={() => setPaletteExpanded(!paletteExpanded)}
+					>
+						{paletteExpanded
+							? "Hide field palette"
+							: "Choose a field"}
+					</Button>
 				</CardHeader>
-				<CardContent className="space-y-4 overflow-y-auto flex-1 min-h-0">
+				<CardContent
+					className={`${paletteExpanded ? "" : "hidden lg:block"} min-h-0 flex-1 space-y-4 overflow-y-auto max-h-72 sm:max-h-80 lg:max-h-none`}
+				>
 					{/* Workflow Inputs Section */}
 					{workflowParams.length > 0 && (
 						<div className="space-y-2">
@@ -624,6 +682,9 @@ export function FieldsPanelDnD({
 												`workflow-param-${index}`
 											}
 											param={param}
+											onChoose={(type) =>
+												chooseTemplate(type, param)
+											}
 										/>
 									),
 								)}
@@ -660,6 +721,9 @@ export function FieldsPanelDnD({
 								<PaletteItem
 									key={template.type}
 									template={template}
+									onChoose={() =>
+										chooseTemplate(template.type)
+									}
 								/>
 							))}
 						</div>
@@ -668,13 +732,13 @@ export function FieldsPanelDnD({
 			</Card>
 
 			{/* Drop Zone */}
-			<Card className="lg:col-span-3 flex flex-col h-full overflow-hidden">
+			<Card className="flex min-h-[28rem] flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0">
 				<CardHeader className="flex-shrink-0">
 					<div className="flex items-center justify-between">
 						<div>
 							<CardTitle>Form Fields</CardTitle>
 							<CardDescription>
-								Drag and drop to reorder fields
+								Drag fields or use their move menu to reorder
 							</CardDescription>
 						</div>
 						<Button
@@ -689,20 +753,41 @@ export function FieldsPanelDnD({
 							variant="outline"
 							size="icon"
 							title="Add Field"
+							aria-label="Add Field"
+							className="size-11 sm:size-10"
 						>
 							<Plus className="h-4 w-4" />
 						</Button>
 					</div>
 				</CardHeader>
-				<CardContent className="overflow-y-auto flex-1 min-h-0">
+				<CardContent className="min-h-0 flex-1 overflow-y-auto">
 					<div ref={dropZoneRef} className="min-h-full">
 						{fields.length > 0 ? (
 							<div className="space-y-2">
 								{fields.map((field, index) => (
 									<FieldItem
-										key={`${field.name}-${index}`}
+										key={field.name}
 										field={field}
 										index={index}
+										fieldCount={fields.length}
+										onMove={(direction) => {
+											const target = index + direction;
+											if (
+												target < 0 ||
+												target >= fields.length
+											)
+												return;
+											setFields(
+												reorder({
+													list: fields,
+													startIndex: index,
+													finishIndex: target,
+												}),
+											);
+											setReorderAnnouncement(
+												`${field.label} moved to position ${target + 1} of ${fields.length}.`,
+											);
+										}}
 										onEdit={() => handleEditField(index)}
 										onDelete={() =>
 											handleDeleteField(index)

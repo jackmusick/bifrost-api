@@ -8,7 +8,8 @@
  * - Deactivate the workflow
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	Dialog,
 	DialogContent,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { authFetch } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 // Type for workflow from the API
@@ -79,21 +81,37 @@ export function OrphanedWorkflowDialog({
 	workflow,
 	onSuccess,
 }: OrphanedWorkflowDialogProps) {
+	const prefersReducedMotion = useReducedMotion();
 	const [replacements, setReplacements] = useState<CompatibleReplacement[]>(
 		[],
 	);
 	const [usedBy, setUsedBy] = useState<WorkflowReference[]>([]);
+	const [referencesLoading, setReferencesLoading] = useState(false);
+	const [referencesError, setReferencesError] = useState(false);
+	const referencesRequest = useRef(0);
 	const [selectedReplacement, setSelectedReplacement] = useState<
 		string | null
 	>(null);
 	const [isLoadingReplacements, setIsLoadingReplacements] = useState(false);
 	const [isActionLoading, setIsActionLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const actionBusy = useRef(false);
+	const [failedAction, setFailedAction] = useState<
+		"replace" | "recreate" | "deactivate" | null
+	>(null);
+	const errorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (error) {
+			errorRef.current?.focus();
+			errorRef.current?.scrollIntoView?.({ block: "nearest" });
+		}
+	}, [error]);
 
 	// Fetch compatible replacements when dialog opens
 	const fetchReplacements = useCallback(async () => {
 		if (!open || !workflow.id) return;
 
+		setFailedAction(null);
 		setIsLoadingReplacements(true);
 		setError(null);
 
@@ -119,21 +137,28 @@ export function OrphanedWorkflowDialog({
 	// Fetch workflow references (what entities use this workflow)
 	const fetchReferences = useCallback(async () => {
 		if (!open || !workflow.id) return;
-
+		const request = ++referencesRequest.current;
+		setReferencesLoading(true);
+		setReferencesError(false);
 		try {
 			const response = await authFetch(
 				`/api/workflows/${workflow.id}/references`,
 			);
-
-			if (response.ok) {
-				const data = await response.json();
+			if (!response.ok) throw new Error("Could not load dependencies");
+			const data = await response.json();
+			if (request === referencesRequest.current)
 				setUsedBy(data.references || []);
-			}
-		} catch (err) {
-			// Non-critical, just log
-			console.error("Error fetching references:", err);
+		} catch {
+			if (request === referencesRequest.current) setReferencesError(true);
+		} finally {
+			if (request === referencesRequest.current)
+				setReferencesLoading(false);
 		}
 	}, [open, workflow.id]);
+
+	const handleRetry = useCallback(() => {
+		void Promise.all([fetchReplacements(), fetchReferences()]);
+	}, [fetchReplacements, fetchReferences]);
 
 	// Reset state and load data when dialog opens. State is set inside the
 	// async functions only after awaited fetches resolve — the rule fires on
@@ -144,13 +169,16 @@ export function OrphanedWorkflowDialog({
 		if (!open) return;
 		void (async () => {
 			setSelectedReplacement(null);
+			setUsedBy([]);
 			await Promise.all([fetchReplacements(), fetchReferences()]);
 		})();
 	}, [open, fetchReplacements, fetchReferences]);
 
 	// Handle replace action
 	const handleReplace = async () => {
-		if (!selectedReplacement) return;
+		if (!selectedReplacement || actionBusy.current) return;
+		actionBusy.current = true;
+		setFailedAction(null);
 
 		setIsActionLoading(true);
 		setError(null);
@@ -176,23 +204,27 @@ export function OrphanedWorkflowDialog({
 				);
 			}
 
-			toast.success(
-				`Workflow "${workflow.name}" replaced successfully`,
-			);
+			toast.success(`Workflow "${workflow.name}" replaced successfully`);
 			onSuccess?.();
 			onClose();
 		} catch (err) {
 			const message =
-				err instanceof Error ? err.message : "Failed to replace workflow";
+				err instanceof Error
+					? err.message
+					: "Failed to replace workflow";
+			setFailedAction("replace");
 			setError(message);
-			toast.error(message);
 		} finally {
+			actionBusy.current = false;
 			setIsActionLoading(false);
 		}
 	};
 
 	// Handle recreate file action
 	const handleRecreate = async () => {
+		if (actionBusy.current) return;
+		actionBusy.current = true;
+		setFailedAction(null);
 		setIsActionLoading(true);
 		setError(null);
 
@@ -206,28 +238,28 @@ export function OrphanedWorkflowDialog({
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}));
-				throw new Error(
-					errorData.detail || "Failed to recreate file",
-				);
+				throw new Error(errorData.detail || "Failed to recreate file");
 			}
 
-			toast.success(
-				`File recreated for workflow "${workflow.name}"`,
-			);
+			toast.success(`File recreated for workflow "${workflow.name}"`);
 			onSuccess?.();
 			onClose();
 		} catch (err) {
 			const message =
 				err instanceof Error ? err.message : "Failed to recreate file";
+			setFailedAction("recreate");
 			setError(message);
-			toast.error(message);
 		} finally {
+			actionBusy.current = false;
 			setIsActionLoading(false);
 		}
 	};
 
 	// Handle deactivate action
 	const handleDeactivate = async () => {
+		if (actionBusy.current) return;
+		actionBusy.current = true;
+		setFailedAction(null);
 		setIsActionLoading(true);
 		setError(null);
 
@@ -250,9 +282,7 @@ export function OrphanedWorkflowDialog({
 			if (data.warning) {
 				toast.warning(data.warning);
 			} else {
-				toast.success(
-					`Workflow "${workflow.name}" deactivated`,
-				);
+				toast.success(`Workflow "${workflow.name}" deactivated`);
 			}
 			onSuccess?.();
 			onClose();
@@ -261,220 +291,350 @@ export function OrphanedWorkflowDialog({
 				err instanceof Error
 					? err.message
 					: "Failed to deactivate workflow";
+			setFailedAction("deactivate");
 			setError(message);
-			toast.error(message);
 		} finally {
+			actionBusy.current = false;
 			setIsActionLoading(false);
 		}
 	};
 
 	// Get the last known path from the workflow
-	const lastPath = workflow.relative_file_path || workflow.source_file_path || "Unknown";
+	const lastPath =
+		workflow.relative_file_path || workflow.source_file_path || "Unknown";
 
 	return (
-		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-			<DialogContent className="max-w-lg">
-				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
-						<AlertTriangle className="h-5 w-5 text-yellow-500" />
-						Orphaned Workflow
-					</DialogTitle>
-					<DialogDescription>
-						This workflow's file no longer exists or no longer
-						contains the workflow function. Replacing will update
-						every form, app, and agent that uses this workflow
-						automatically.
-					</DialogDescription>
-				</DialogHeader>
-
-				<div className="space-y-4">
-					{/* Workflow Info */}
-					<div className="text-sm space-y-1.5 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground">
-								Workflow:
-							</span>
-							<span className="font-medium">{workflow.name}</span>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground">
-								Function:
-							</span>
-							<code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-								{workflow.name}
-							</code>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-muted-foreground">
-								Last path:
-							</span>
-							<code className="text-xs bg-muted px-1.5 py-0.5 rounded max-w-[200px] truncate">
-								{lastPath}
-							</code>
-						</div>
-						{usedBy.length > 0 && (
-							<div className="flex items-start justify-between pt-1">
-								<span className="text-muted-foreground">
-									Used by:
-								</span>
-								<div className="flex flex-wrap gap-1 justify-end max-w-[200px]">
-									{usedBy.map((ref) => (
-										<Badge
-											key={`${ref.type}-${ref.id}`}
-											variant="secondary"
-											className="text-xs"
-										>
-											{ref.name}
-										</Badge>
-									))}
-								</div>
-							</div>
-						)}
+		<Dialog
+			open={open}
+			onOpenChange={(isOpen) => {
+				if (!isOpen && !actionBusy.current) onClose();
+			}}
+		>
+			<DialogContent className="max-h-[min(90dvh,52rem)] w-[min(calc(100vw-1rem),42rem)] overflow-hidden p-0 sm:max-w-none">
+				<div className="flex max-h-[min(90dvh,52rem)] min-h-0 flex-col overflow-hidden">
+					<div className="space-y-3 border-b border-border/70 bg-muted/20 p-4 sm:p-6">
+						<DialogHeader>
+							<DialogTitle className="flex items-center gap-2 text-left">
+								<AlertTriangle className="h-5 w-5 shrink-0 text-[var(--bf-warning)]" />
+								Orphaned Workflow
+							</DialogTitle>
+							<DialogDescription className="max-w-prose leading-6 [overflow-wrap:anywhere]">
+								The source file is missing. Restore it, replace
+								the workflow, or deactivate it.
+							</DialogDescription>
+						</DialogHeader>
 					</div>
 
-					{error && (
-						<div className="text-sm text-destructive bg-destructive/10 rounded-lg p-3">
-							{error}
-						</div>
-					)}
+					<div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+						<div className="space-y-4">
+							<div className="grid gap-2 text-sm sm:grid-cols-2">
+								<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3">
+									<div className="text-muted-foreground">
+										Workflow
+									</div>
+									<div className="mt-1 font-medium [overflow-wrap:anywhere]">
+										{workflow.name}
+									</div>
+								</div>
+								<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3">
+									<div className="text-muted-foreground">
+										Function
+									</div>
+									<code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-xs [overflow-wrap:anywhere]">
+										{workflow.function_name ||
+											workflow.name}
+									</code>
+								</div>
+								<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3 sm:col-span-2">
+									<div className="text-muted-foreground">
+										Last path
+									</div>
+									<code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+										{lastPath}
+									</code>
+								</div>
+								{(usedBy.length > 0 ||
+									referencesLoading ||
+									referencesError) && (
+									<div className="rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-3 sm:col-span-2">
+										<div className="text-muted-foreground">
+											Used by
+										</div>
 
-					{/* Replace Option */}
-					<div className="rounded-lg bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
-						<div className="flex items-center gap-2">
-							<ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
-							<h4 className="font-medium">
-								Replace with existing file
-							</h4>
-						</div>
-						<p className="text-sm text-muted-foreground">
-							Link this workflow to a function in an existing
-							file.
-						</p>
-
-						{isLoadingReplacements ? (
-							<div className="space-y-2">
-								<Skeleton className="h-9 w-full" />
-							</div>
-						) : replacements.length > 0 ? (
-							<>
-								<Select
-									value={selectedReplacement || ""}
-									onValueChange={setSelectedReplacement}
-								>
-									<SelectTrigger>
-										<SelectValue placeholder="Select a replacement..." />
-									</SelectTrigger>
-									<SelectContent>
-										{replacements.map((r) => (
-											<SelectItem
-												key={`${r.path}::${r.function_name}`}
-												value={`${r.path}::${r.function_name}`}
+										{referencesLoading && (
+											<p
+												role="status"
+												className="mt-2 text-sm text-muted-foreground"
 											>
-												<div className="flex items-center gap-2">
-													<FileCode className="h-3 w-3 text-muted-foreground" />
-													<span className="font-mono text-xs truncate max-w-[150px]">
-														{r.path}
-													</span>
-													<span>::</span>
-													<span className="font-mono text-xs">
-														{r.function_name}
-													</span>
-													<Badge
-														variant={
-															r.compatibility ===
-															"exact"
-																? "default"
-																: "secondary"
-														}
-														className="text-xs ml-auto"
+												Loading dependencies…
+											</p>
+										)}
+										{referencesError && (
+											<div
+												role="alert"
+												className="mt-2 space-y-2 text-sm"
+											>
+												<p>
+													Could not load dependencies.
+													This workflow may still be
+													in use.
+												</p>
+												<Button
+													type="button"
+													variant="outline"
+													className="min-h-11"
+													disabled={
+														referencesLoading ||
+														isActionLoading
+													}
+													onClick={() =>
+														void fetchReferences()
+													}
+												>
+													Retry dependencies
+												</Button>
+											</div>
+										)}
+										<div className="mt-2 flex flex-wrap gap-1.5">
+											{usedBy.map((ref) => (
+												<Badge
+													key={`${ref.type}-${ref.id}`}
+													variant="secondary"
+													className="max-w-full whitespace-normal [overflow-wrap:anywhere]"
+												>
+													{ref.name}
+												</Badge>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+							{error && (
+								<div
+									role="alert"
+									ref={errorRef}
+									tabIndex={-1}
+									className="flex items-start justify-between gap-3 outline-none rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-3 text-sm leading-6 text-[var(--bf-danger)]"
+								>
+									<p className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+										{error}
+									</p>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										className="min-h-11 shrink-0"
+										onClick={() => {
+											if (failedAction === "replace")
+												void handleReplace();
+											else if (
+												failedAction === "recreate"
+											)
+												void handleRecreate();
+											else if (
+												failedAction === "deactivate"
+											)
+												void handleDeactivate();
+											else handleRetry();
+										}}
+										disabled={
+											isLoadingReplacements ||
+											isActionLoading
+										}
+									>
+										Retry
+									</Button>
+								</div>
+							)}
+
+							<div className="space-y-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 shadow-sm">
+								<div className="flex items-center gap-2">
+									<ArrowRightLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
+									<h4 className="font-medium leading-6">
+										Replace with existing file
+									</h4>
+								</div>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Link this workflow to an existing function.
+									Connected forms, apps, and agents will use
+									the replacement.
+								</p>
+
+								{isLoadingReplacements ? (
+									<div className="space-y-2">
+										<Skeleton className="h-11 w-full rounded-[var(--bf-radius-control)]" />
+									</div>
+								) : replacements.length > 0 ? (
+									<>
+										<Select
+											disabled={isActionLoading}
+											value={selectedReplacement || ""}
+											onValueChange={
+												setSelectedReplacement
+											}
+										>
+											<SelectTrigger aria-label="Replacement function" className="data-[size=default]:h-auto min-h-11 w-full whitespace-normal text-left *:data-[slot=select-value]:line-clamp-none *:data-[slot=select-value]:block">
+												<SelectValue placeholder="Select a replacement..." className="min-w-0 flex-1">
+													{selectedReplacement && (
+														<span className="block space-y-1 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+															<span className="block">{selectedReplacement.split("::")[0]}</span>
+															<span className="block text-muted-foreground">{selectedReplacement.split("::")[1]}</span>
+														</span>
+													)}
+												</SelectValue>
+											</SelectTrigger>
+											<SelectContent>
+												{replacements.map((r) => (
+													<SelectItem
+														key={`${r.path}::${r.function_name}`}
+														value={`${r.path}::${r.function_name}`}
 													>
-														{r.compatibility}
-													</Badge>
-												</div>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+														<div className="flex min-w-0 flex-wrap items-center gap-2">
+															<FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+															<span className="min-w-0 basis-full font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+																{r.path}
+															</span>
+
+															<span className="min-w-0 font-mono text-xs leading-5 [overflow-wrap:anywhere]">
+																{
+																	r.function_name
+																}
+															</span>
+															<Badge
+																variant={
+																	r.compatibility ===
+																	"exact"
+																		? "default"
+																		: "secondary"
+																}
+																className="ml-auto shrink-0"
+															>
+																{
+																	r.compatibility
+																}
+															</Badge>
+														</div>
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<Button
+											className="min-h-11 w-full"
+											onClick={handleReplace}
+											disabled={
+												!selectedReplacement ||
+												isActionLoading
+											}
+										>
+											{isActionLoading ? (
+												<Loader2
+													className={cn(
+														"mr-2 h-4 w-4",
+														!prefersReducedMotion &&
+															"motion-safe:animate-spin",
+													)}
+												/>
+											) : (
+												<ArrowRightLeft className="mr-2 h-4 w-4" />
+											)}
+											Replace
+										</Button>
+									</>
+								) : (
+									<div className="rounded-[var(--bf-radius-surface)] border border-dashed border-border/70 bg-muted/30 p-3 text-sm leading-6 text-muted-foreground">
+										No compatible replacements found
+									</div>
+								)}
+							</div>
+
+							<div className="space-y-3 rounded-[var(--bf-radius-surface)] border border-border/70 bg-card p-4 shadow-sm">
+								<div className="flex items-center gap-2">
+									<RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" />
+									<h4 className="font-medium leading-6">
+										Recreate file
+									</h4>
+								</div>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Restore the file at{" "}
+									<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs [overflow-wrap:anywhere]">
+										{lastPath}
+									</code>{" "}
+									with the workflow's saved code.
+								</p>
 								<Button
-									className="w-full"
-									onClick={handleReplace}
-									disabled={
-										!selectedReplacement || isActionLoading
-									}
+									variant="outline"
+									className="min-h-11 w-full"
+									onClick={handleRecreate}
+									disabled={isActionLoading}
 								>
 									{isActionLoading ? (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+										<Loader2
+											className={cn(
+												"mr-2 h-4 w-4",
+												!prefersReducedMotion &&
+													"motion-safe:animate-spin",
+											)}
+										/>
 									) : (
-										<ArrowRightLeft className="mr-2 h-4 w-4" />
+										<RefreshCw className="mr-2 h-4 w-4" />
 									)}
-									Replace
+									Recreate File
 								</Button>
-							</>
-						) : (
-							<p className="text-sm text-muted-foreground italic">
-								No compatible replacements found
-							</p>
-						)}
-					</div>
+							</div>
 
-					{/* Recreate File Option */}
-					<div className="rounded-lg bg-muted/50 p-4 space-y-3 ring-1 ring-foreground/5">
-						<div className="flex items-center gap-2">
-							<RefreshCw className="h-4 w-4 text-muted-foreground" />
-							<h4 className="font-medium">Recreate file</h4>
+							<div className="space-y-3 rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)]/60 p-4 shadow-sm">
+								<div className="flex items-center gap-2">
+									<XCircle className="h-4 w-4 shrink-0 text-[var(--bf-danger)]" />
+									<h4 className="font-medium leading-6">
+										Deactivate
+									</h4>
+								</div>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Mark this workflow as inactive. Forms and
+									apps using it will need to be updated.
+								</p>
+								{usedBy.length > 0 && (
+									<p className="text-xs leading-5 text-[var(--bf-warning)] [overflow-wrap:anywhere]">
+										Warning: {usedBy.length}{" "}
+										{usedBy.length === 1
+											? "entity"
+											: "entities"}{" "}
+										still{" "}
+										{usedBy.length === 1 ? "uses" : "use"}{" "}
+										this workflow.
+									</p>
+								)}
+								<Button
+									variant="destructive"
+									className="min-h-11 w-full"
+									onClick={handleDeactivate}
+									disabled={isActionLoading}
+								>
+									{isActionLoading ? (
+										<Loader2
+											className={cn(
+												"mr-2 h-4 w-4",
+												!prefersReducedMotion &&
+													"motion-safe:animate-spin",
+											)}
+										/>
+									) : (
+										<XCircle className="mr-2 h-4 w-4" />
+									)}
+									Deactivate
+								</Button>
+							</div>
 						</div>
-						<p className="text-sm text-muted-foreground">
-							Restore the file at{" "}
-							<code className="text-xs bg-muted px-1 py-0.5 rounded">
-								{lastPath}
-							</code>{" "}
-							with the workflow's saved code.
-						</p>
+					</div>
+					<div className="shrink-0 border-t p-4 sm:px-6">
 						<Button
+							type="button"
 							variant="outline"
-							className="w-full"
-							onClick={handleRecreate}
+							className="min-h-11 w-full sm:w-auto"
 							disabled={isActionLoading}
+							onClick={onClose}
 						>
-							{isActionLoading ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							) : (
-								<RefreshCw className="mr-2 h-4 w-4" />
-							)}
-							Recreate File
-						</Button>
-					</div>
-
-					{/* Deactivate Option */}
-					<div className="rounded-lg bg-destructive/5 p-4 space-y-3 ring-1 ring-destructive/30">
-						<div className="flex items-center gap-2">
-							<XCircle className="h-4 w-4 text-destructive" />
-							<h4 className="font-medium">Deactivate</h4>
-						</div>
-						<p className="text-sm text-muted-foreground">
-							Mark this workflow as inactive. Forms and apps using
-							it will need to be updated.
-						</p>
-						{usedBy.length > 0 && (
-							<p className="text-xs text-yellow-600">
-								Warning: {usedBy.length}{" "}
-								{usedBy.length === 1 ? "entity" : "entities"}{" "}
-								still {usedBy.length === 1 ? "uses" : "use"}{" "}
-								this workflow.
-							</p>
-						)}
-						<Button
-							variant="destructive"
-							className="w-full"
-							onClick={handleDeactivate}
-							disabled={isActionLoading}
-						>
-							{isActionLoading ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-							) : (
-								<XCircle className="mr-2 h-4 w-4" />
-							)}
-							Deactivate
+							Close
 						</Button>
 					</div>
 				</div>

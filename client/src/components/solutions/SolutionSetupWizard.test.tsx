@@ -145,3 +145,16 @@ describe("SolutionSetupWizard", () => {
 		);
 	});
 });
+
+
+it("keeps the step counter and navigation valid when requirements change", async () => {
+	const props = { setupComplete: false, onSetConfig: vi.fn() };
+	const { rerender } = render(<SolutionSetupWizard {...props} items={[configItem, oauthConnection, endpointKey]} />);
+	await userEvent.click(screen.getByRole("button", { name: "Next" }));
+	await userEvent.click(screen.getByRole("button", { name: "Next" }));
+	expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
+	rerender(<SolutionSetupWizard {...props} items={[configItem]} />);
+	expect(screen.getByText("Step 1 of 1")).toBeInTheDocument();
+	expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+	expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+});

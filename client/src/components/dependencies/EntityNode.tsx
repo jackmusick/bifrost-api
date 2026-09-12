@@ -18,6 +18,51 @@ import { cn } from "@/lib/utils";
 
 export type EntityType = "workflow" | "form" | "app" | "agent";
 
+export const ENTITY_TYPE_THEME = {
+	workflow: {
+		label: "Workflow",
+		accent: "var(--chart-1)",
+		accentSoft: "color-mix(in srgb, var(--chart-1) 14%, var(--background))",
+		accentBorder: "color-mix(in srgb, var(--chart-1) 34%, var(--border))",
+		iconColor: "var(--chart-1)",
+		Icon: Workflow,
+	},
+	form: {
+		label: "Form",
+		accent: "var(--chart-2)",
+		accentSoft: "color-mix(in srgb, var(--chart-2) 14%, var(--background))",
+		accentBorder: "color-mix(in srgb, var(--chart-2) 34%, var(--border))",
+		iconColor: "var(--chart-2)",
+		Icon: FileText,
+	},
+	app: {
+		label: "App",
+		accent: "var(--chart-4)",
+		accentSoft: "color-mix(in srgb, var(--chart-4) 14%, var(--background))",
+		accentBorder: "color-mix(in srgb, var(--chart-4) 34%, var(--border))",
+		iconColor: "var(--chart-4)",
+		Icon: LayoutGrid,
+	},
+	agent: {
+		label: "Agent",
+		accent: "var(--chart-5)",
+		accentSoft: "color-mix(in srgb, var(--chart-5) 14%, var(--background))",
+		accentBorder: "color-mix(in srgb, var(--chart-5) 34%, var(--border))",
+		iconColor: "var(--chart-5)",
+		Icon: Bot,
+	},
+} satisfies Record<
+	EntityType,
+	{
+		label: string;
+		accent: string;
+		accentSoft: string;
+		accentBorder: string;
+		iconColor: string;
+		Icon: LucideIcon;
+	}
+>;
+
 export interface EntityNodeData extends Record<string, unknown> {
 	label: string;
 	entityType: EntityType;
@@ -25,84 +70,52 @@ export interface EntityNodeData extends Record<string, unknown> {
 	isRoot: boolean;
 }
 
-// Color configuration for each entity type
-const entityConfig: Record<
-	EntityType,
-	{
-		bgColor: string;
-		borderColor: string;
-		textColor: string;
-		Icon: LucideIcon;
-		label: string;
-	}
-> = {
-	workflow: {
-		bgColor: "bg-blue-50 dark:bg-blue-950/50",
-		borderColor: "border-blue-300 dark:border-blue-700",
-		textColor: "text-blue-700 dark:text-blue-300",
-		Icon: Workflow,
-		label: "Workflow",
-	},
-	form: {
-		bgColor: "bg-green-50 dark:bg-green-950/50",
-		borderColor: "border-green-300 dark:border-green-700",
-		textColor: "text-green-700 dark:text-green-300",
-		Icon: FileText,
-		label: "Form",
-	},
-	app: {
-		bgColor: "bg-purple-50 dark:bg-purple-950/50",
-		borderColor: "border-purple-300 dark:border-purple-700",
-		textColor: "text-purple-700 dark:text-purple-300",
-		Icon: LayoutGrid,
-		label: "App",
-	},
-	agent: {
-		bgColor: "bg-orange-50 dark:bg-orange-950/50",
-		borderColor: "border-orange-300 dark:border-orange-700",
-		textColor: "text-orange-700 dark:text-orange-300",
-		Icon: Bot,
-		label: "Agent",
-	},
-};
-
 function EntityNodeComponent({ data, selected }: NodeProps) {
 	const nodeData = data as EntityNodeData;
-	const config = entityConfig[nodeData.entityType];
+	const config = ENTITY_TYPE_THEME[nodeData.entityType];
 	const Icon = config.Icon;
 
 	return (
 		<div
 			className={cn(
-				"px-4 py-3 rounded-lg border-2 shadow-sm transition-all duration-200 min-w-[180px] max-w-[250px]",
-				config.bgColor,
-				config.borderColor,
-				selected && "ring-2 ring-primary ring-offset-2",
-				nodeData.isRoot && "ring-2 ring-primary ring-offset-1",
+				"min-w-[180px] max-w-[250px] rounded-[var(--bf-radius-surface)] border px-4 py-3 transition-colors duration-150 motion-reduce:transition-none",
+				"text-foreground",
+				selected &&
+					"ring-2 ring-primary ring-offset-2 ring-offset-background",
+				nodeData.isRoot &&
+					"ring-2 ring-primary ring-offset-1 ring-offset-background",
 			)}
+			style={{
+				backgroundColor: config.accentSoft,
+				borderColor: config.accentBorder,
+			}}
 		>
 			{/* Handles for connections */}
 			<Handle
 				type="target"
 				position={Position.Top}
-				className="!bg-muted-foreground !w-2 !h-2"
+				className="!w-2 !h-2"
+				style={{ backgroundColor: config.accent }}
 			/>
 			<Handle
 				type="source"
 				position={Position.Bottom}
-				className="!bg-muted-foreground !w-2 !h-2"
+				className="!w-2 !h-2"
+				style={{ backgroundColor: config.accent }}
 			/>
 
 			{/* Entity type badge */}
 			<div className="flex items-center gap-2 mb-2">
 				<div
 					className={cn(
-						"flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
-						config.bgColor,
-						config.textColor,
+						"flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
 					)}
+					style={{
+						backgroundColor: config.accentSoft,
+						color: "var(--foreground)",
+					}}
 				>
-					<Icon className="w-3 h-3" />
+					<Icon className="h-3 w-3" />
 					<span>{config.label}</span>
 				</div>
 				{nodeData.isRoot && (

@@ -1,3 +1,5 @@
+import { DependencyGraphControls } from "./DependencyGraphControls";
+import { DependencyGraphViewport } from "./DependencyGraphViewport";
 /**
  * DependencyGraph - React Flow visualization component
  *
@@ -6,23 +8,28 @@
  */
 
 import { useMemo, useEffect } from "react";
+import { useReducedMotion } from "framer-motion";
 import {
 	ReactFlow,
 	Background,
-	Controls,
+	ReactFlowProvider,
 	MiniMap,
 	useNodesState,
 	useEdgesState,
 	type Edge,
 	type Node,
 	MarkerType,
-	Panel,
 } from "@xyflow/react";
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import "./dependency-graph.css";
 
-import { EntityNode, type EntityNodeData, type EntityType } from "./EntityNode";
+import {
+	EntityNode,
+	ENTITY_TYPE_THEME,
+	type EntityNodeData,
+	type EntityType,
+} from "./EntityNode";
 import type { GraphNode, GraphEdge } from "@/hooks/useDependencyGraph";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +37,21 @@ import { cn } from "@/lib/utils";
 const nodeTypes = {
 	entity: EntityNode,
 };
+
+function getThemeForEntityType(entityType: EntityType | undefined) {
+	return ENTITY_TYPE_THEME[entityType ?? "workflow"];
+}
+
+export const DEPENDENCY_GRAPH_LEGEND = (
+	Object.entries(ENTITY_TYPE_THEME) as Array<
+		[EntityType, (typeof ENTITY_TYPE_THEME)[EntityType]]
+	>
+).map(([entityType, theme]) => ({
+	entityType,
+	label: theme.label,
+	color: theme.accent,
+	softColor: theme.accentSoft,
+}));
 
 // Layout configuration
 const NODE_WIDTH = 200;
@@ -95,7 +117,12 @@ function convertToFlowElements(
 	apiNodes: GraphNode[],
 	apiEdges: GraphEdge[],
 	rootId: string,
+	reduceMotion: boolean,
 ): { nodes: Node[]; edges: Edge[] } {
+	const nodeTypeById = new Map(
+		apiNodes.map((node) => [node.id, node.type as EntityType]),
+	);
+
 	// Convert API nodes to React Flow nodes
 	const nodes: Node[] = apiNodes.map((node) => ({
 		id: node.id,
@@ -115,26 +142,26 @@ function convertToFlowElements(
 		source: edge.source,
 		target: edge.target,
 		type: "smoothstep",
-		animated: true, // Animated to make edges more visible
+		animated: !reduceMotion,
 		style: {
 			strokeWidth: 2,
-			stroke: "#6b7280", // Gray color that's visible in both themes
+			stroke: getThemeForEntityType(nodeTypeById.get(edge.source)).accent,
 		},
 		markerEnd: {
 			type: MarkerType.ArrowClosed,
 			width: 20,
 			height: 20,
-			color: "#6b7280",
+			color: getThemeForEntityType(nodeTypeById.get(edge.source)).accent,
 		},
 		label: edge.relationship,
 		labelStyle: {
 			fontSize: 11,
 			fontWeight: 500,
-			fill: "#374151",
+			fill: "var(--foreground)",
 		},
 		labelBgStyle: {
-			fill: "#ffffff",
-			fillOpacity: 0.9,
+			fill: "var(--background)",
+			fillOpacity: 0.92,
 		},
 		labelBgPadding: [4, 8] as [number, number],
 		labelBgBorderRadius: 4,
@@ -143,17 +170,32 @@ function convertToFlowElements(
 	return { nodes, edges };
 }
 
-export function DependencyGraph({
+export function DependencyGraph(props: DependencyGraphProps) {
+	return (
+		<ReactFlowProvider>
+			<DependencyGraphCanvas {...props} />
+		</ReactFlowProvider>
+	);
+}
+
+function DependencyGraphCanvas({
 	nodes: apiNodes,
 	edges: apiEdges,
 	rootId,
 	className,
 }: DependencyGraphProps) {
-	// Convert and layout the graph
+	const prefersReducedMotion = useReducedMotion();
+	const reduceMotion = prefersReducedMotion ?? false;
+
 	const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-		const { nodes, edges } = convertToFlowElements(apiNodes, apiEdges, rootId);
+		const { nodes, edges } = convertToFlowElements(
+			apiNodes,
+			apiEdges,
+			rootId,
+			reduceMotion,
+		);
 		return getLayoutedElements(nodes, edges, "TB");
-	}, [apiNodes, apiEdges, rootId]);
+	}, [apiNodes, apiEdges, rootId, reduceMotion]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -165,18 +207,19 @@ export function DependencyGraph({
 	}, [initialNodes, initialEdges, setNodes, setEdges]);
 
 	return (
-		<div className={cn("w-full h-full", className)}>
+		<div
+			className={cn(
+				"bf-dependency-graph flex min-h-0 w-full h-full flex-col",
+				className,
+			)}
+		>
 			<ReactFlow
+				className="min-h-0 flex-1"
 				nodes={nodes}
 				edges={edges}
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				nodeTypes={nodeTypes}
-				fitView
-				fitViewOptions={{
-					padding: 0.2,
-					maxZoom: 1.5,
-				}}
 				minZoom={0.1}
 				maxZoom={2}
 				proOptions={{ hideAttribution: true }}
@@ -186,53 +229,19 @@ export function DependencyGraph({
 				panOnScroll={true}
 				zoomOnScroll={true}
 			>
-				<Background gap={16} size={1} />
-				<Controls showInteractive={false} />
+				<DependencyGraphViewport />
+				<Background gap={16} size={1} color="var(--border)" />
 				<MiniMap
+					className="!hidden md:!block"
 					nodeStrokeWidth={3}
-					maskColor="rgba(128, 128, 128, 0.3)"
+					maskColor="color-mix(in srgb, var(--background) 74%, transparent)"
 					nodeColor={(node) => {
 						const data = node.data as EntityNodeData;
-						switch (data.entityType) {
-							case "workflow":
-								return "#3b82f6";
-							case "form":
-								return "#22c55e";
-							case "app":
-								return "#a855f7";
-							case "agent":
-								return "#f97316";
-							default:
-								return "#6b7280";
-						}
+						return getThemeForEntityType(data.entityType).accent;
 					}}
 				/>
-				<Panel position="top-right">
-					<div className="bg-background/80 backdrop-blur-sm rounded-lg ring-1 ring-foreground/5 p-3 shadow-sm">
-						<div className="text-xs font-medium mb-2 text-muted-foreground">
-							Legend
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<div className="flex items-center gap-2 text-xs">
-								<div className="w-3 h-3 rounded bg-blue-500" />
-								<span>Workflow</span>
-							</div>
-							<div className="flex items-center gap-2 text-xs">
-								<div className="w-3 h-3 rounded bg-green-500" />
-								<span>Form</span>
-							</div>
-							<div className="flex items-center gap-2 text-xs">
-								<div className="w-3 h-3 rounded bg-purple-500" />
-								<span>App</span>
-							</div>
-							<div className="flex items-center gap-2 text-xs">
-								<div className="w-3 h-3 rounded bg-orange-500" />
-								<span>Agent</span>
-							</div>
-						</div>
-					</div>
-				</Panel>
 			</ReactFlow>
+			<DependencyGraphControls />
 		</div>
 	);
 }

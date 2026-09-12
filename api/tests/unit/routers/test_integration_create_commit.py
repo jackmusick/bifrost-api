@@ -13,6 +13,8 @@ async def test_create_integration_commits_before_returning_response() -> None:
     events: list[str] = []
     integration = MagicMock()
     integration.name = "Commit Boundary"
+    integration.logo_thumbnail_version = None
+    integration.logo_content_type = None
     response = MagicMock()
 
     ctx = MagicMock()

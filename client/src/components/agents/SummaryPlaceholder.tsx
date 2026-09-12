@@ -12,6 +12,14 @@
  * HTML email bodies) and make the UI unreadable.
  */
 
+import {
+	AlertTriangle,
+	CheckCircle2,
+	Clock3,
+	CircleX,
+	Loader2,
+} from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 export interface SummaryPlaceholderProps {
@@ -25,43 +33,145 @@ export interface SummaryPlaceholderProps {
 	className?: string;
 }
 
+type SummaryTone = "neutral" | "info" | "success" | "warning" | "danger";
+
+interface SummaryMeta {
+	text: string;
+	ariaLabel: string;
+	tone: SummaryTone;
+	icon?: React.ReactNode;
+	loading?: boolean;
+}
+
 export function SummaryPlaceholder({
 	status,
 	runStatus,
 	muted = false,
 	className,
 }: SummaryPlaceholderProps) {
-	// Prefer run-level lifecycle signals when the run never completed.
-	// These cases make "Summary pending…" misleading — the summarizer will
-	// never run on a non-completed AgentRun.
-	let text: string;
-	if (runStatus === "running" || runStatus === "queued") {
-		text = "Run in progress…";
-	} else if (runStatus === "failed") {
-		text = "Run failed";
-	} else if (runStatus === "budget_exceeded") {
-		text = "Budget exceeded";
-	} else if (runStatus === "cancelled") {
-		text = "Run cancelled";
-	} else if (status === "failed") {
-		text = "Summary failed";
-	} else if (status === "generating") {
-		text = "Summarizing…";
-	} else if (status === "completed") {
-		text = "—";
-	} else {
-		// Run completed but summary_status is still pending.
-		text = "Summary pending…";
-	}
+	const summary = resolveSummary(status, runStatus);
+
 	return (
 		<span
 			className={cn(
-				"italic",
-				muted ? "text-muted-foreground/70" : "text-muted-foreground",
+				"inline-flex items-center gap-1.5 rounded-[var(--bf-radius-control)] border px-2 py-0.5 text-xs font-medium leading-5",
+				toneClasses(summary.tone),
+				muted && "opacity-80",
 				className,
 			)}
+			role="status"
+			aria-live="polite"
+			aria-label={summary.ariaLabel}
+			data-status={status ?? undefined}
+			data-run-status={runStatus ?? undefined}
 		>
-			{text}
+			{summary.icon ? (
+				<span
+					aria-hidden="true"
+					className={cn(
+						"inline-flex items-center justify-center",
+						summary.loading && "animate-spin motion-reduce:animate-none",
+					)}
+				>
+					{summary.icon}
+				</span>
+			) : null}
+			<span aria-hidden="true" className="whitespace-nowrap">
+				{summary.text}
+			</span>
 		</span>
 	);
+}
+
+function resolveSummary(
+	status: string | undefined | null,
+	runStatus: string | undefined | null,
+): SummaryMeta {
+	if (runStatus === "running" || runStatus === "queued") {
+		return {
+			text: "Run in progress…",
+			ariaLabel: "Run in progress",
+			tone: "info",
+			icon: <Loader2 size={11} />,
+			loading: true,
+		};
+	}
+
+	if (runStatus === "failed") {
+		return {
+			text: "Run failed",
+			ariaLabel: "Run failed",
+			tone: "danger",
+			icon: <CircleX size={11} />,
+		};
+	}
+
+	if (runStatus === "budget_exceeded") {
+		return {
+			text: "Budget exceeded",
+			ariaLabel: "Budget exceeded",
+			tone: "warning",
+			icon: <AlertTriangle size={11} />,
+		};
+	}
+
+	if (runStatus === "cancelled") {
+		return {
+			text: "Run cancelled",
+			ariaLabel: "Run cancelled",
+			tone: "neutral",
+			icon: <Clock3 size={11} />,
+		};
+	}
+
+	if (status === "failed") {
+		return {
+			text: "Summary failed",
+			ariaLabel: "Summary failed",
+			tone: "danger",
+			icon: <AlertTriangle size={11} />,
+		};
+	}
+
+	if (status === "generating") {
+		return {
+			text: "Summarizing…",
+			ariaLabel: "Summarizing",
+			tone: "info",
+			icon: <Loader2 size={11} />,
+			loading: true,
+		};
+	}
+
+	if (status === "completed") {
+		return {
+			text: "—",
+			ariaLabel: "Summary completed",
+			tone: "success",
+			icon: <CheckCircle2 size={11} />,
+		};
+	}
+
+	return {
+		text: "Summary pending…",
+		ariaLabel: "Summary pending",
+		tone: "neutral",
+		icon: <Clock3 size={11} />,
+	};
+}
+
+function toneClasses(tone: SummaryTone) {
+	switch (tone) {
+		case "info":
+			return "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)]";
+		case "success":
+			return "border-[var(--bf-success)]/20 bg-[var(--bf-success-soft)] text-[var(--bf-success)]";
+		case "warning":
+			return "border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]";
+		case "danger":
+			return "border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]";
+		case "neutral":
+		default:
+			return "border-border bg-muted/40 text-muted-foreground";
+	}
 }

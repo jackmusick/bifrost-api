@@ -8,6 +8,11 @@ These tests make real HTTP requests to the running API.
 """
 
 import os
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from sqlalchemy import delete
+from src.models.orm.executions import Execution, ExecutionLog
 
 import httpx
 import pytest
@@ -146,42 +151,75 @@ class TestLogsListEndpoint:
         for log in data["logs"]:
             assert "error" in log["message"].lower()
 
-    def test_list_logs_pagination_with_token(
+    @pytest.mark.asyncio
+    async def test_list_logs_pagination_with_token(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        db_session,
     ):
-        """Pagination with continuation token works correctly."""
-        # First request with small limit
-        response1 = http_client.get(
-            "/api/executions/logs",
-            headers=auth_headers(admin_token),
-            params={"limit": 2},
-        )
-        assert response1.status_code == 200
-        data1 = response1.json()
-        assert "logs" in data1
+        """Equal timestamps and arriving logs cannot duplicate or omit older rows."""
+        execution_id = uuid4()
+        workflow_name = f"log-cursor-{uuid4().hex}"
+        timestamp = datetime(2026, 9, 1, 12, tzinfo=timezone.utc)
+        db_session.add(Execution(
+            id=execution_id,
+            workflow_name=workflow_name,
+            executed_by_name="Log pagination fixture",
+        ))
+        await db_session.flush()
+        seeded = [ExecutionLog(
+            execution_id=execution_id, level="INFO",
+            message=f"seed-{index}", timestamp=timestamp, sequence=index,
+        ) for index in range(5)]
+        db_session.add_all(seeded)
+        await db_session.commit()
+        expected_ids = sorted((log.id for log in seeded), reverse=True)
+        headers = auth_headers(admin_token)
+        params = {"limit": 2, "workflow_name": workflow_name}
 
-        # If there's a continuation token, fetch next page
-        if data1.get("continuation_token"):
-            response2 = http_client.get(
-                "/api/executions/logs",
-                headers=auth_headers(admin_token),
-                params={
-                    "limit": 2,
-                    "continuation_token": data1["continuation_token"],
-                },
+        try:
+            first_response = http_client.get(
+                "/api/executions/logs", headers=headers, params=params,
             )
-            assert response2.status_code == 200
-            data2 = response2.json()
-            assert "logs" in data2
+            assert first_response.status_code == 200
+            first = first_response.json()
+            assert [log["id"] for log in first["logs"]] == expected_ids[:2]
+            assert first["continuation_token"]
 
-            # The pages should be different (if there are enough logs)
-            if data1["logs"] and data2["logs"]:
-                # Log IDs should be different between pages
-                ids1 = {log["id"] for log in data1["logs"]}
-                ids2 = {log["id"] for log in data2["logs"]}
-                assert ids1.isdisjoint(ids2), "Pages should not contain duplicate logs"
+            # Arrivals before the cursor must not shift the remaining pages.
+            # Include a same-timestamp arrival to exercise the ID tie-breaker.
+            db_session.add_all([
+                ExecutionLog(execution_id=execution_id, level="INFO",
+                             message="newer", timestamp=timestamp + timedelta(seconds=1)),
+                ExecutionLog(execution_id=execution_id, level="INFO",
+                             message="same-time arrival", timestamp=timestamp),
+            ])
+            await db_session.commit()
+
+            second_response = http_client.get(
+                "/api/executions/logs", headers=headers,
+                params={**params, "continuation_token": first["continuation_token"]},
+            )
+            assert second_response.status_code == 200
+            second = second_response.json()
+            assert [log["id"] for log in second["logs"]] == expected_ids[2:4]
+            assert second["continuation_token"]
+
+            third_response = http_client.get(
+                "/api/executions/logs", headers=headers,
+                params={**params, "continuation_token": second["continuation_token"]},
+            )
+            assert third_response.status_code == 200
+            third = third_response.json()
+            assert [log["id"] for log in third["logs"]] == expected_ids[4:]
+            assert third["continuation_token"] is None
+        finally:
+            await db_session.execute(delete(ExecutionLog).where(
+                ExecutionLog.execution_id == execution_id,
+            ))
+            await db_session.execute(delete(Execution).where(Execution.id == execution_id))
+            await db_session.commit()
 
     def test_list_logs_date_range_filter(
         self,

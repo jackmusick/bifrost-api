@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
 	Card,
 	CardContent,
@@ -11,20 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import {
-	Loader2,
-	AlertCircle,
-	Check,
-	Eye,
-	EyeOff,
-} from "lucide-react";
+import { Loader2, AlertCircle, Check } from "lucide-react";
 import { profileService, type ProfileResponse } from "@/services/profile";
 import { useAuth } from "@/contexts/AuthContext";
 import { LogoDropZone } from "@/components/LogoDropZone";
 
+import { ProfilePasswordField } from "./ProfilePasswordField";
+
 export function BasicInfo() {
 	const { user } = useAuth();
 	const [profile, setProfile] = useState<ProfileResponse | null>(null);
+	const [loadAttempt, setLoadAttempt] = useState(0);
+	const [saveError, setSaveError] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -36,35 +34,58 @@ export function BasicInfo() {
 	const [currentPassword, setCurrentPassword] = useState("");
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
-	const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-	const [showNewPassword, setShowNewPassword] = useState(false);
-	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 	const [changingPassword, setChangingPassword] = useState(false);
 	const [passwordError, setPasswordError] = useState<string | null>(null);
 
+	const nameBusy = useRef(false);
+	const passwordBusy = useRef(false);
+	const nameErrorRef = useRef<HTMLParagraphElement>(null);
+	const passwordErrorRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (saveError) {
+			nameErrorRef.current?.focus();
+			nameErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+		}
+	}, [saveError]);
+	useEffect(() => {
+		if (passwordError) {
+			passwordErrorRef.current?.focus();
+			passwordErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+		}
+	}, [passwordError]);
+
 	// Load profile data
 	useEffect(() => {
+		let active = true;
 		async function loadProfile() {
 			try {
 				const data = await profileService.getProfile();
+				if (!active) return;
 				setProfile(data);
 				setName(data.name || "");
 			} catch (err) {
 				console.error("Failed to load profile:", err);
-				setError("Failed to load profile. Please try again.");
+				if (active)
+					setError("Failed to load profile. Please try again.");
 			} finally {
-				setLoading(false);
+				if (active) setLoading(false);
 			}
 		}
 
 		loadProfile();
-	}, []);
+		return () => {
+			active = false;
+		};
+	}, [loadAttempt]);
 
 	// Derived: dirty when local name differs from server-loaded profile name.
 	const nameChanged = name !== (profile?.name || "");
 
 	// Handle name save
 	const handleSaveName = async () => {
+		if (nameBusy.current) return;
+		nameBusy.current = true;
+		setSaveError(false);
 		setSavingName(true);
 		try {
 			const updated = await profileService.updateProfile({
@@ -74,14 +95,16 @@ export function BasicInfo() {
 			toast.success("Profile updated");
 		} catch (err) {
 			console.error("Failed to update profile:", err);
-			toast.error("Failed to update profile");
+			setSaveError(true);
 		} finally {
+			nameBusy.current = false;
 			setSavingName(false);
 		}
 	};
 
 	// Handle password change/set
 	const handleChangePassword = async () => {
+		if (passwordBusy.current) return;
 		setPasswordError(null);
 
 		const hasPassword = profile?.has_password ?? false;
@@ -104,6 +127,7 @@ export function BasicInfo() {
 			return;
 		}
 
+		passwordBusy.current = true;
 		setChangingPassword(true);
 		try {
 			await profileService.changePassword(
@@ -119,9 +143,10 @@ export function BasicInfo() {
 			setCurrentPassword("");
 			setNewPassword("");
 			setConfirmPassword("");
-			// Refresh profile to get updated has_password
-			const updatedProfile = await profileService.getProfile();
-			setProfile(updatedProfile);
+			// The successful password response establishes this state.
+			setProfile((current) =>
+				current ? { ...current, has_password: true } : current,
+			);
 		} catch (err) {
 			console.error("Failed to change password:", err);
 			const errorMessage =
@@ -130,6 +155,7 @@ export function BasicInfo() {
 					: "Failed to change password";
 			setPasswordError(errorMessage);
 		} finally {
+			passwordBusy.current = false;
 			setChangingPassword(false);
 		}
 	};
@@ -152,8 +178,12 @@ export function BasicInfo() {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center py-12">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+			<div
+				role="status"
+				aria-label="Loading profile"
+				className="flex items-center justify-center py-16"
+			>
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
@@ -161,14 +191,19 @@ export function BasicInfo() {
 	if (error) {
 		return (
 			<Card>
-				<CardContent className="p-6">
+				<CardContent className="space-y-4 p-[var(--bf-surface-pad)]">
 					<Alert variant="destructive">
 						<AlertCircle className="h-4 w-4" />
 						<AlertDescription>{error}</AlertDescription>
 					</Alert>
 					<Button
-						onClick={() => window.location.reload()}
-						className="mt-4"
+						type="button"
+						onClick={() => {
+							setLoading(true);
+							setError(null);
+							setLoadAttempt((value) => value + 1);
+						}}
+						className="min-h-11 w-full sm:w-auto"
 					>
 						Retry
 					</Button>
@@ -187,7 +222,7 @@ export function BasicInfo() {
 						Upload a profile picture (PNG or JPEG, max 2MB)
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="flex justify-center sm:justify-start">
 					<LogoDropZone
 						uploadUrl="/api/profile/avatar"
 						deleteUrl="/api/profile/avatar"
@@ -223,12 +258,18 @@ export function BasicInfo() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<form onSubmit={(e) => { e.preventDefault(); handleSaveName(); }}>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							handleSaveName();
+						}}
+					>
 						<div className="space-y-4">
 							<div className="space-y-2">
 								<Label htmlFor="name">Name</Label>
 								<Input
 									id="name"
+									disabled={savingName}
 									placeholder="Enter your name"
 									value={name}
 									onChange={(e) => setName(e.target.value)}
@@ -241,25 +282,41 @@ export function BasicInfo() {
 									id="email"
 									value={profile?.email || user?.email || ""}
 									disabled
-									className="bg-muted"
+									className="bg-muted text-muted-foreground"
 								/>
 								<p className="text-xs text-muted-foreground">
 									Email cannot be changed
 								</p>
 							</div>
 
+							{saveError && (
+								<p
+									ref={nameErrorRef}
+									tabIndex={-1}
+									role="alert"
+									className="text-sm text-destructive"
+								>
+									Couldn't update your profile. Your name is
+									ready to retry.
+								</p>
+							)}
 							<div className="flex justify-end">
 								<Button
 									type="submit"
+									className="min-h-11 w-full sm:w-auto"
 									disabled={savingName || !nameChanged}
 								>
 									{savingName ? (
 										<>
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 											Saving...
 										</>
 									) : nameChanged ? (
-										"Save Changes"
+										saveError ? (
+											"Retry save"
+										) : (
+											"Save Changes"
+										)
 									) : (
 										<>
 											<Check className="h-4 w-4 mr-2" />
@@ -277,7 +334,9 @@ export function BasicInfo() {
 			<Card>
 				<CardHeader>
 					<CardTitle>
-						{profile?.has_password ? "Change Password" : "Set Password"}
+						{profile?.has_password
+							? "Change Password"
+							: "Set Password"}
 					</CardTitle>
 					<CardDescription>
 						{profile?.has_password
@@ -286,128 +345,76 @@ export function BasicInfo() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<form onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }}>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							handleChangePassword();
+						}}
+					>
 						<div className="space-y-4">
 							{passwordError && (
-								<Alert variant="destructive">
+								<Alert
+									ref={passwordErrorRef}
+									tabIndex={-1}
+									variant="destructive"
+								>
 									<AlertCircle className="h-4 w-4" />
-									<AlertDescription>{passwordError}</AlertDescription>
+									<AlertDescription>
+										{passwordError}
+									</AlertDescription>
 								</Alert>
 							)}
 
 							{profile?.has_password && (
-								<div className="space-y-2">
-									<Label htmlFor="current-password">
-										Current Password
-									</Label>
-									<div className="relative">
-										<Input
-											id="current-password"
-											type={showCurrentPassword ? "text" : "password"}
-											value={currentPassword}
-											onChange={(e) =>
-												setCurrentPassword(e.target.value)
-											}
-											placeholder="Enter current password"
-										/>
-										<Button
-											type="button"
-											variant="ghost"
-											size="icon"
-											className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-											onClick={() =>
-												setShowCurrentPassword(!showCurrentPassword)
-											}
-										>
-											{showCurrentPassword ? (
-												<EyeOff className="h-4 w-4 text-muted-foreground" />
-											) : (
-												<Eye className="h-4 w-4 text-muted-foreground" />
-											)}
-										</Button>
-									</div>
-								</div>
+								<ProfilePasswordField
+									id="current-password"
+									label="Current Password"
+									value={currentPassword}
+									onChange={setCurrentPassword}
+									autoComplete="current-password"
+									disabled={changingPassword}
+								/>
 							)}
-
-							<div className="space-y-2">
-								<Label htmlFor="new-password">
-									{profile?.has_password ? "New Password" : "Password"}
-								</Label>
-								<div className="relative">
-									<Input
-										id="new-password"
-										type={showNewPassword ? "text" : "password"}
-										value={newPassword}
-										onChange={(e) => setNewPassword(e.target.value)}
-										placeholder={profile?.has_password ? "Enter new password" : "Enter password"}
-									/>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-										onClick={() =>
-											setShowNewPassword(!showNewPassword)
-										}
-									>
-										{showNewPassword ? (
-											<EyeOff className="h-4 w-4 text-muted-foreground" />
-										) : (
-											<Eye className="h-4 w-4 text-muted-foreground" />
-										)}
-									</Button>
-								</div>
-								<p className="text-xs text-muted-foreground">
-									Minimum 8 characters
-								</p>
-							</div>
-
-							<div className="space-y-2">
-								<Label htmlFor="confirm-password">
-									Confirm Password
-								</Label>
-								<div className="relative">
-									<Input
-										id="confirm-password"
-										type={showConfirmPassword ? "text" : "password"}
-										value={confirmPassword}
-										onChange={(e) =>
-											setConfirmPassword(e.target.value)
-										}
-										placeholder="Confirm password"
-									/>
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-										onClick={() =>
-											setShowConfirmPassword(!showConfirmPassword)
-										}
-									>
-										{showConfirmPassword ? (
-											<EyeOff className="h-4 w-4 text-muted-foreground" />
-										) : (
-											<Eye className="h-4 w-4 text-muted-foreground" />
-										)}
-									</Button>
-								</div>
-							</div>
+							<ProfilePasswordField
+								id="new-password"
+								label={
+									profile?.has_password
+										? "New Password"
+										: "Password"
+								}
+								value={newPassword}
+								onChange={setNewPassword}
+								autoComplete="new-password"
+								disabled={changingPassword}
+								hint="Minimum 8 characters"
+							/>
+							<ProfilePasswordField
+								id="confirm-password"
+								label="Confirm Password"
+								value={confirmPassword}
+								onChange={setConfirmPassword}
+								autoComplete="new-password"
+								disabled={changingPassword}
+							/>
 
 							<div className="flex justify-end">
 								<Button
 									type="submit"
+									className="min-h-11 w-full sm:w-auto"
 									disabled={
 										changingPassword ||
-										(profile?.has_password && !currentPassword) ||
+										(profile?.has_password &&
+											!currentPassword) ||
 										!newPassword ||
 										!confirmPassword
 									}
 								>
 									{changingPassword ? (
 										<>
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											{profile?.has_password ? "Changing..." : "Setting..."}
+											<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+											{profile?.has_password
+												? "Changing..."
+												: "Setting..."}
 										</>
 									) : profile?.has_password ? (
 										"Change Password"

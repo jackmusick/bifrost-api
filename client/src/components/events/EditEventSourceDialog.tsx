@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useId, useMemo, useRef } from "react";
 import {
 	Dialog,
 	DialogContent,
@@ -31,14 +31,9 @@ import {
 import { DynamicConfigForm, type ConfigSchema } from "./DynamicConfigForm";
 import { authFetch } from "@/lib/api-client";
 
-interface CronValidationResult {
-	valid: boolean;
-	human_readable: string;
-	next_runs?: string[];
-	interval_seconds?: number;
-	warning?: string;
-	error?: string;
-}
+import type { components } from "@/lib/v1";
+
+type CronValidationResult = components["schemas"]["CronValidationResponse"];
 
 const COMMON_TIMEZONES = [
 	"UTC",
@@ -65,15 +60,22 @@ interface EditEventSourceDialogProps {
 function EditEventSourceDialogContent({
 	source,
 	onOpenChange,
+	updateMutation,
 }: {
 	source: EventSource;
+	updateMutation: ReturnType<typeof useUpdateEventSource>;
 	onOpenChange: (open: boolean) => void;
 }) {
 	const { isPlatformAdmin } = useAuth();
-	const updateMutation = useUpdateEventSource();
+	const formId = useId();
 
 	// Fetch adapter metadata for dynamic config
-	const { data: adaptersData } = useWebhookAdapters();
+	const {
+		data: adaptersData,
+		isError: adaptersError,
+		isFetching: adaptersFetching,
+		refetch: refetchAdapters,
+	} = useWebhookAdapters();
 	const adapters = adaptersData?.adapters || [];
 	const selectedAdapter = adapters.find(
 		(a) => a.name === source.webhook?.adapter_name,
@@ -93,9 +95,9 @@ function EditEventSourceDialogContent({
 	);
 
 	// Webhook config (unified for all adapters)
-	const [webhookConfig, setWebhookConfig] = useState<
-		Record<string, unknown>
-	>(source.webhook?.config || {});
+	const [webhookConfig, setWebhookConfig] = useState<Record<string, unknown>>(
+		source.webhook?.config || {},
+	);
 
 	// Webhook rate-limit config
 	const [rateLimitPerMinute, setRateLimitPerMinute] = useState<number | null>(
@@ -123,55 +125,64 @@ function EditEventSourceDialogContent({
 	>(source.schedule?.overlap_policy ?? "skip");
 
 	// Cron validation state
-	const [cronValidation, setCronValidation] =
-		useState<CronValidationResult | null>(null);
+	const [cronValidation, setCronValidation] = useState<{
+		expression: string;
+		timezone: string;
+		result: CronValidationResult;
+	} | null>(null);
 
 	const [errors, setErrors] = useState<string[]>([]);
+	const errorSummaryRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (errors.length) errorSummaryRef.current?.focus();
+	}, [errors]);
 
 	const isLoading = updateMutation.isPending;
 	const isWebhook = source.source_type === "webhook";
 	const isSchedule = source.source_type === "schedule";
 
-	// Debounced cron validation
-	const validateCron = useCallback(async (expr: string) => {
-		if (!expr.trim()) {
-			setCronValidation(null);
-			return;
-		}
-
-		try {
-			const response = await authFetch("/api/schedules/validate", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ expression: expr, timezone }),
-			});
-			const data = await response.json();
-			setCronValidation(data);
-		} catch {
-			setCronValidation({
-				valid: false,
-				human_readable: "Failed to validate",
-				error: "Unable to connect to validation service",
-			});
-		}
-	}, [timezone]);
-
+	// Ignore and cancel validation for a previous expression or timezone.
 	useEffect(() => {
-		if (!cronExpression.trim()) {
-			return;
-		}
-
-		const timer = setTimeout(() => {
-			validateCron(cronExpression);
+		const expression = cronExpression.trim();
+		if (!isSchedule || !expression) return;
+		let active = true;
+		const controller = new AbortController();
+		const timer = setTimeout(async () => {
+			try {
+				const response = await authFetch("/api/schedules/validate", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ expression, timezone }),
+					signal: controller.signal,
+				});
+				if (!response.ok) throw new Error("Validation request failed");
+				const result: CronValidationResult = await response.json();
+				if (active) setCronValidation({ expression, timezone, result });
+			} catch {
+				if (active)
+					setCronValidation({
+						expression,
+						timezone,
+						result: {
+							valid: false,
+							human_readable: "Could not validate schedule",
+							error: "Unable to connect to the validation service",
+						},
+					});
+			}
 		}, 500);
+		return () => {
+			active = false;
+			clearTimeout(timer);
+			controller.abort();
+		};
+	}, [cronExpression, timezone, isSchedule]);
 
-		return () => clearTimeout(timer);
-	}, [cronExpression, validateCron]);
-
-	// Computed display result - null when expression is empty
-	const displayCronValidation = cronExpression.trim()
-		? cronValidation
-		: null;
+	const displayCronValidation =
+		cronValidation?.expression === cronExpression.trim() &&
+		cronValidation.timezone === timezone
+			? cronValidation.result
+			: null;
 
 	const validateForm = (): boolean => {
 		const newErrors: string[] = [];
@@ -183,10 +194,11 @@ function EditEventSourceDialogContent({
 		if (isSchedule) {
 			if (!cronExpression.trim()) {
 				newErrors.push("Cron expression is required");
-			} else if (cronValidation && !cronValidation.valid) {
+			} else if (displayCronValidation && !displayCronValidation.valid) {
 				newErrors.push(
 					"Cron expression is invalid: " +
-						(cronValidation.error || cronValidation.human_readable),
+						(displayCronValidation.error ||
+							displayCronValidation.human_readable),
 				);
 			}
 		}
@@ -197,7 +209,7 @@ function EditEventSourceDialogContent({
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		if (!validateForm()) return;
+		if (isLoading || !validateForm()) return;
 
 		try {
 			// Build body - include organization_id if admin changed it
@@ -228,330 +240,440 @@ function EditEventSourceDialogContent({
 				params: {
 					path: { source_id: source.id },
 				},
-				body: body as NonNullable<typeof updateMutation.variables>["body"],
+				body: body as NonNullable<
+					typeof updateMutation.variables
+				>["body"],
 			});
 
 			toast.success("Event source updated");
 			onOpenChange(false);
 		} catch (error) {
 			console.error("Failed to update event source:", error);
-			toast.error("Failed to update event source");
+			setErrors([
+				"Could not save your changes. Your edits are still here. Try again.",
+			]);
 		}
 	};
 
 	return (
-		<form onSubmit={handleSubmit}>
-			<DialogHeader>
+		<form
+			onSubmit={handleSubmit}
+			className="flex max-h-[calc(90dvh-3rem)] min-h-0 min-w-0 flex-col"
+		>
+			<DialogHeader className="shrink-0 border-b pb-4">
 				<DialogTitle>Edit Event Source</DialogTitle>
 				<DialogDescription>
 					Update the event source settings.
 				</DialogDescription>
 			</DialogHeader>
 
-			<div className="space-y-4 py-4">
-				{errors.length > 0 && (
-					<Alert variant="destructive">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>
-							<ul className="list-disc list-inside">
-								{errors.map((error, i) => (
-									<li key={i}>{error}</li>
-								))}
-							</ul>
-						</AlertDescription>
-					</Alert>
-				)}
-
-				{/* Organization (Platform Admin Only) */}
-				{isPlatformAdmin && (
-					<div className="space-y-2">
-						<Label htmlFor="organization">Organization</Label>
-						<OrganizationSelect
-							value={organizationId}
-							onChange={(value) =>
-								setOrganizationId(value ?? null)
-							}
-							showGlobal
-						/>
-						<p className="text-xs text-muted-foreground">
-							Leave as Global to make this source available to all
-							organizations.
-						</p>
-					</div>
-				)}
-
-				{/* Name */}
-				<div className="space-y-2">
-					<Label htmlFor="name">Name</Label>
-					<Input
-						id="name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						placeholder="e.g., GitHub Webhooks"
-					/>
-				</div>
-
-				{/* Topic (read-only) */}
-				{source.source_type === "topic" && source.event_type && (
-					<div className="space-y-2">
-						<Label htmlFor="topic">Topic</Label>
-						<Input
-							id="topic"
-							value={source.event_type}
-							disabled
-							className="font-mono"
-						/>
-						<p className="text-xs text-muted-foreground">
-							The topic this source publishes to. Cannot be changed after creation.
-						</p>
-					</div>
-				)}
-
-				{/* Webhook Config (Dynamic from adapter schema) */}
-				{isWebhook && hasDynamicConfig && selectedAdapter && (
-					<>
-						<div className="border-t pt-4">
-							<h4 className="text-sm font-medium mb-3">
-								Webhook Configuration
-							</h4>
-							{selectedAdapter.display_name !== "Generic Webhook" && (
-								<p className="text-xs text-muted-foreground mb-3">
-									Adapter: {selectedAdapter.display_name}
-								</p>
-							)}
-						</div>
-						<DynamicConfigForm
-							adapterName={selectedAdapter.name}
-							configSchema={
-								selectedAdapter.config_schema as unknown as ConfigSchema
-							}
-							config={webhookConfig}
-							onChange={setWebhookConfig}
-						/>
-					</>
-				)}
-
-				{/* Rate Limiting (Webhook only) */}
-				{isWebhook && (
-					<>
-						<div className="border-t pt-4">
-							<h4 className="text-sm font-medium mb-3">
-								Rate limiting
-							</h4>
-						</div>
-
-						{source.webhook && source.webhook.rate_limited_count_24h > 0 && (
-							<p className="text-xs text-destructive">
-								{source.webhook.rate_limited_count_24h} request
-								{source.webhook.rate_limited_count_24h === 1 ? "" : "s"}{" "}
-								rate limited in the last 24 hours.
-							</p>
-						)}
-
-						<div className="space-y-2">
-							<Label htmlFor="rate-limit-per-minute">Max events</Label>
-							<Input
-								id="rate-limit-per-minute"
-								type="number"
-								min={1}
-								value={rateLimitPerMinute ?? ""}
-								onChange={(e) => {
-									const val = e.target.value;
-									setRateLimitPerMinute(
-										val === "" ? null : Number(val),
-									);
-								}}
-								placeholder="60 (leave empty to disable)"
-							/>
-							<p className="text-xs text-muted-foreground">
-								Maximum events accepted within the window below.
-								Leave empty to disable the limit.
-							</p>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="rate-limit-window">
-								Per (seconds)
-							</Label>
-							<Input
-								id="rate-limit-window"
-								type="number"
-								min={1}
-								value={rateLimitWindowSeconds}
-								onChange={(e) =>
-									setRateLimitWindowSeconds(Number(e.target.value))
-								}
-							/>
-							<p className="text-xs text-muted-foreground">
-								Window duration. Default 60 means the limit above
-								applies per minute.
-							</p>
-						</div>
-
-						<div className="flex items-center justify-between">
-							<div className="space-y-0.5">
-								<Label htmlFor="rate-limit-enabled">
-									Enabled
-								</Label>
-								<p className="text-xs text-muted-foreground">
-									Disable to bypass rate limiting for this source.
-								</p>
-							</div>
-							<Switch
-								id="rate-limit-enabled"
-								checked={rateLimitEnabled}
-								onCheckedChange={setRateLimitEnabled}
-							/>
-						</div>
-					</>
-				)}
-
-				{/* Schedule Config */}
-				{isSchedule && (
-					<>
-						<div className="border-t pt-4">
-							<h4 className="text-sm font-medium mb-3">
-								Schedule Configuration
-							</h4>
-						</div>
-
-						{/* Cron Expression */}
-						<div className="space-y-2">
-							<Label htmlFor="cron-expression">
-								Cron Expression
-							</Label>
-							<Input
-								id="cron-expression"
-								value={cronExpression}
-								onChange={(e) =>
-									setCronExpression(e.target.value)
-								}
-								placeholder="e.g., 0 9 * * * (daily at 9 AM)"
-								className="font-mono"
-							/>
-							<p className="text-xs text-muted-foreground">
-								Standard 5-field cron expression (minute hour
-								day-of-month month day-of-week)
-							</p>
-
-							{/* Cron Validation Display */}
-							{displayCronValidation && (
-								<div className="mt-2">
-									{displayCronValidation.valid ? (
-										<Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-											<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-											<AlertDescription className="text-green-800 dark:text-green-200">
-												{displayCronValidation.human_readable}
-											</AlertDescription>
-										</Alert>
-									) : (
-										<Alert variant="destructive">
-											<AlertCircle className="h-4 w-4" />
-											<AlertDescription>
-												{displayCronValidation.error ||
-													displayCronValidation.human_readable}
-											</AlertDescription>
-										</Alert>
-									)}
-
-									{displayCronValidation.warning && (
-										<Alert className="mt-2 bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
-											<AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-											<AlertDescription className="text-yellow-800 dark:text-yellow-200">
-												{displayCronValidation.warning}
-											</AlertDescription>
-										</Alert>
-									)}
-								</div>
-							)}
-						</div>
-
-						{/* Timezone */}
-						<div className="space-y-2">
-							<Label htmlFor="timezone">Timezone</Label>
-							<Select
-								value={timezone}
-								onValueChange={setTimezone}
-							>
-								<SelectTrigger id="timezone">
-									<SelectValue placeholder="Select timezone..." />
-								</SelectTrigger>
-								<SelectContent>
-									{COMMON_TIMEZONES.map((tz) => (
-										<SelectItem key={tz} value={tz}>
-											{tz}
-										</SelectItem>
+			<div className="-mx-1 min-h-0 min-w-0 overflow-y-auto px-1">
+				<fieldset
+					disabled={isLoading}
+					className="min-w-0 space-y-5 py-5"
+				>
+					{errors.length > 0 && (
+						<Alert
+							ref={errorSummaryRef}
+							tabIndex={-1}
+							className="focus:outline-none"
+							variant="destructive"
+						>
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription>
+								<ul className="list-disc list-inside">
+									{errors.map((error, i) => (
+										<li key={i}>{error}</li>
 									))}
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground">
-								Timezone for evaluating the cron expression
+								</ul>
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{/* Organization (Platform Admin Only) */}
+					{isPlatformAdmin && (
+						<div className="min-w-0 space-y-2">
+							<Label htmlFor={`${formId}-organization`}>
+								Organization
+							</Label>
+							<OrganizationSelect
+								id={`${formId}-organization`}
+								disabled={isLoading}
+								triggerClassName="min-h-11 lg:min-h-11"
+								value={organizationId}
+								onChange={(value) =>
+									setOrganizationId(value ?? null)
+								}
+								showGlobal
+							/>
+							<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+								Leave as Global to make this source available to
+								all organizations.
 							</p>
 						</div>
+					)}
 
-						{/* Enabled Toggle */}
-						<div className="flex items-center justify-between">
-							<div className="space-y-0.5">
-								<Label htmlFor="schedule-enabled">
-									Enabled
+					{/* Name */}
+					<div className="min-w-0 space-y-2">
+						<Label htmlFor={`${formId}-name`}>Name</Label>
+						<Input
+							className="min-h-11"
+							id={`${formId}-name`}
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder="e.g., GitHub Webhooks"
+						/>
+					</div>
+
+					{/* Topic (read-only) */}
+					{source.source_type === "topic" && source.event_type && (
+						<div className="min-w-0 space-y-2">
+							<Label htmlFor={`${formId}-topic`}>Topic</Label>
+							<Input
+								className="min-h-11 font-mono"
+								id={`${formId}-topic`}
+								value={source.event_type}
+								disabled
+							/>
+							<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+								The topic this source publishes to. Cannot be
+								changed after creation.
+							</p>
+						</div>
+					)}
+
+					{isWebhook && adaptersError && (
+						<Alert>
+							<AlertCircle className="size-4" />
+							<AlertDescription className="space-y-3">
+								<p>
+									Could not load webhook configuration.
+									Existing values have been retained.
+								</p>
+								<Button
+									type="button"
+									variant="outline"
+									className="min-h-11"
+									disabled={adaptersFetching || isLoading}
+									onClick={() => void refetchAdapters()}
+								>
+									Retry configuration
+								</Button>
+							</AlertDescription>
+						</Alert>
+					)}
+					{/* Webhook Config (Dynamic from adapter schema) */}
+					{isWebhook && hasDynamicConfig && selectedAdapter && (
+						<>
+							<div className="border-t pt-4">
+								<h4 className="text-sm font-medium mb-3">
+									Webhook Configuration
+								</h4>
+								{selectedAdapter.display_name !==
+									"Generic Webhook" && (
+									<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere] mb-3">
+										Adapter: {selectedAdapter.display_name}
+									</p>
+								)}
+							</div>
+							<DynamicConfigForm
+								adapterName={selectedAdapter.name}
+								integrationId={
+									source.webhook?.integration_id ?? undefined
+								}
+								requiresIntegration={
+									!!selectedAdapter.requires_integration
+								}
+								organizationId={organizationId}
+								configSchema={
+									selectedAdapter.config_schema as unknown as ConfigSchema
+								}
+								config={webhookConfig}
+								onChange={setWebhookConfig}
+							/>
+						</>
+					)}
+
+					{/* Rate Limiting (Webhook only) */}
+					{isWebhook && (
+						<>
+							<div className="border-t pt-4">
+								<h4 className="text-sm font-medium mb-3">
+									Rate limiting
+								</h4>
+							</div>
+
+							{source.webhook &&
+								source.webhook.rate_limited_count_24h > 0 && (
+									<p className="text-sm text-destructive">
+										{source.webhook.rate_limited_count_24h}{" "}
+										request
+										{source.webhook
+											.rate_limited_count_24h === 1
+											? ""
+											: "s"}{" "}
+										rate limited in the last 24 hours.
+									</p>
+								)}
+
+							<div className="min-w-0 space-y-2">
+								<Label
+									htmlFor={`${formId}-rate-limit-per-minute`}
+								>
+									Max events
 								</Label>
-								<p className="text-xs text-muted-foreground">
-									When disabled, the schedule will not trigger
-									events
+								<Input
+									className="min-h-11"
+									id={`${formId}-rate-limit-per-minute`}
+									type="number"
+									min={1}
+									value={rateLimitPerMinute ?? ""}
+									onChange={(e) => {
+										const val = e.target.value;
+										setRateLimitPerMinute(
+											val === "" ? null : Number(val),
+										);
+									}}
+									placeholder="60 (leave empty to disable)"
+								/>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Maximum events accepted within the window
+									below. Leave empty to disable the limit.
 								</p>
 							</div>
-							<Switch
-								id="schedule-enabled"
-								checked={scheduleEnabled}
-								onCheckedChange={setScheduleEnabled}
-							/>
-						</div>
 
-						{/* Overlap Policy */}
-						<div className="space-y-2">
-							<Label htmlFor="overlap-policy">
-								Overlap policy
-							</Label>
-							<Select
-								value={overlapPolicy}
-								onValueChange={(v) =>
-									setOverlapPolicy(
-										v as "skip" | "queue" | "replace",
-									)
-								}
-							>
-								<SelectTrigger id="overlap-policy">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="skip">Skip</SelectItem>
-									<SelectItem value="queue">Queue</SelectItem>
-									<SelectItem value="replace">
-										Replace
-									</SelectItem>
-								</SelectContent>
-							</Select>
-							<p className="text-xs text-muted-foreground">
-								Skip (default) drops the new run if a previous
-								run is still active. Queue and replace are
-								reserved for future use.
-							</p>
-						</div>
-					</>
-				)}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-rate-limit-window`}>
+									Per (seconds)
+								</Label>
+								<Input
+									className="min-h-11"
+									id={`${formId}-rate-limit-window`}
+									type="number"
+									min={1}
+									value={rateLimitWindowSeconds}
+									onChange={(e) =>
+										setRateLimitWindowSeconds(
+											Number(e.target.value),
+										)
+									}
+								/>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Window duration. Default 60 means the limit
+									above applies per minute.
+								</p>
+							</div>
+
+							<div className="flex min-w-0 items-center justify-between gap-4">
+								<div className="min-w-0 space-y-1">
+									<Label
+										className="min-h-11"
+										htmlFor={`${formId}-rate-limit-enabled`}
+									>
+										Enabled
+									</Label>
+									<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+										Disable to bypass rate limiting for this
+										source.
+									</p>
+								</div>
+								<Switch
+									disabled={isLoading}
+									className="shrink-0"
+									id={`${formId}-rate-limit-enabled`}
+									checked={rateLimitEnabled}
+									onCheckedChange={setRateLimitEnabled}
+								/>
+							</div>
+						</>
+					)}
+
+					{/* Schedule Config */}
+					{isSchedule && (
+						<>
+							<div className="border-t pt-4">
+								<h4 className="text-sm font-medium mb-3">
+									Schedule Configuration
+								</h4>
+							</div>
+
+							{/* Cron Expression */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-cron-expression`}>
+									Cron Expression
+								</Label>
+								<Input
+									className="min-h-11 font-mono"
+									id={`${formId}-cron-expression`}
+									value={cronExpression}
+									onChange={(e) =>
+										setCronExpression(e.target.value)
+									}
+									placeholder="e.g., 0 9 * * * (daily at 9 AM)"
+								/>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Standard 5-field cron expression (minute
+									hour day-of-month month day-of-week)
+								</p>
+
+								{cronExpression.trim() &&
+									!displayCronValidation && (
+										<p
+											role="status"
+											className="text-sm text-muted-foreground"
+										>
+											Checking schedule…
+										</p>
+									)}
+								{/* Cron Validation Display */}
+								{displayCronValidation && (
+									<div className="mt-2">
+										{displayCronValidation.valid ? (
+											<Alert className="bg-[var(--bf-success-soft)] border-transparent">
+												<CheckCircle2 className="h-4 w-4 text-[var(--bf-success)]" />
+												<AlertDescription className="text-[var(--bf-success)]">
+													{
+														displayCronValidation.human_readable
+													}
+												</AlertDescription>
+											</Alert>
+										) : (
+											<Alert
+												ref={errorSummaryRef}
+												tabIndex={-1}
+												className="focus:outline-none"
+												variant="destructive"
+											>
+												<AlertCircle className="h-4 w-4" />
+												<AlertDescription>
+													{displayCronValidation.error ||
+														displayCronValidation.human_readable}
+												</AlertDescription>
+											</Alert>
+										)}
+
+										{displayCronValidation.warning && (
+											<Alert className="mt-2 bg-[var(--bf-warning-soft)] border-transparent">
+												<AlertCircle className="h-4 w-4 text-[var(--bf-warning)]" />
+												<AlertDescription className="text-[var(--bf-warning)]">
+													{
+														displayCronValidation.warning
+													}
+												</AlertDescription>
+											</Alert>
+										)}
+									</div>
+								)}
+							</div>
+
+							{/* Timezone */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-timezone`}>
+									Timezone
+								</Label>
+								<Select
+									disabled={isLoading}
+									value={timezone}
+									onValueChange={setTimezone}
+								>
+									<SelectTrigger
+										className="min-h-11 w-full"
+										id={`${formId}-timezone`}
+									>
+										<SelectValue placeholder="Select timezone..." />
+									</SelectTrigger>
+									<SelectContent>
+										{COMMON_TIMEZONES.map((tz) => (
+											<SelectItem key={tz} value={tz}>
+												{tz}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Timezone for evaluating the cron expression
+								</p>
+							</div>
+
+							{/* Enabled Toggle */}
+							<div className="flex min-w-0 items-center justify-between gap-4">
+								<div className="min-w-0 space-y-1">
+									<Label
+										className="min-h-11"
+										htmlFor={`${formId}-schedule-enabled`}
+									>
+										Enabled
+									</Label>
+									<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+										When disabled, the schedule will not
+										trigger events
+									</p>
+								</div>
+								<Switch
+									disabled={isLoading}
+									className="shrink-0"
+									id={`${formId}-schedule-enabled`}
+									checked={scheduleEnabled}
+									onCheckedChange={setScheduleEnabled}
+								/>
+							</div>
+
+							{/* Overlap Policy */}
+							<div className="min-w-0 space-y-2">
+								<Label htmlFor={`${formId}-overlap-policy`}>
+									Overlap policy
+								</Label>
+								<Select
+									disabled={isLoading}
+									value={overlapPolicy}
+									onValueChange={(v) =>
+										setOverlapPolicy(
+											v as "skip" | "queue" | "replace",
+										)
+									}
+								>
+									<SelectTrigger
+										className="min-h-11 w-full"
+										id={`${formId}-overlap-policy`}
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="skip">
+											Skip
+										</SelectItem>
+										<SelectItem value="queue">
+											Queue
+										</SelectItem>
+										<SelectItem value="replace">
+											Replace
+										</SelectItem>
+									</SelectContent>
+								</Select>
+								<p className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+									Skip (default) drops the new run if a
+									previous run is still active. Queue and
+									replace are reserved for future use.
+								</p>
+							</div>
+						</>
+					)}
+				</fieldset>
 			</div>
 
-			<DialogFooter>
+			<DialogFooter className="shrink-0 border-t pt-4">
 				<Button
 					type="button"
 					variant="outline"
+					className="min-h-11"
+					disabled={isLoading}
 					onClick={() => onOpenChange(false)}
 				>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={isLoading}>
+				<Button type="submit" className="min-h-11" disabled={isLoading}>
 					{isLoading && (
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
 					)}
 					Save Changes
 				</Button>
@@ -565,11 +687,19 @@ export function EditEventSourceDialog({
 	open,
 	onOpenChange,
 }: EditEventSourceDialogProps) {
+	const updateMutation = useUpdateEventSource();
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-[500px]">
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!updateMutation.isPending) onOpenChange(nextOpen);
+			}}
+		>
+			<DialogContent className="overflow-hidden sm:max-w-[500px]">
 				{open && source && (
 					<EditEventSourceDialogContent
+						key={source.id}
+						updateMutation={updateMutation}
 						source={source}
 						onOpenChange={onOpenChange}
 					/>

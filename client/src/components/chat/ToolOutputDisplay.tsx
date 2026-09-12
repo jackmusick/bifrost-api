@@ -23,32 +23,32 @@ interface ToolOutputDisplayProps {
 function getLineClass(line: string): string {
 	// Diff format: added lines
 	if (line.startsWith("+")) {
-		return "text-green-600 dark:text-green-400";
+		return "text-[var(--bf-success)]";
 	}
 
 	// Diff format: removed lines
 	if (line.startsWith("-")) {
-		return "text-red-600 dark:text-red-400";
+		return "text-[var(--bf-danger)]";
 	}
 
 	// Grep format: file:line: match
 	if (/^[\w./]+:\d+:/.test(line)) {
-		return "text-cyan-600 dark:text-cyan-400";
+		return "text-[var(--bf-info)]";
 	}
 
 	// Status messages
 	if (/^(Updated|Deleted|Created|Found)\s/.test(line)) {
-		return "text-blue-600 dark:text-blue-400";
+		return "text-[var(--bf-info)]";
 	}
 
 	// Error messages
 	if (line.startsWith("Error:") || line.startsWith("✗")) {
-		return "text-red-600 dark:text-red-400";
+		return "text-[var(--bf-danger)]";
 	}
 
 	// Success indicators
 	if (line.startsWith("✓")) {
-		return "text-green-600 dark:text-green-400";
+		return "text-[var(--bf-success)]";
 	}
 
 	return "";
@@ -63,12 +63,12 @@ export function ToolOutputDisplay({
 	return (
 		<pre
 			className={cn(
-				"font-mono text-sm whitespace-pre-wrap overflow-x-auto",
+				"max-w-full overflow-x-auto rounded-[var(--bf-radius-surface)] border border-border/70 bg-muted/20 p-3 font-mono text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]",
 				className
 			)}
 		>
 			{lines.map((line, i) => (
-				<div key={i} className={getLineClass(line)}>
+				<div key={i} className={cn("min-w-0", getLineClass(line))}>
 					{line || "\u00A0"} {/* Non-breaking space for empty lines */}
 				</div>
 			))}

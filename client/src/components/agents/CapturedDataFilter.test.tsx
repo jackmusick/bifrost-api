@@ -17,6 +17,26 @@ import {
 
 const mockUseMetadataKeys = vi.fn();
 const mockUseMetadataValues = vi.fn();
+const mockRefetchMetadataKeys = vi.fn();
+const mockRefetchMetadataValues = vi.fn();
+
+type MetadataKeysQueryState = {
+	data?: { keys: string[] };
+	isLoading: boolean;
+	isFetching: boolean;
+	isError: boolean;
+	error: unknown;
+	refetch: ReturnType<typeof vi.fn>;
+};
+
+type MetadataValuesQueryState = {
+	data?: { values: string[] };
+	isLoading: boolean;
+	isFetching: boolean;
+	isError: boolean;
+	error: unknown;
+	refetch: ReturnType<typeof vi.fn>;
+};
 
 vi.mock("@/services/agentRuns", () => ({
 	useMetadataKeys: (agentId: string | undefined) =>
@@ -25,17 +45,39 @@ vi.mock("@/services/agentRuns", () => ({
 		mockUseMetadataValues(agentId, key),
 }));
 
-beforeEach(() => {
+function setMetadataKeysState(partial: Partial<MetadataKeysQueryState> = {}) {
 	mockUseMetadataKeys.mockReturnValue({
 		data: {
 			keys: ["customer", "billing_status", "service_category"],
 		},
 		isLoading: false,
+		isFetching: false,
+		isError: false,
+		error: undefined,
+		refetch: mockRefetchMetadataKeys,
+		...partial,
 	});
+}
+
+function setMetadataValuesState(partial: Partial<MetadataValuesQueryState> = {}) {
 	mockUseMetadataValues.mockReturnValue({
 		data: { values: ["Billable", "Non-billable"] },
 		isLoading: false,
+		isFetching: false,
+		isError: false,
+		error: undefined,
+		refetch: mockRefetchMetadataValues,
+		...partial,
 	});
+}
+
+beforeEach(() => {
+	mockUseMetadataKeys.mockReset();
+	mockUseMetadataValues.mockReset();
+	mockRefetchMetadataKeys.mockReset();
+	mockRefetchMetadataValues.mockReset();
+	setMetadataKeysState();
+	setMetadataValuesState();
 });
 
 describe("conditionsToQueryParam", () => {
@@ -88,6 +130,9 @@ describe("CapturedDataFilter", () => {
 		expect(
 			screen.getByRole("button", { name: /add captured data filter/i }),
 		).toBeInTheDocument();
+		expect(
+			screen.queryByText(/add a rule to filter by metadata key/i),
+		).not.toBeInTheDocument();
 	});
 
 	it("add button calls onChange with a new empty row (op=contains default)", () => {
@@ -121,6 +166,12 @@ describe("CapturedDataFilter", () => {
 		expect(
 			screen.getByLabelText(/captured data filter value/i),
 		).toHaveValue("acme");
+		expect(
+			screen.getByRole("combobox", { name: /metadata key/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /remove filter row 1/i }),
+		).toBeInTheDocument();
 	});
 
 	it("remove button strips the row out of the condition array", () => {
@@ -143,6 +194,7 @@ describe("CapturedDataFilter", () => {
 		expect(onChange).toHaveBeenCalledWith([
 			{ key: "billing_status", op: "eq", value: "Billable" },
 		]);
+		expect(screen.getByRole("button", { name: /add captured data filter/i })).toHaveFocus();
 	});
 
 	it("guards useMetadataValues: only fires when op=eq and key is set", () => {
@@ -178,5 +230,152 @@ describe("CapturedDataFilter", () => {
 			"agent-1",
 			"billing_status",
 		);
+	});
+
+	it("disables the exact-match value selector until a key is chosen", () => {
+		const rows: MetadataFilterCondition[] = [
+			{ key: "", op: "eq", value: "" },
+		];
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={rows}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByRole("combobox", { name: /value/i }),
+		).toBeDisabled();
+		expect(
+			screen.getByText(/pick a key first to load exact-match values/i),
+		).toBeInTheDocument();
+	});
+
+	it("surfaces metadata-key loading states", () => {
+		setMetadataKeysState({
+			isLoading: true,
+			data: undefined,
+		});
+		const rows: MetadataFilterCondition[] = [
+			{ key: "customer", op: "contains", value: "acme" },
+		];
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={rows}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByText(/loading metadata keys for this agent/i, {
+				selector: "p",
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("disables the metadata-key retry button while the query is fetching", () => {
+		setMetadataKeysState({
+			isError: true,
+			isFetching: true,
+			error: new Error("metadata service unavailable"),
+			data: undefined,
+		});
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={[{ key: "customer", op: "contains", value: "acme" }]}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByRole("button", { name: /retry metadata keys/i }),
+		).toBeDisabled();
+	});
+
+	it("surfaces metadata-key error states and retry", () => {
+		setMetadataKeysState({
+			isError: true,
+			error: new Error("metadata service unavailable"),
+			data: undefined,
+		});
+		const rows: MetadataFilterCondition[] = [
+			{ key: "customer", op: "contains", value: "acme" },
+		];
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={rows}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByText(/could not load metadata keys/i),
+		).toBeInTheDocument();
+		expect(screen.getByText(/metadata service unavailable/i)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /retry metadata keys/i }));
+		expect(mockRefetchMetadataKeys).toHaveBeenCalled();
+	});
+
+	it("surfaces metadata-value loading states for exact matches", () => {
+		setMetadataValuesState({
+			isLoading: true,
+			data: undefined,
+		});
+		const rows: MetadataFilterCondition[] = [
+			{ key: "billing_status", op: "eq", value: "" },
+		];
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={rows}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByText(/loading values for billing_status/i),
+		).toBeInTheDocument();
+	});
+
+	it("disables the metadata-value retry button while the query is fetching", () => {
+		setMetadataValuesState({
+			isError: true,
+			isFetching: true,
+			error: new Error("value lookup failed"),
+			data: undefined,
+		});
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={[{ key: "billing_status", op: "eq", value: "" }]}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByRole("button", { name: /retry values/i }),
+		).toBeDisabled();
+	});
+
+	it("surfaces metadata-value error states and retry for exact matches", () => {
+		setMetadataValuesState({
+			isError: true,
+			error: new Error("value lookup failed"),
+			data: undefined,
+		});
+		const rows: MetadataFilterCondition[] = [
+			{ key: "billing_status", op: "eq", value: "" },
+		];
+		renderWithProviders(
+			<CapturedDataFilter
+				agentId="agent-1"
+				value={rows}
+				onChange={() => {}}
+			/>,
+		);
+		expect(
+			screen.getByText(/could not load values/i),
+		).toBeInTheDocument();
+		expect(screen.getByText(/value lookup failed/i)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /retry values/i }));
+		expect(mockRefetchMetadataValues).toHaveBeenCalled();
 	});
 });

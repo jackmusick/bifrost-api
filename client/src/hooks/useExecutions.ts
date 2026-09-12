@@ -5,6 +5,7 @@
 
 import { $api, apiClient } from "@/lib/api-client";
 import type { ExecutionFilters } from "@/lib/client-types";
+import { sameQueryParamsExcept } from "@/lib/paginated-query";
 import { useQueryClient } from "@tanstack/react-query";
 
 // Re-export types for convenience
@@ -25,6 +26,7 @@ export function useExecutions(
 	filterScope?: string | null,
 	filters?: ExecutionFilters,
 	continuationToken?: string,
+	options: { preservePageData?: boolean } = {},
 ) {
 	// Build query params
 	const queryParams: Record<string, string> = {};
@@ -36,8 +38,7 @@ export function useExecutions(
 	}
 	// undefined = don't send scope (show all)
 
-	if (filters?.workflow_id)
-		queryParams["workflowId"] = filters.workflow_id;
+	if (filters?.workflow_id) queryParams["workflowId"] = filters.workflow_id;
 	else if (filters?.workflow_name)
 		queryParams["workflow_name"] = filters.workflow_name;
 	if (filters?.status) queryParams["status"] = filters.status;
@@ -48,9 +49,23 @@ export function useExecutions(
 		queryParams["excludeLocal"] = filters.excludeLocal.toString();
 	if (continuationToken) queryParams["continuationToken"] = continuationToken;
 
-	return $api.useQuery("get", "/api/executions", {
-		params: { query: queryParams },
-	});
+	return $api.useQuery(
+		"get",
+		"/api/executions",
+		{
+			params: { query: queryParams },
+		},
+		{
+			placeholderData: options.preservePageData
+				? (previousData, previousQuery) =>
+						sameQueryParamsExcept(queryParams, previousQuery, [
+							"continuationToken",
+						])
+							? previousData
+							: undefined
+				: undefined,
+		},
+	);
 }
 
 /**
@@ -89,7 +104,11 @@ export function useExecution(
 				let is404 = false;
 				if (error instanceof Error && error.message.includes("404")) {
 					is404 = true;
-				} else if (error && typeof error === "object" && "detail" in error) {
+				} else if (
+					error &&
+					typeof error === "object" &&
+					"detail" in error
+				) {
 					const detail = (error as Record<string, unknown>).detail;
 					if (
 						typeof detail === "string" &&

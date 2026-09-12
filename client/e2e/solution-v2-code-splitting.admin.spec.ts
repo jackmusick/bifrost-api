@@ -1,3 +1,9 @@
+declare global {
+	interface Window {
+		__v2LazyFixture?: { entryExecutions: number; mounts: number; unmounts: number };
+	}
+}
+
 /** Browser regression for canonical Apps v2 ES-module identity.
  *
  * Builds a normal Vite/React fixture whose React.lazy chunk imports a shared

@@ -139,12 +139,15 @@ describe("solutions service", () => {
 
 		const out = await deleteSolution("sol-1", "my-solution");
 
-		expect(mockDelete).toHaveBeenCalledWith("/api/solutions/{solution_id}", {
-			params: {
-				path: { solution_id: "sol-1" },
-				query: { confirm: "my-solution" },
+		expect(mockDelete).toHaveBeenCalledWith(
+			"/api/solutions/{solution_id}",
+			{
+				params: {
+					path: { solution_id: "sol-1" },
+					query: { confirm: "my-solution" },
+				},
 			},
-		});
+		);
 		expect(out.solution_id).toBe("sol-1");
 	});
 
@@ -170,9 +173,12 @@ describe("solutions service", () => {
 
 		await syncSolution("sol-1");
 
-		expect(mockPost).toHaveBeenCalledWith("/api/solutions/{solution_id}/sync", {
-			params: { path: { solution_id: "sol-1" } },
-		});
+		expect(mockPost).toHaveBeenCalledWith(
+			"/api/solutions/{solution_id}/sync",
+			{
+				params: { path: { solution_id: "sol-1" } },
+			},
+		);
 	});
 
 	it("throws when sync fails", async () => {
@@ -226,10 +232,13 @@ describe("solutions service", () => {
 		};
 		const out = await installSolutionFromRepo(body);
 
-		expect(mockPost).toHaveBeenCalledWith("/api/solutions/install/from-repo", {
-			body,
-			signal: undefined,
-		});
+		expect(mockPost).toHaveBeenCalledWith(
+			"/api/solutions/install/from-repo",
+			{
+				body,
+				signal: undefined,
+			},
+		);
 		// Polled the job, then fetched the solution.
 		expect(mockGet).toHaveBeenCalledWith(
 			"/api/solutions/deploy-jobs/{job_id}",
@@ -352,6 +361,30 @@ describe("solutions service", () => {
 		expect(url).toBe("/api/solutions/install?force=true");
 	});
 
+	it("installs with ?reactivate=true only when explicit reactivate is set", async () => {
+		mockInstallPoll("job-5", "sol-5");
+		const file = new File(["zip-bytes"], "demo.zip", {
+			type: "application/zip",
+		});
+
+		await installSolution({ file, reactivate: true });
+
+		const [url] = mockAuthFetch.mock.calls[0];
+		expect(url).toBe("/api/solutions/install?reactivate=true");
+	});
+
+	it("preserves force and reactivate when both install flags are set", async () => {
+		mockInstallPoll("job-6", "sol-6");
+		const file = new File(["zip-bytes"], "demo.zip", {
+			type: "application/zip",
+		});
+
+		await installSolution({ file, force: true, reactivate: true });
+
+		const [url] = mockAuthFetch.mock.calls[0];
+		expect(url).toBe("/api/solutions/install?force=true&reactivate=true");
+	});
+
 	it("installs globally with empty organization_id when none given", async () => {
 		mockInstallPoll("job-3", "sol-3");
 		const file = new File(["zip-bytes"], "demo.zip", {
@@ -395,7 +428,8 @@ describe("solutions service", () => {
 			ok: false,
 			status: 422,
 			statusText: "Unprocessable Entity",
-			json: () => Promise.resolve({ detail: "wrong password for this bundle" }),
+			json: () =>
+				Promise.resolve({ detail: "wrong password for this bundle" }),
 		});
 		const file = new File(["zip-bytes"], "demo.zip", {
 			type: "application/zip",
@@ -426,7 +460,8 @@ describe("exportSolution", () => {
 		mockAuthFetch.mockResolvedValue({
 			ok: true,
 			headers: new Headers({
-				"Content-Disposition": 'attachment; filename="rtm-portal-0.9.0.zip"',
+				"Content-Disposition":
+					'attachment; filename="rtm-portal-0.9.0.zip"',
 			}),
 			blob: () => Promise.resolve(blob),
 		});
@@ -478,7 +513,9 @@ describe("exportSolution", () => {
 		await exportSolution("sol-1", "full", "hunter2", true);
 
 		const [url] = mockAuthFetch.mock.calls[0];
-		expect(url).toBe("/api/solutions/sol-1/export?mode=full&include_data=true");
+		expect(url).toBe(
+			"/api/solutions/sol-1/export?mode=full&include_data=true",
+		);
 	});
 
 	it("falls back to a generic filename without a disposition header", async () => {
@@ -498,7 +535,10 @@ describe("exportSolution", () => {
 		mockAuthFetch.mockResolvedValue({
 			ok: false,
 			headers: new Headers(),
-			json: () => Promise.resolve({ detail: "No stored bundle for this install" }),
+			json: () =>
+				Promise.resolve({
+					detail: "No stored bundle for this install",
+				}),
 		});
 
 		const { exportSolution } = await import("./solutions");

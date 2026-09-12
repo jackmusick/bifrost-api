@@ -1,3 +1,5 @@
+import { AuthTransition } from "@/components/auth/AuthTransition";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 /**
  * Auth Callback Page
  *
@@ -9,7 +11,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { hashOAuthState } from "@/services/auth";
-import { Loader2, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -42,7 +44,9 @@ export function AuthCallback() {
 
 			// Verify required parameters
 			if (!code || !state || !provider) {
-				setError("Missing required OAuth parameters");
+				setError(
+					"This sign-in link is incomplete. Please start sign-in again.",
+				);
 				return;
 			}
 
@@ -60,7 +64,9 @@ export function AuthCallback() {
 			// so compare digests (browser-binding CSRF check; the server also
 			// validates the raw state against Redis).
 			if (!storedState || (await hashOAuthState(state)) !== storedState) {
-				setError("Invalid OAuth state - possible CSRF attack");
+				setError(
+					"Your sign-in session could not be verified. Please start sign-in again.",
+				);
 				return;
 			}
 
@@ -90,31 +96,35 @@ export function AuthCallback() {
 
 	if (error) {
 		return (
-			<div className="min-h-screen flex items-center justify-center bg-background p-4">
-				<div className="w-full max-w-md space-y-4">
-					<Alert variant="destructive">
-						<AlertCircle className="h-4 w-4" />
-						<AlertDescription>{error}</AlertDescription>
-					</Alert>
-					<Button
-						className="w-full"
-						onClick={() => navigate("/login")}
-					>
-						Return to Login
-					</Button>
-				</div>
+			<div className="min-h-svh flex items-center justify-center bg-background px-4 py-8">
+				<Card className="w-full max-w-md rounded-[var(--bf-radius-feature)]">
+					<CardHeader>
+						<h1 className="font-display text-2xl font-semibold tracking-tight">
+							Sign-in could not be completed
+						</h1>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<Alert variant="destructive">
+							<AlertCircle className="size-4" />
+							<AlertDescription className="[overflow-wrap:anywhere]">
+								{error}
+							</AlertDescription>
+						</Alert>
+						<Button
+							className="min-h-11 w-full"
+							onClick={() => {
+								navigate("/login");
+							}}
+						>
+							Return to Login
+						</Button>
+					</CardContent>
+				</Card>
 			</div>
 		);
 	}
 
-	return (
-		<div className="min-h-screen flex items-center justify-center bg-background">
-			<div className="text-center">
-				<Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-				<p className="text-muted-foreground">Completing sign in...</p>
-			</div>
-		</div>
-	);
+	return <AuthTransition message="Completing sign in…" />;
 }
 
 export default AuthCallback;

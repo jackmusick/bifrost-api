@@ -1,5 +1,9 @@
+/* Generated inline-app utilities must not override host responsive controls. */
+@layer theme, base, bifrost-app-utilities, components, utilities;
+
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/bifrost-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -97,6 +101,16 @@
 	}
 }
 
+/* Tree selection covers the whole row; nesting belongs to its contents.
+   An opaque mixed surface prevents ancestor connectors showing through it. */
+@utility tree-row-selected {
+	background-color: color-mix(in oklab, var(--bf-info-soft) 55%, var(--card));
+
+	&:hover {
+		background-color: color-mix(in oklab, var(--bf-info-soft) 55%, var(--card));
+	}
+}
+
 @utility no-scrollbar {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
@@ -108,149 +122,86 @@
 
 /* ----------------------- end shadcn/tailwind.css ------------------- */
 
-/* Agent history surfaces are bounded workspaces on standard desktop viewports.
- * The page context remains fixed while the repeated collection owns overflow.
- * Runs caps expanded filters separately; Overview lets Recent activity and the
- * sidebar scroll independently. Narrow or short viewports intentionally retain
- * ordinary document scrolling.
- */
-@media (min-width: 64rem) and (min-height: 45rem) {
-	.agent-overview-workspace,
-	.agent-runs-workspace {
-		height: 100%;
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.agent-overview-workspace .agent-overview-tab {
-		min-height: 0;
-		flex: 1 1 0%;
-		overflow: hidden;
-	}
-
-	.agent-overview-workspace .agent-overview-main {
-		min-height: 0;
-		overflow: hidden;
-	}
-
-	.agent-overview-workspace .agent-overview-recent {
-		display: flex;
-		min-height: 0;
-		flex: 1 1 0%;
-		flex-direction: column;
-	}
-
-	.agent-overview-workspace .agent-overview-recent-list {
-		min-height: 0;
-		flex: 1 1 0%;
-		overflow-y: auto;
-		overscroll-behavior-y: contain;
-	}
-
-	.agent-overview-workspace .agent-overview-sidebar {
-		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior-y: contain;
-		scrollbar-gutter: stable;
-		padding-inline-end: 0.25rem;
-	}
-
-	.agent-runs-workspace .agent-runs-tab {
-		min-height: 0;
-		flex: 1 1 0%;
-		overflow: hidden;
-	}
-
-	.agent-runs-workspace .agent-runs-filter-region {
-		max-height: min(12rem, 30vh);
-		overflow-y: auto;
-		overscroll-behavior-y: contain;
-		scrollbar-gutter: stable;
-		padding-inline-end: 0.25rem;
-	}
-
-	.agent-runs-workspace .agent-runs-scroll-region {
-		min-height: 0;
-		flex: 1 1 0%;
-		overflow-y: auto;
-		overscroll-behavior-y: contain;
-		padding-block-end: 0.25rem;
-	}
-}
 
 :root {
-	--radius: 0.65rem;
-	--background: oklch(1 0 0);
-	--foreground: oklch(0.145 0 0);
-	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.145 0 0);
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.145 0 0);
-	--primary: oklch(0.38 0.09 220); /* Teal brand color */
-	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.97 0 0);
-	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
-	--accent: oklch(0.97 0 0);
-	--accent-foreground: oklch(0.205 0 0);
-	--destructive: oklch(0.577 0.245 27.325);
-	--destructive-foreground: oklch(0.985 0 0);
-	--border: oklch(0.922 0 0);
-	--input: oklch(0.922 0 0);
-	--ring: oklch(0.708 0 0);
+	--radius: 6px;
+	--bf-activity-gradient: var(--bf-bridge);
+	--background: #f7f9fa;
+	--foreground: #101419;
+	--card: #ffffff;
+	--popover: #ffffff;
+	--primary: var(--bf-primary);
+	--primary-hover: var(--bf-primary-hover);
+	--primary-foreground: var(--bf-primary-foreground);
+	--secondary: #e8edef;
+	--secondary-foreground: var(--foreground);
+	--muted: #eef2f3;
+	--muted-foreground: #51606c;
+	--accent: #e5ecef;
+	--accent-foreground: var(--foreground);
+	--destructive: var(--bf-danger);
+	--destructive-foreground: #ffffff;
+	--border: #d7dfe3;
+	--input: #aebbc2;
+	--ring: var(--primary);
+	--card-foreground: var(--foreground);
+	--popover-foreground: var(--foreground);
+	--sidebar: var(--card);
+	--sidebar-foreground: var(--foreground);
+	--sidebar-primary: var(--primary);
+	--sidebar-primary-foreground: var(--primary-foreground);
+	--sidebar-accent: var(--accent);
+	--sidebar-accent-foreground: var(--foreground);
+	--sidebar-border: var(--border);
+	--sidebar-ring: var(--ring);
 	--chart-1: oklch(0.646 0.222 41.116);
 	--chart-2: oklch(0.6 0.118 184.704);
 	--chart-3: oklch(0.398 0.07 227.392);
 	--chart-4: oklch(0.828 0.189 84.429);
 	--chart-5: oklch(0.769 0.188 70.08);
-	--radius: 0.625rem;
-	--sidebar: oklch(0.985 0 0);
-	--sidebar-foreground: oklch(0.145 0 0);
-	--sidebar-primary: oklch(0.38 0.09 220); /* Teal brand color */
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.97 0 0);
-	--sidebar-accent-foreground: oklch(0.205 0 0);
-	--sidebar-border: oklch(0.922 0 0);
-	--sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
-	--background: oklch(0.145 0 0);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.205 0 0);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.205 0 0);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.6 0.13 220); /* Lighter teal for dark mode */
-	--primary-foreground: oklch(0.205 0 0);
-	--secondary: oklch(0.269 0 0);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.269 0 0);
-	--muted-foreground: oklch(0.708 0 0);
-	--accent: oklch(0.269 0 0);
-	--accent-foreground: oklch(0.985 0 0);
-	--destructive: oklch(0.704 0.191 22.216);
-	--destructive-foreground: oklch(0.985 0 0);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.556 0 0);
+	--background: #08090b;
+	--foreground: #f7f9fb;
+	--card: #0a0c0f;
+	--popover: #11151a;
+	--primary: var(--bf-primary);
+	--primary-hover: var(--bf-primary-hover);
+	--primary-foreground: var(--bf-primary-foreground);
+	--secondary: #171d24;
+	--secondary-foreground: var(--foreground);
+	--muted: #11151a;
+	--muted-foreground: #9caab5;
+	--accent: #1b242c;
+	--accent-foreground: var(--foreground);
+	--destructive: var(--bf-danger);
+	--destructive-foreground: #321216;
+	--border: #252c34;
+	--input: #3d4853;
+	--ring: var(--primary);
+	--card-foreground: var(--foreground);
+	--popover-foreground: var(--foreground);
+	--sidebar: var(--card);
+	--sidebar-foreground: var(--foreground);
+	--sidebar-primary: var(--primary);
+	--sidebar-primary-foreground: var(--primary-foreground);
+	--sidebar-accent: var(--accent);
+	--sidebar-accent-foreground: var(--foreground);
+	--sidebar-border: var(--border);
+	--sidebar-ring: var(--ring);
 	--chart-1: oklch(0.488 0.243 264.376);
 	--chart-2: oklch(0.696 0.17 162.48);
 	--chart-3: oklch(0.769 0.188 70.08);
 	--chart-4: oklch(0.627 0.265 303.9);
 	--chart-5: oklch(0.645 0.246 16.439);
-	--sidebar: oklch(0.205 0 0);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.6 0.13 220); /* Lighter teal for dark mode */
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.269 0 0);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
-	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: oklch(0.556 0 0);
 }
 
 @theme inline {
+	--font-sans: var(--bf-font-sans);
+	--font-display: var(--bf-font-display);
+	--font-mono: var(--bf-font-mono);
+	--color-primary-hover: var(--primary-hover);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
@@ -303,7 +254,7 @@
 		@apply h-full;
 	}
 	body {
-		@apply bg-background text-foreground;
+		@apply bg-background text-foreground font-sans antialiased;
 	}
 
 	html.embed-transparent,
@@ -312,13 +263,13 @@
 		background: transparent;
 	}
 
-	/* Enable smooth animations everywhere */
-	* {
+	/* Keep feedback on interactive controls; application content owns its motion. */
+	:where(button, a, input, textarea, select, [role="button"]) {
 		transition-property:
 			color, background-color, border-color, text-decoration-color, fill,
 			stroke;
 		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-		transition-duration: 150ms;
+		transition-duration: var(--bf-motion-feedback);
 	}
 
 	/* Page transitions */
@@ -378,18 +329,14 @@
 		}
 	}
 
+	/* A transformed route wrapper can propagate nested scroller overflow to
+	 * the page during the reveal. Opacity keeps scroll ownership stable. */
 	@keyframes routeReadyReveal {
 		from {
-			opacity: 0.72;
-			filter: blur(2px);
-			clip-path: inset(0 0 6px 0 round 8px);
-			transform: translateY(4px);
+			opacity: 0;
 		}
 		to {
 			opacity: 1;
-			filter: blur(0);
-			clip-path: inset(0 round 0);
-			transform: translateY(0);
 		}
 	}
 
@@ -398,12 +345,13 @@
 	}
 
 	.route-transition-progress-fill {
-		background: var(--primary);
+		background: var(--bf-activity-gradient);
 		box-shadow: 0 0 6px oklch(from var(--primary) l c h / 0.24);
 	}
 
 	.route-transition-progress-fill[data-state="loading"] {
-		animation: routeTransitionIndeterminate 1.35s ease-in-out infinite;
+		animation: routeTransitionIndeterminate var(--bf-motion-progress)
+			ease-in-out infinite;
 		transform-origin: left center;
 	}
 
@@ -415,11 +363,6 @@
 		.route-ready-reveal {
 			animation: none;
 		}
-	}
-
-	/* Button press effect */
-	button:active:not(:disabled) {
-		transform: scale(0.98);
 	}
 
 	/* Smooth scrolling */
@@ -711,7 +654,7 @@
 		padding: 0.125rem 0.25rem;
 		border-radius: 0.25rem;
 		font-size: 0.875em;
-		font-family: ui-monospace, monospace;
+		font-family: var(--font-mono);
 	}
 
 	& pre {
@@ -747,4 +690,75 @@
 	& s {
 		text-decoration: line-through;
 	}
+}
+
+/* Motion preferences apply to host feedback without overriding V1 app animations. */
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+	.route-transition-progress-fill[data-state="loading"] {
+		animation: none;
+		transform: none;
+		width: 100%;
+	}
+	[data-slot="button"]:active {
+		transform: none;
+	}
+	::view-transition-old(root),
+	::view-transition-new(root) {
+		animation: none;
+	}
+}
+
+/* Product shell signature: a quiet seam, driven by the same tenant palette. */
+.bf-platform-rail::before {
+	content: "";
+	position: absolute;
+	inset: 24px auto 24px 0;
+	width: 2px;
+	pointer-events: none;
+	background: var(--bf-bridge-vertical);
+	opacity: 0.65;
+	mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent);
+}
+
+/* On narrow or short screens, run review scrolls as a single sheet so header
+ * wrapping and simultaneous recovery notices cannot collapse the content. */
+@media (max-width: 39.999rem), (max-height: 40rem) {
+ .agent-run-review-sheet { overflow-y: auto; }
+ .agent-run-review-sheet :is(.agent-run-review-tabs, .agent-run-review-tab, .agent-run-review-content, .agent-run-review-tuning) {
+  flex: 0 0 auto;
+  overflow: visible;
+  min-height: 0;
+ }
+ .agent-run-review-tuning [data-slot="flag-conversation"] {
+  height: auto;
+  min-height: 20rem;
+ }
+}
+
+/* Paint-only orbit: status updates never change the badge's layout box. */
+@property --bf-orbit-angle {
+ syntax: "<angle>";
+ initial-value: 0deg;
+ inherits: false;
+}
+@keyframes bf-running-orbit {
+ to { --bf-orbit-angle: 360deg; }
+}
+.bf-running-orbit {
+ position: absolute;
+ inset: -1px;
+ border-radius: inherit;
+ padding: 1px;
+ pointer-events: none;
+ background: conic-gradient(from var(--bf-orbit-angle), transparent 35%, color-mix(in oklch, var(--primary), transparent 50%) 65%, var(--primary) 82%, transparent 100%);
+ mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+ mask-composite: exclude;
+ filter: drop-shadow(0 0 2px var(--primary));
+ animation: bf-running-orbit 2.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+ .bf-running-orbit { animation: none; }
 }

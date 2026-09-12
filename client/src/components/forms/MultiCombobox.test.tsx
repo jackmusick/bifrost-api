@@ -118,3 +118,35 @@ describe("MultiCombobox", () => {
 		expect(screen.getByRole("combobox")).toBeDisabled();
 	});
 });
+
+it("keeps missing values visible and supports keyboard removal without opening the picker", async () => {
+	const onValueChange = vi.fn();
+	const { user } = renderWithProviders(
+		<MultiCombobox
+			options={OPTIONS}
+			value={["missing"]}
+			onValueChange={onValueChange}
+		/>,
+	);
+	const trigger = screen.getByRole("combobox");
+	await user.tab();
+	expect(trigger).toHaveFocus();
+	await user.tab();
+	expect(
+		screen.getByRole("button", { name: "Remove missing" }),
+	).toHaveFocus();
+	await user.keyboard("{Enter}");
+	expect(onValueChange).toHaveBeenCalledWith([]);
+	expect(trigger).toHaveFocus();
+	expect(trigger).toHaveAttribute("aria-expanded", "false");
+});
+
+it("disables selected-value removal while options load", () => {
+	renderWithProviders(
+		<MultiCombobox options={OPTIONS} value={["urgent"]} isLoading />,
+	);
+	expect(
+		screen.getByRole("button", { name: "Remove Urgent" }),
+	).toBeDisabled();
+	expect(screen.getByText("Urgent")).toBeInTheDocument();
+});

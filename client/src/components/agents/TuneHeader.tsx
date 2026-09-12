@@ -31,41 +31,54 @@ export function TuneHeader({
 }: TuneHeaderProps) {
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex items-center gap-3">
+			<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
 				<Link
 					to={agentId ? `/agents/${agentId}` : "/agents"}
-					className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+					className="inline-flex min-h-11 min-w-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground [overflow-wrap:anywhere]"
 				>
-					<ArrowLeft className="h-3 w-3" />
+					<ArrowLeft className="size-4 shrink-0" />
 					{agentName ?? "Back to agent"}
 				</Link>
-				<span className="text-xs text-muted-foreground">·</span>
+				<span aria-hidden="true" className="hidden text-xs text-muted-foreground sm:inline">·</span>
 				<Link
 					to={agentId ? `/agents/${agentId}/review` : "/agents"}
-					className="text-xs text-muted-foreground hover:text-foreground"
+					className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground"
 				>
 					Review flagged runs
 				</Link>
 			</div>
 
-			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<h1 className="flex items-center gap-2 text-4xl font-extrabold tracking-tight">
-						<Sparkles className="h-7 w-7" />
+			<div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+				<div className="min-w-0">
+					<h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+						<Sparkles
+							className="size-6 shrink-0 text-primary"
+							aria-hidden="true"
+						/>
 						Tune agent
 					</h1>
-					<p className={cn("mt-2", TYPE_BODY, TONE_MUTED)}>
+					<p
+						className={cn(
+							"mt-2 [overflow-wrap:anywhere]",
+							TYPE_BODY,
+							TONE_MUTED,
+						)}
+					>
 						Refine {agentName ?? "this agent"}
 						&apos;s prompt against {flaggedCount} flagged run
-						{flaggedCount === 1 ? "" : "s"}. Changes are dry-run
-						before going live.
+						{flaggedCount === 1 ? "" : "s"}. Use a dry-run to
+						evaluate your proposal before applying it.
 					</p>
 				</div>
-				{action ? <div className="flex items-center gap-2">{action}</div> : null}
+				{action ? (
+					<div className="flex shrink-0 items-center gap-2 [&>button]:min-h-11 [&>button]:flex-1">
+						{action}
+					</div>
+				) : null}
 			</div>
 
 			<div className={cn("grid grid-cols-2 lg:grid-cols-4", GAP_CARD)}>
-				{statsLoading || !stats ? (
+				{statsLoading ? (
 					<>
 						{[0, 1, 2, 3].map((i) => (
 							<Skeleton
@@ -75,7 +88,7 @@ export function TuneHeader({
 							/>
 						))}
 					</>
-				) : (
+				) : stats ? (
 					<>
 						<StatCard
 							label="Flagged runs"
@@ -101,7 +114,7 @@ export function TuneHeader({
 							}
 						/>
 					</>
-				)}
+				) : null}
 			</div>
 		</div>
 	);

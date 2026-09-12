@@ -39,6 +39,19 @@ beforeEach(() => {
 });
 
 describe("TablesClaimsTab", () => {
+	it("uses a compact loading status while claims load", () => {
+		mockListClaims.mockReturnValue(new Promise(() => undefined));
+
+		renderWithProviders(<TablesClaimsTab />);
+
+		expect(
+			screen.getByRole("status", { name: "Loading custom claims" }),
+		).toHaveTextContent("Loading custom claims");
+		expect(
+			screen.queryByText("No custom claims yet"),
+		).not.toBeInTheDocument();
+	});
+
 	it("lists claims fetched from the service", async () => {
 		mockListClaims.mockResolvedValue({
 			claims: [
@@ -67,8 +80,7 @@ describe("TablesClaimsTab", () => {
 				claims: [
 					{
 						id: "11111111-1111-4111-8111-111111111111",
-						organization_id:
-							"22222222-2222-4222-8222-222222222222",
+						organization_id: "22222222-2222-4222-8222-222222222222",
 						name: "allowed_campus_ids",
 						type: "list",
 						description: null,
@@ -85,15 +97,17 @@ describe("TablesClaimsTab", () => {
 		const { user } = renderWithProviders(<TablesClaimsTab />);
 		await screen.findByText("allowed_campus_ids");
 
-		await user.click(screen.getByRole("button", { name: /delete claim/i }));
+		await user.click(
+			screen.getByRole("button", { name: "allowed_campus_ids actions" }),
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 		// Confirmation dialog appears — accept it.
 		await user.click(screen.getByRole("button", { name: /^delete$/i }));
 
 		await waitFor(() =>
-			expect(mockDeleteClaim).toHaveBeenCalledWith(
-				"allowed_campus_ids",
-				{ scope: "22222222-2222-4222-8222-222222222222" },
-			),
+			expect(mockDeleteClaim).toHaveBeenCalledWith("allowed_campus_ids", {
+				scope: "22222222-2222-4222-8222-222222222222",
+			}),
 		);
 		expect(mockListClaims).toHaveBeenCalledTimes(2);
 	});
@@ -130,13 +144,50 @@ describe("TablesClaimsTab", () => {
 		// Managed claim shows the badge; the loose claim does not.
 		expect(screen.getAllByTestId("solution-managed-badge")).toHaveLength(1);
 
-		// Loose claim keeps its Edit/Delete controls; the managed one does not,
-		// so exactly one of each control is rendered (for the loose row).
 		expect(
-			screen.getAllByRole("button", { name: /edit claim/i }),
-		).toHaveLength(1);
+			screen.getByRole("button", { name: "loose_claim actions" }),
+		).toBeVisible();
 		expect(
-			screen.getAllByRole("button", { name: /delete claim/i }),
-		).toHaveLength(1);
+			screen.queryByRole("button", { name: "managed_claim actions" }),
+		).not.toBeInTheDocument();
+	});
+	it("offers retry after an initial failure without showing a false empty state", async () => {
+		mockListClaims
+			.mockRejectedValueOnce(new Error("Synthetic failure"))
+			.mockResolvedValueOnce({ claims: [] });
+		const { user } = renderWithProviders(<TablesClaimsTab />);
+		await screen.findByText("Custom claims could not be loaded");
+		expect(
+			screen.queryByText("No custom claims yet"),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry claims" }));
+		await screen.findByText("No custom claims yet");
+		expect(
+			screen.queryByText("Custom claims could not be loaded"),
+		).not.toBeInTheDocument();
+	});
+	it("retains loaded claims after a failed refresh", async () => {
+		mockListClaims
+			.mockResolvedValueOnce({
+				claims: [
+					{
+						id: "claim-1",
+						name: "review_access",
+						organization_id: null,
+						type: "list",
+						query: { table: "records", select: "id" },
+					},
+				],
+			})
+			.mockRejectedValueOnce(new Error("Synthetic failure"));
+		const { user } = renderWithProviders(<TablesClaimsTab />);
+		await screen.findByText("review_access");
+		await user.click(
+			screen.getByRole("button", { name: "Refresh claims" }),
+		);
+		await screen.findByText(
+			"Showing the last loaded claims. Refresh to get the latest changes.",
+		);
+		expect(screen.getByText("review_access")).toBeVisible();
 	});
 });

@@ -13,6 +13,18 @@ export type WorkflowKeyCreateRequest =
 	components["schemas"]["WorkflowKeyCreateRequest"];
 export type WorkflowKeyResponse = components["schemas"]["WorkflowKeyResponse"];
 
+function workflowKeyError(error: unknown, fallback: string): string {
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"detail" in error &&
+		typeof error.detail === "string" &&
+		error.detail.trim()
+	)
+		return error.detail;
+	return fallback;
+}
+
 export const workflowKeysService = {
 	/**
 	 * List all workflow API keys for the current user
@@ -38,7 +50,12 @@ export const workflowKeysService = {
 		);
 
 		if (error) {
-			throw new Error(`Failed to list workflow keys: ${error}`);
+			throw new Error(
+				workflowKeyError(
+					error,
+					"Could not load workflow keys. Try again.",
+				),
+			);
 		}
 
 		return (data as WorkflowKeyResponse[]) || [];
@@ -55,7 +72,12 @@ export const workflowKeysService = {
 		});
 
 		if (error) {
-			throw new Error(`Failed to create workflow key: ${error}`);
+			throw new Error(
+				workflowKeyError(
+					error,
+					"Could not create the API key. Try again.",
+				),
+			);
 		}
 
 		return data as WorkflowKeyResponse;
@@ -73,7 +95,12 @@ export const workflowKeysService = {
 		);
 
 		if (error) {
-			throw new Error(`Failed to revoke workflow key: ${error}`);
+			throw new Error(
+				workflowKeyError(
+					error,
+					"Could not revoke the API key. Try again.",
+				),
+			);
 		}
 	},
 };

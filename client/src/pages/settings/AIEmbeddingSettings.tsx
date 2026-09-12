@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Database, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,11 +33,13 @@ import {
 import { $api } from "@/lib/api-client";
 
 export function AIEmbeddingSettings() {
-	const { data: connections = [], isLoading: loadingConnections } =
+	const { data: connections = [], isLoading: loadingConnections, isError: connectionsError, isFetching: fetchingConnections, refetch: refetchConnections } =
 		$api.useQuery("get", "/api/admin/ai/connections");
 	const {
 		data: config,
 		isLoading: loadingConfig,
+		isError: configError,
+		isFetching: fetchingConfig,
 		refetch,
 	} = $api.useQuery("get", "/api/admin/llm/embedding-config");
 	const saveEmbedding = $api.useMutation(
@@ -47,6 +49,10 @@ export function AIEmbeddingSettings() {
 	const [connectionId, setConnectionId] = useState("");
 	const [model, setModel] = useState("");
 	const [confirmReindex, setConfirmReindex] = useState(false);
+	const [dirty, setDirty] = useState(false);
+	const [saveError, setSaveError] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const saveBusy = useRef(false);
 	const [loadedConfig, setLoadedConfig] = useState<typeof config>(undefined);
 	const compatibleConnections = useMemo(
 		() =>
@@ -61,12 +67,17 @@ export function AIEmbeddingSettings() {
 
 	if (config !== loadedConfig) {
 		setLoadedConfig(config);
-		setConnectionId(config?.connection_id ?? "");
-		setModel(config?.model ?? "");
+		if (!dirty) {
+			setConnectionId(config?.connection_id ?? "");
+			setModel(config?.model ?? "");
+		}
 	}
 
 	const save = async (confirmed = false) => {
-		if (!connectionId || !model.trim()) return;
+		if (!connectionId || !model.trim() || saveBusy.current || connectionsError || configError) return;
+		saveBusy.current = true;
+		setSaving(true);
+		setSaveError(false);
 		try {
 			const result = await saveEmbedding.mutateAsync({
 				body: {
@@ -80,26 +91,26 @@ export function AIEmbeddingSettings() {
 				return;
 			}
 			setConfirmReindex(false);
+			setDirty(false);
 			await refetch();
 			toast.success(
 				result.notification_id
 					? "Embedding configuration saved; reindexing has started"
 					: "Embedding configuration saved",
 			);
-		} catch (error) {
-			toast.error(
-				error instanceof Error
-					? error.message
-					: "Could not save embedding configuration",
-			);
+		} catch {
+			setSaveError(true);
+		} finally {
+			saveBusy.current = false;
+			setSaving(false);
 		}
 	};
 
 	const loading = loadingConnections || loadingConfig;
 	return (
-		<div className="max-w-3xl space-y-6 pb-8">
+		<div className="min-w-0 w-full space-y-6">
 			<div>
-				<h2 className="text-2xl font-semibold tracking-tight">
+				<h2 className="font-display text-2xl font-semibold tracking-tight">
 					Embeddings
 				</h2>
 				<p className="mt-1 text-sm text-muted-foreground">
@@ -110,7 +121,7 @@ export function AIEmbeddingSettings() {
 			<Card>
 				<CardHeader>
 					<div className="flex items-start gap-3">
-						<div className="rounded-md bg-muted p-2">
+						<div className="rounded-[var(--bf-radius-control)] bg-muted p-2">
 							<Database className="h-4 w-4" />
 						</div>
 						<div>
@@ -125,7 +136,10 @@ export function AIEmbeddingSettings() {
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-5">
-					{compatibleConnections.length === 0 && !loading && (
+					{loading && <p role="status" className="text-sm text-muted-foreground">Loading embedding settings…</p>}
+					{(connectionsError || configError) && <div role="alert" className="space-y-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-4 text-sm"><p>Could not load the latest embedding settings. Your current selections are preserved.</p><Button variant="outline" className="min-h-11" disabled={fetchingConnections || fetchingConfig} onClick={() => { void refetchConnections(); void refetch(); }}>Retry settings</Button></div>}
+					<fieldset disabled={loading || saving || confirmReindex || connectionsError || configError} className="min-w-0 space-y-5">
+					{compatibleConnections.length === 0 && !loading && !connectionsError && (
 						<Alert>
 							<AlertTitle>
 								No compatible provider connection
@@ -143,13 +157,14 @@ export function AIEmbeddingSettings() {
 						<Select
 							value={connectionId}
 							onValueChange={(nextConnectionId) => {
+								setDirty(true);
 								setConnectionId(nextConnectionId);
 								if (nextConnectionId !== connectionId)
 									setModel("");
 							}}
-							disabled={loading}
+							disabled={loading || saving || confirmReindex || connectionsError || configError}
 						>
-							<SelectTrigger id="embedding-connection">
+							<SelectTrigger id="embedding-connection" className="h-auto data-[size=default]:h-auto min-h-11 w-full whitespace-normal [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:text-left [&_[data-slot=select-value]]:[overflow-wrap:anywhere]">
 								<SelectValue placeholder="Select a connection" />
 							</SelectTrigger>
 							<SelectContent>
@@ -167,30 +182,34 @@ export function AIEmbeddingSettings() {
 					</div>
 					<ProviderModelField
 						id="embedding-model"
+						disabled={loading || saving || confirmReindex || connectionsError || configError}
 						connectionId={connectionId}
 						value={model}
-						onValueChange={setModel}
+						onValueChange={(value) => { setDirty(true); setModel(value); }}
 					/>
+					{saveError && !confirmReindex && <p role="alert" className="text-sm text-destructive">Could not save embeddings. Your selections are preserved; try again.</p>}
 					<div className="flex justify-end">
 						<Button
-							onClick={() => void save()}
+							className="min-h-11 w-full sm:w-auto"
+						onClick={() => void save()}
 							disabled={
 								!connectionId ||
 								!model.trim() ||
-								saveEmbedding.isPending
+								saving
 							}
 						>
-							{saveEmbedding.isPending ? (
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							{saving ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 							) : (
 								<Save className="mr-2 h-4 w-4" />
 							)}
 							Save embeddings
 						</Button>
 					</div>
+				</fieldset>
 				</CardContent>
 			</Card>
-			<AlertDialog open={confirmReindex} onOpenChange={setConfirmReindex}>
+			<AlertDialog open={confirmReindex} onOpenChange={(open) => { if (!saving) setConfirmReindex(open); }}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>
@@ -202,10 +221,11 @@ export function AIEmbeddingSettings() {
 							search remains accurate.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
+					{saveError && <p role="alert" className="text-sm text-destructive">Could not save and reindex. Your selections are preserved; try again.</p>}
 					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={() => void save(true)}>
-							Save and reindex
+						<AlertDialogCancel disabled={saving} className="min-h-11">Cancel</AlertDialogCancel>
+						<AlertDialogAction disabled={saving} className="min-h-11" onClick={(event) => { event.preventDefault(); void save(true); }}>
+							{saving ? "Saving…" : "Save and reindex"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

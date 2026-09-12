@@ -1,3 +1,4 @@
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 /**
  * Shared run review panel.
  *
@@ -25,8 +26,6 @@ import {
 	Loader2,
 	RefreshCw,
 } from "lucide-react";
-import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type ReactNode } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -38,7 +37,7 @@ import {
 	type AgentRunNavigationOrigin,
 } from "@/lib/agent-run-navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRegenerateSummary } from "@/services/agentRuns";
+import { SummaryRegenerationControl } from "./SummaryRegenerationControl";
 import type { components } from "@/lib/v1";
 
 import { DidNarrative } from "./DidNarrative";
@@ -180,34 +179,14 @@ export function RunReviewPanel({
 	const visibleActions = fallbackActions.slice(0, maxActions);
 	const overflow = fallbackActions.length - visibleActions.length;
 	const { isPlatformAdmin } = useAuth();
-	const queryClient = useQueryClient();
-	const regenSummary = useRegenerateSummary();
 	const summaryStatus = run.summary_status;
 	const needsRegen = summaryStatus && summaryStatus !== "completed";
-
-	function handleRegenerate() {
-		regenSummary.mutate(
-			{ params: { path: { run_id: run.id } } },
-			{
-				onSuccess: () => {
-					toast.success("Summary regeneration queued");
-					queryClient.invalidateQueries({
-						queryKey: ["get", "/api/agent-runs/{run_id}"],
-					});
-					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
-				},
-				onError: () => {
-					toast.error("Failed to regenerate summary");
-				},
-			},
-		);
-	}
 
 	return (
 		<div data-slot="run-review-panel" className="min-w-0">
 			<div
 				className={cn(
-					"grid min-w-0",
+					"grid min-w-0 grid-cols-[minmax(0,1fr)] [overflow-wrap:anywhere]",
 					compact ? "gap-3.5 px-4 py-3.5" : "gap-4 px-5 py-4",
 				)}
 			>
@@ -216,7 +195,7 @@ export function RunReviewPanel({
 						className={cn(
 							// fade-in so the banner doesn't pop when the
 							// websocket flips summary_status to generating.
-							"flex items-center justify-between gap-3 rounded-md ring-1 px-3 py-2 animate-in fade-in duration-200",
+							"flex flex-wrap items-center justify-between gap-3 rounded-[var(--bf-radius-control)] ring-1 px-3 py-2 animate-in fade-in duration-200 motion-reduce:animate-none",
 							summaryStatus === "failed"
 								? "ring-rose-500/30 bg-rose-500/10"
 								: "ring-foreground/5 bg-muted/50",
@@ -224,9 +203,8 @@ export function RunReviewPanel({
 						)}
 					>
 						<div className="flex items-center gap-2">
-							{summaryStatus === "generating" ||
-							regenSummary.isPending ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+							{summaryStatus === "generating" ? (
+								<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
 							) : (
 								<RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
 							)}
@@ -238,32 +216,13 @@ export function RunReviewPanel({
 										: "Summary pending"}
 							</span>
 						</div>
-						{/* Hide the Regenerate button while generation is
-						    in flight — it would just no-op (idempotent
-						    short-circuit on the backend) and looks like the
-						    user is being asked to act. */}
+						{/* Hide regeneration while the summary is generating. */}
 						{summaryStatus !== "generating" ? (
-							<button
-								type="button"
-								disabled={
-									!isPlatformAdmin || regenSummary.isPending
-								}
-								title={
-									isPlatformAdmin
-										? "Re-run summarization"
-										: "Only platform admins can regenerate summaries"
-								}
-								onClick={handleRegenerate}
-								className={cn(
-									"inline-flex items-center gap-1.5 rounded-2xl border bg-background px-2.5 py-1 text-xs font-medium transition-colors",
-									isPlatformAdmin && !regenSummary.isPending
-										? "hover:bg-accent"
-										: "cursor-not-allowed opacity-60",
-								)}
-								data-testid="regen-summary-panel-button"
-							>
-								Regenerate
-							</button>
+							<SummaryRegenerationControl
+								runId={run.id}
+								allowed={isPlatformAdmin}
+								testId="regen-summary-panel-button"
+							/>
 						) : null}
 					</div>
 				) : null}
@@ -275,11 +234,16 @@ export function RunReviewPanel({
 				>
 					<div
 						className={cn(
-							"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
+							"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 break-words",
 							compact ? "text-xs" : "text-sm",
 						)}
 					>
-						{run.asked || (
+						{run.asked ? (
+							<MarkdownContent
+								content={run.asked}
+								className={compact ? "text-xs" : undefined}
+							/>
+						) : (
 							<SummaryPlaceholder
 								status={run.summary_status}
 								runStatus={run.status}
@@ -359,12 +323,15 @@ export function RunReviewPanel({
 					>
 						<div
 							className={cn(
-								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 whitespace-pre-wrap break-words",
+								"rounded-md bg-muted/50 ring-1 ring-foreground/5 px-3 py-2 break-words",
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
 							{run.answered ? (
-								run.answered
+								<MarkdownContent
+									content={run.answered}
+									className={compact ? "text-xs" : undefined}
+								/>
 							) : run.did ? (
 								// Older summaries have no separate answer and
 								// may still contain executor markers. Reuse the
@@ -388,14 +355,23 @@ export function RunReviewPanel({
 							)}
 						</div>
 					</Section>
-				) : (
+				) : [
+						"failed",
+						"budget_exceeded",
+						"timeout",
+						"cancelled",
+				  ].includes(run.status) ? (
 					<Section
 						icon={<AlertCircle size={13} />}
 						iconClassName="bg-rose-500/15 text-rose-600 dark:text-rose-400"
 						label={
 							run.status === "budget_exceeded"
 								? "Budget exceeded"
-								: "Run failed"
+								: run.status === "cancelled"
+									? "Run cancelled"
+									: run.status === "timeout"
+										? "Run timed out"
+										: "Run failed"
 						}
 						compact={compact}
 					>
@@ -405,8 +381,18 @@ export function RunReviewPanel({
 								compact ? "text-xs" : "text-sm",
 							)}
 						>
-							{run.error ?? "No error message captured."}
+							{run.error ??
+								(run.status === "cancelled"
+									? "This run was cancelled."
+									: "No error message captured.")}
 						</div>
+					</Section>
+				) : (
+					<Section label="Run status" compact={compact}>
+						<SummaryPlaceholder
+							status={run.summary_status}
+							runStatus={run.status}
+						/>
 					</Section>
 				)}
 
@@ -433,7 +419,7 @@ export function RunReviewPanel({
 			{canVerdict ? (
 				<div
 					className={cn(
-						"flex items-center gap-2 bg-muted/40",
+						"flex flex-wrap items-center gap-2 bg-muted/40",
 						variant === "drawer"
 							? "border-t px-4 py-3 flex-col items-stretch"
 							: "mx-5 mb-5 rounded-md ring-1 ring-foreground/5 px-3 py-2.5",
@@ -453,9 +439,9 @@ export function RunReviewPanel({
 								onVerdict(verdict === "up" ? null : "up")
 							}
 							className={cn(
-								"inline-flex items-center gap-1.5 rounded-2xl border px-2.5 py-1 text-xs font-medium transition-colors",
+								"inline-flex min-h-11 items-center gap-1.5 rounded-[var(--bf-radius-control)] border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none sm:min-h-8",
 								verdict === "up"
-									? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+									? "border-[var(--bf-success)] bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
 									: "bg-background hover:bg-accent",
 							)}
 						>
@@ -469,9 +455,9 @@ export function RunReviewPanel({
 								onVerdict(verdict === "down" ? null : "down")
 							}
 							className={cn(
-								"inline-flex items-center gap-1.5 rounded-2xl border px-2.5 py-1 text-xs font-medium transition-colors",
+								"inline-flex min-h-11 items-center gap-1.5 rounded-[var(--bf-radius-control)] border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none sm:min-h-8",
 								verdict === "down"
-									? "border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-300"
+									? "border-[var(--bf-danger)] bg-[var(--bf-danger-soft)] text-[var(--bf-danger)]"
 									: "bg-background hover:bg-accent",
 							)}
 						>
@@ -480,8 +466,10 @@ export function RunReviewPanel({
 					</div>
 					<div
 						className={cn(
-							"flex flex-1",
-							compact ? "ml-0" : "ml-4 max-w-[500px]",
+							"flex min-w-0",
+							compact
+								? "w-full flex-none"
+								: "flex-[1_1_16rem] max-w-[500px]",
 						)}
 					>
 						<Input
@@ -491,6 +479,8 @@ export function RunReviewPanel({
 									? "What should it have done?"
 									: "Add a note (optional)"
 							}
+							aria-label="Review note"
+							maxLength={2000}
 							value={note}
 							onChange={(e) => onNote(e.target.value)}
 						/>
@@ -519,7 +509,7 @@ function Section({
 	plain,
 }: SectionProps) {
 	return (
-		<section>
+		<section className="min-w-0">
 			<div className="mb-2 flex items-center gap-2">
 				{icon && !plain ? (
 					<div

@@ -394,16 +394,16 @@ client_ci_checks() {
 }
 
 repository_ci_checks() {
+    bash scripts/lib/test_stack_lock_test.sh
     echo "Checking GitHub Action pins..."
     python3 api/scripts/check_github_action_pins.py --verify-versions
 
     echo "Checking generated Codex skill mirrors..."
-    scripts/sync-codex-skills.sh
-    if ! git diff --quiet -- plugins/bifrost/skills .codex/skills; then
-        echo "ERROR: Codex skill mirrors were stale and have been regenerated." >&2
-        echo "Commit the generated changes, then rerun ./test.sh pre-pr." >&2
-        return 1
-    fi
+    # scripts/check_skill_mirrors.py encapsulates the previous host gate:
+    # scripts/sync-codex-skills.sh, then
+    # git diff --quiet -- plugins/bifrost/skills .codex/skills.
+    # It also enforces the public plugin skill-name namespace contract.
+    python3 scripts/check_skill_mirrors.py
 }
 
 build_local_api_candidate() {
@@ -430,9 +430,11 @@ start_test_client() {
     # startup out of stack_up so backend-only lanes never build or boot a
     # client they do not use. Both product and documentation browser projects
     # call this helper before starting the Playwright runner.
-    if [ "${BIFROST_SKIP_BUILD:-0}" != "1" ]; then
-        docker compose -f "$COMPOSE_FILE" build client
-    fi
+    # The client service uses the shared bifrost-test-client-e2e:latest tag.
+    # Always rebuild it here, even when BIFROST_SKIP_BUILD=1 asks backend lanes
+    # to reuse cached API/test-runner images, so one worktree cannot silently
+    # run browser tests against another worktree's previously tagged client.
+    docker compose -f "$COMPOSE_FILE" build client
     # reset_state stops and starts the API, which can change its container IP.
     # Nginx resolves the `api` upstream when it starts, so retaining a client
     # from a previous browser run can pin it to a dead address and make every
@@ -478,6 +480,11 @@ client_e2e() {
     if [ "$screenshots_all" = true ]; then
         env_args=(-e PLAYWRIGHT_SCREENSHOT_ALL=1)
     fi
+    # Preserve the candidate identity in browser reports, including scoped runs.
+    # Dirty runs are useful iteration evidence, never clean-release evidence.
+    local source_dirty=false
+    if [ -n "$(git status --porcelain)" ]; then source_dirty=true; fi
+    env_args+=(-e "TEST_SOURCE_REVISION=$(git rev-parse HEAD)" -e "TEST_SOURCE_DIRTY=$source_dirty")
 
     if [ ${#passthrough[@]} -gt 0 ]; then
         docker compose -f "$COMPOSE_FILE" --profile client run --rm --no-deps "${env_args[@]}" \
@@ -596,6 +603,22 @@ cmd_pre_pr() {
 # =============================================================================
 # Dispatch
 # =============================================================================
+
+# All stack-mutating commands share one lock, including Playwright and lifecycle
+# resets. Pytest's inner runner lock alone cannot prevent a browser run resetting
+# its database, or two browser runs replacing each other's API containers.
+case "${1:-}:${2:-}" in
+    help:*|-h:*|--help:*|stack:status|client:unit) ;;
+    *)
+        exec {test_command_lock_fd}>"$LOG_DIR/test-stack.lock"
+        if ! flock -n "$test_command_lock_fd"; then
+            echo "ERROR: another test command owns this worktree's test stack." >&2
+            echo "Wait for it to finish before starting tests or changing the stack." >&2
+            exit 1
+        fi
+        ;;
+esac
+
 
 if [ $# -eq 0 ]; then
     cmd_unit

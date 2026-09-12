@@ -27,7 +27,10 @@ vi.mock("@/hooks/useOrganizations", () => ({
 	}),
 }));
 
-const ghConfig = { data: { configured: true, token_saved: true }, isLoading: false };
+const ghConfig = {
+	data: { configured: true, token_saved: true },
+	isLoading: false,
+};
 const mockCreateRepoMutate = vi.fn();
 vi.mock("@/hooks/useGitHub", () => ({
 	useGitHubConfig: () => ghConfig,
@@ -234,13 +237,17 @@ describe("CreateEditSolution — edit mode", () => {
 
 		const dialog = await screen.findByTestId("solution-dialog");
 		const createBtn = within(dialog).getByTestId("create-repo");
-		expect(createBtn).toHaveTextContent(/create solution-my-solution-/i);
+		expect(createBtn).toHaveTextContent("Create repository");
+		const repositoryName = within(dialog).getByText(
+			/^solution-my-solution-/i,
+		).textContent;
+		expect(repositoryName).toMatch(/^solution-my-solution-[a-z0-9]{6}$/);
 
 		await user.click(createBtn);
 		expect(mockCreateRepoMutate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				body: expect.objectContaining({
-					name: expect.stringMatching(/^solution-my-solution-[a-z0-9]{6}$/),
+					name: repositoryName,
 					private: true,
 				}),
 			}),
@@ -289,6 +296,45 @@ function collisionError(message: string): Error & { status: number } {
 }
 
 describe("CreateEditSolution — install collision prompt", () => {
+	it("passes explicit reactivate intent to zip installs", async () => {
+		vi.mocked(previewInstall).mockResolvedValue(makePreview());
+		vi.mocked(installSolution).mockResolvedValue(
+			makeSolution({ status: "active" } as Partial<Solution>) as Solution,
+		);
+		const file = new File(["zip"], "solution.zip", {
+			type: "application/zip",
+		});
+		const { user } = renderWithProviders(
+			<CreateEditSolution
+				mode={{
+					kind: "create",
+					file,
+					organizationId: "org-1",
+					intent: "reactivate",
+				}}
+				open
+				onClose={vi.fn()}
+				onSaved={vi.fn()}
+			/>,
+		);
+
+		expect(
+			await screen.findByText("Reactivate Solution"),
+		).toBeInTheDocument();
+		const reactivateButton = await screen.findByRole("button", {
+			name: "Reactivate",
+		});
+		await waitFor(() => expect(reactivateButton).toBeEnabled());
+		await user.click(reactivateButton);
+
+		await waitFor(() => expect(installSolution).toHaveBeenCalledOnce());
+		expect(vi.mocked(installSolution).mock.calls[0][0]).toMatchObject({
+			file,
+			organizationId: "org-1",
+			reactivate: true,
+		});
+	});
+
 	it("prompts to replace secrets on a 409 collision, then re-installs with replaceSecrets", async () => {
 		vi.mocked(previewInstall).mockResolvedValue(makePreview());
 		// First install attempt collides; the confirmed retry succeeds.
@@ -301,7 +347,9 @@ describe("CreateEditSolution — install collision prompt", () => {
 			.mockResolvedValueOnce(makeSolution() as Solution);
 
 		const onSaved = vi.fn();
-		const file = new File(["zip"], "solution.zip", { type: "application/zip" });
+		const file = new File(["zip"], "solution.zip", {
+			type: "application/zip",
+		});
 		const { user } = renderWithProviders(
 			<CreateEditSolution
 				mode={{ kind: "create", file, organizationId: null }}
@@ -341,7 +389,9 @@ describe("CreateEditSolution — install collision prompt", () => {
 		err.status = 422;
 		vi.mocked(installSolution).mockRejectedValue(err);
 
-		const file = new File(["zip"], "solution.zip", { type: "application/zip" });
+		const file = new File(["zip"], "solution.zip", {
+			type: "application/zip",
+		});
 		const { user } = renderWithProviders(
 			<CreateEditSolution
 				mode={{ kind: "create", file, organizationId: null }}
@@ -368,7 +418,9 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 			makePreview({ requires_password: true }),
 		);
 
-		const file = new File(["zip"], "backup.zip", { type: "application/zip" });
+		const file = new File(["zip"], "backup.zip", {
+			type: "application/zip",
+		});
 		renderWithProviders(
 			<CreateEditSolution
 				mode={{ kind: "create", file, organizationId: null }}
@@ -379,7 +431,9 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		);
 
 		// Password field appears after preview resolves.
-		const passwordInput = await screen.findByTestId("backup-password-input");
+		const passwordInput = await screen.findByTestId(
+			"backup-password-input",
+		);
 		expect(passwordInput).toBeInTheDocument();
 		expect(passwordInput).toHaveAttribute("type", "password");
 	});
@@ -389,7 +443,9 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 			makePreview({ requires_password: false }),
 		);
 
-		const file = new File(["zip"], "solution.zip", { type: "application/zip" });
+		const file = new File(["zip"], "solution.zip", {
+			type: "application/zip",
+		});
 		renderWithProviders(
 			<CreateEditSolution
 				mode={{ kind: "create", file, organizationId: null }}
@@ -407,9 +463,13 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		vi.mocked(previewInstall).mockResolvedValue(
 			makePreview({ requires_password: true }),
 		);
-		vi.mocked(installSolution).mockResolvedValue(makeSolution() as Solution);
+		vi.mocked(installSolution).mockResolvedValue(
+			makeSolution() as Solution,
+		);
 
-		const file = new File(["zip"], "backup.zip", { type: "application/zip" });
+		const file = new File(["zip"], "backup.zip", {
+			type: "application/zip",
+		});
 		const onSaved = vi.fn();
 		const { user } = renderWithProviders(
 			<CreateEditSolution
@@ -421,7 +481,9 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		);
 
 		// Enter the password.
-		const passwordInput = await screen.findByTestId("backup-password-input");
+		const passwordInput = await screen.findByTestId(
+			"backup-password-input",
+		);
 		await user.type(passwordInput, "s3cr3t!");
 
 		// Click install.
@@ -440,13 +502,17 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		vi.mocked(previewInstall).mockResolvedValue(
 			makePreview({ requires_password: true }),
 		);
-		const wrongPwdErr = new Error("wrong password") as Error & { status: number };
+		const wrongPwdErr = new Error("wrong password") as Error & {
+			status: number;
+		};
 		wrongPwdErr.status = 422;
 		vi.mocked(installSolution)
 			.mockRejectedValueOnce(wrongPwdErr)
 			.mockResolvedValueOnce(makeSolution() as Solution);
 
-		const file = new File(["zip"], "backup.zip", { type: "application/zip" });
+		const file = new File(["zip"], "backup.zip", {
+			type: "application/zip",
+		});
 		const onSaved = vi.fn();
 		const { user } = renderWithProviders(
 			<CreateEditSolution
@@ -458,7 +524,9 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		);
 
 		// Enter wrong password and click install.
-		const passwordInput = await screen.findByTestId("backup-password-input");
+		const passwordInput = await screen.findByTestId(
+			"backup-password-input",
+		);
 		await user.type(passwordInput, "wrongpass");
 		const installBtn = await screen.findByTestId("confirm-install");
 		await waitFor(() => expect(installBtn).toBeEnabled());
@@ -471,7 +539,10 @@ describe("CreateEditSolution — full-backup password prompt", () => {
 		expect(screen.getByTestId("backup-password-input")).toHaveValue("");
 
 		// Re-enter correct password and retry.
-		await user.type(screen.getByTestId("backup-password-input"), "correct!");
+		await user.type(
+			screen.getByTestId("backup-password-input"),
+			"correct!",
+		);
 		await user.click(screen.getByTestId("confirm-install"));
 
 		await waitFor(() => expect(installSolution).toHaveBeenCalledTimes(2));
@@ -517,7 +588,9 @@ describe("CreateEditSolution — source picker", () => {
 	it("picking From-zip shows the dropzone (zip path)", async () => {
 		const { user } = renderCreate({ kind: "create" });
 		await user.click(await screen.findByTestId("source-zip"));
-		expect(await screen.findByTestId("dialog-dropzone")).toBeInTheDocument();
+		expect(
+			await screen.findByTestId("dialog-dropzone"),
+		).toBeInTheDocument();
 	});
 
 	it("picking From-repository shows the repo form", async () => {
@@ -585,10 +658,16 @@ describe("CreateEditSolution — repo install path", () => {
 		);
 
 		// Shared confirmation: entity summary + declared config keys.
-		expect(await screen.findByTestId("preview-summary")).toBeInTheDocument();
-		expect(screen.getByTestId("config-section")).toHaveTextContent("TENANT_ID");
+		expect(
+			await screen.findByTestId("preview-summary"),
+		).toBeInTheDocument();
+		expect(screen.getByTestId("config-section")).toHaveTextContent(
+			"TENANT_ID",
+		);
 		// Declared integrations are surfaced in the preview summary (audit U-prev).
-		expect(screen.getByTestId("preview-summary")).toHaveTextContent("integrations");
+		expect(screen.getByTestId("preview-summary")).toHaveTextContent(
+			"integrations",
+		);
 		// Agents' knowledge namespaces are surfaced as a non-blocking note so the
 		// install doesn't look self-contained when a corpus must be populated.
 		const kbNote = screen.getByTestId("knowledge-namespace-note");
@@ -654,4 +733,44 @@ describe("CreateEditSolution — repo install path", () => {
 			}),
 		);
 	});
+});
+
+it("retains secret replacement confirmation and retries the same overwrite choice after failure", async () => {
+	vi.mocked(previewInstall).mockResolvedValue(makePreview());
+	vi.mocked(installSolution)
+		.mockReset()
+		.mockRejectedValueOnce(
+			collisionError(
+				"Import would overwrite existing config values: API_KEY. Re-run with replace to overwrite.",
+			),
+		)
+		.mockRejectedValueOnce(new Error("Synthetic replacement failure"))
+		.mockResolvedValueOnce(makeSolution() as Solution);
+	const onSaved = vi.fn();
+	const { user } = renderWithProviders(
+		<CreateEditSolution
+			mode={{
+				kind: "create",
+				file: new File(["fixture"], "fixture.zip"),
+				organizationId: null,
+			}}
+			open
+			onClose={vi.fn()}
+			onSaved={onSaved}
+		/>,
+	);
+	const install = await screen.findByTestId("confirm-install");
+	await waitFor(() => expect(install).toBeEnabled());
+	await user.click(install);
+	await user.click(await screen.findByTestId("confirm-replace-secrets"));
+	const prompt = screen.getByTestId("replace-secrets-prompt");
+	await waitFor(() =>
+		expect(within(prompt).getByRole("alert")).toHaveFocus(),
+	);
+	expect(prompt).toHaveTextContent("Synthetic replacement failure");
+	await user.click(within(prompt).getByTestId("confirm-replace-secrets"));
+	await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+	expect(vi.mocked(installSolution).mock.calls[2][0]).toEqual(
+		vi.mocked(installSolution).mock.calls[1][0],
+	);
 });

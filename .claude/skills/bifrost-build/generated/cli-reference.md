@@ -1458,6 +1458,7 @@ Usage: integrations create [OPTIONS]
 
 Options:
   --name TEXT               name  [required]
+  --description TEXT        description
   --config-schema TEXT      config_schema (repeat for multiple).
   --entity-id TEXT          entity_id
   --entity-id-name TEXT     entity_id_name
@@ -1508,6 +1509,7 @@ Options:
                                   integration (cascade-deletes related
                                   configs).
   --name TEXT                     name
+  --description TEXT              description
   --list-entities-data-provider TEXT
                                   workflow ref (UUID or name) for
                                   list_entities_data_provider_id.

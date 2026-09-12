@@ -41,7 +41,7 @@ vi.mock("@/components/ui/combobox", () => ({
 
 import { ProviderModelField } from "./ProviderModelField";
 
-function renderField(connectionId: string, onValueChange = vi.fn()) {
+function renderField(connectionId: string, onValueChange = vi.fn(), value = "") {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
@@ -52,7 +52,7 @@ function renderField(connectionId: string, onValueChange = vi.fn()) {
 				<ProviderModelField
 					id="model"
 					connectionId={connectionId}
-					value=""
+					value={value}
 					onValueChange={onValueChange}
 				/>
 			</QueryClientProvider>,
@@ -99,4 +99,24 @@ describe("ProviderModelField", () => {
 		});
 		expect(onValueChange).toHaveBeenCalledWith("text-embedding-3-large");
 	});
+});
+
+
+it("retries catalog failure without losing a selected model", async () => {
+	listProviderModels.mockRejectedValueOnce(new Error("Synthetic failure")).mockResolvedValueOnce({ models: [{ id: "existing-model", display_name: "Existing model" }] });
+	renderField("retry-connection", vi.fn(), "existing-model");
+	expect(await screen.findByRole("alert")).toHaveTextContent("selected model is preserved");
+	expect(screen.getByRole("textbox", { name: "Model" })).toHaveValue("existing-model");
+	fireEvent.click(screen.getByRole("button", { name: "Retry model catalog" }));
+	await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+	expect(screen.getByRole("combobox", { name: "Model" })).toHaveValue("existing-model");
+});
+
+it("allows editing an existing model ID when the catalog is empty", async () => {
+	listProviderModels.mockResolvedValueOnce({ models: [] });
+	const onValueChange = vi.fn();
+	renderField("empty-connection", onValueChange, "existing-model");
+	const input = await screen.findByRole("textbox", { name: "Model" });
+	fireEvent.change(input, { target: { value: "replacement-model" } });
+	expect(onValueChange).toHaveBeenCalledWith("replacement-model");
 });

@@ -1,3 +1,4 @@
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 /**
  * Runs tab for an agent's detail page.
  *
@@ -10,12 +11,13 @@
  * is purely a router for tabs.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,22 +34,21 @@ import {
 	type MetadataFilterCondition,
 } from "@/components/agents/CapturedDataFilter";
 import { QueueBanner } from "@/components/agents/QueueBanner";
+import { RunActionFeedback } from "./RunActionFeedback";
 import { RunCard } from "@/components/agents/RunCard";
-import { RunReviewSheet } from "@/components/agents/RunReviewSheet";
+import { AgentRunSheet } from "./AgentRunSheet";
 import { InfiniteScrollSentinel } from "@/components/ui/infinite-scroll-sentinel";
 import { useAgentRunUpdates } from "@/hooks/useAgentRunUpdates";
 import {
-	useAgentRun,
 	useClearVerdict,
-	useFlagConversation,
 	useInfiniteAgentRuns,
-	useSendFlagMessage,
 	useSetVerdict,
 } from "@/services/agentRuns";
 import type { components } from "@/lib/v1";
 
 type AgentRun = components["schemas"]["AgentRunResponse"];
 type Verdict = "up" | "down" | null;
+type ReviewSave = { runId: string; verdict: Verdict; note?: string };
 type VerdictFilter = "all" | "up" | "down" | "unreviewed";
 
 export interface AgentRunsTabProps {
@@ -55,9 +56,13 @@ export interface AgentRunsTabProps {
 }
 
 export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
+	const shortDesktop = useMediaQuery(
+		"(min-width: 1024px) and (max-height: 700px)",
+	);
 	const [searchParams, setSearchParams] = useSearchParams();
 	const summaryFilter = searchParams.get("summary");
 	const [query, setQuery] = useState("");
+	const searchRef = useRef<HTMLInputElement>(null);
 	const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>("all");
 	const [metadataConditions, setMetadataConditions] = useState<
 		MetadataFilterCondition[]
@@ -65,12 +70,21 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 	const [openRunId, setOpenRunId] = useState<string | null>(null);
 
 	const queryClient = useQueryClient();
+	const reviewBusy = useRef(false);
+	const [pendingReview, setPendingReview] = useState<string | null>(null);
+	const [failedReviews, setFailedReviews] = useState<
+		Record<string, ReviewSave>
+	>({});
 
 	const metadataFilter = conditionsToQueryParam(metadataConditions);
 
 	const {
 		data: runsPages,
 		isLoading,
+		isError,
+		isFetchNextPageError,
+		isFetching,
+		refetch,
 		hasNextPage,
 		isFetchingNextPage,
 		fetchNextPage,
@@ -98,69 +112,91 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 		[runs],
 	);
 
-	function applyVerdict(runId: string, next: Verdict) {
-		const onSuccess = () => {
-			queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
-			queryClient.invalidateQueries({ queryKey: ["agent-runs-infinite"] });
+	function saveReview(change: ReviewSave) {
+		if (reviewBusy.current) return;
+		reviewBusy.current = true;
+		setPendingReview(change.runId);
+		setFailedReviews((previous) => {
+			const next = { ...previous };
+			delete next[change.runId];
+			return next;
+		});
+		const callbacks = {
+			onSuccess: () => {
+				void queryClient.invalidateQueries({
+					queryKey: ["agent-runs"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["agent-runs-infinite"],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["get", "/api/agent-runs/{run_id}"],
+				});
+				if (change.note !== undefined)
+					toast.success(change.note ? "Note saved" : "Note cleared");
+			},
+			onError: () =>
+				setFailedReviews((previous) => ({
+					...previous,
+					[change.runId]: change,
+				})),
+			onSettled: () => {
+				reviewBusy.current = false;
+				setPendingReview(null);
+			},
 		};
-		if (next === null) {
+		if (change.verdict === null) {
 			clearVerdict.mutate(
-				{ params: { path: { run_id: runId } } },
-				{ onSuccess },
+				{ params: { path: { run_id: change.runId } } },
+				callbacks,
 			);
 		} else {
 			setVerdict.mutate(
 				{
-					params: { path: { run_id: runId } },
-					body: { verdict: next },
+					params: { path: { run_id: change.runId } },
+					body: {
+						verdict: change.verdict,
+						...(change.note !== undefined
+							? { note: change.note || null }
+							: {}),
+					},
 				},
-				{ onSuccess },
+				callbacks,
 			);
 		}
 	}
-
+	function applyVerdict(runId: string, verdict: Verdict) {
+		saveReview({ runId, verdict });
+	}
 	function applyNote(runId: string, note: string) {
-		// Re-submits the "down" verdict with the new note populated. The backend
-		// accepts verdict + note together; clearing the note is just an empty
-		// string. Assumes verdict is already "down" — the caller (RunCard) only
-		// exposes the note input in that state.
-		setVerdict.mutate(
-			{
-				params: { path: { run_id: runId } },
-				body: { verdict: "down", note: note || null },
-			},
-			{
-				onSuccess: () => {
-					queryClient.invalidateQueries({ queryKey: ["agent-runs"] });
-			queryClient.invalidateQueries({ queryKey: ["agent-runs-infinite"] });
-					toast.success(note ? "Note saved" : "Note cleared");
-				},
-				onError: () => {
-					toast.error("Failed to save note");
-				},
-			},
-		);
+		saveReview({ runId, verdict: "down", note });
 	}
 
 	return (
-		<div className="agent-runs-tab flex flex-col gap-4">
+		<div
+			className={`agent-runs-tab flex min-w-0 flex-col gap-4 ${shortDesktop ? "" : "lg:h-full lg:min-h-0"}`}
+		>
 			{/* Search + filter bar */}
-			<div className="flex flex-wrap items-center gap-3">
-				<div className="relative flex-1 min-w-[240px] max-w-md">
+			<div className="flex shrink-0 flex-wrap items-center gap-3">
+				<div className="relative min-w-0 flex-[1_1_15rem] max-w-md">
 					<Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 					<Input
+						ref={searchRef}
 						aria-label="Search runs"
 						placeholder='Search — "ticket #123", "acme"…'
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
-						className="pl-8 pr-8"
+						className="min-h-11 pl-8 pr-12"
 					/>
 					{query ? (
 						<button
 							type="button"
 							aria-label="Clear search"
-							onClick={() => setQuery("")}
-							className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+							onClick={() => {
+								setQuery("");
+								searchRef.current?.focus();
+							}}
+							className="absolute right-0 top-0 inline-flex size-11 items-center justify-center rounded-[var(--bf-radius-control)] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							<X className="h-3.5 w-3.5" />
 						</button>
@@ -172,16 +208,24 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 					onValueChange={(v) => setVerdictFilter(v as VerdictFilter)}
 				>
 					<SelectTrigger
-						className="w-[160px]"
+						className="min-h-11 w-full sm:w-[160px]"
 						aria-label="Verdict filter"
 					>
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="all">All verdicts</SelectItem>
-						<SelectItem value="up">Good</SelectItem>
-						<SelectItem value="down">Wrong</SelectItem>
-						<SelectItem value="unreviewed">Unreviewed</SelectItem>
+						<SelectItem className="min-h-11" value="all">
+							All verdicts
+						</SelectItem>
+						<SelectItem className="min-h-11" value="up">
+							Good
+						</SelectItem>
+						<SelectItem className="min-h-11" value="down">
+							Wrong
+						</SelectItem>
+						<SelectItem className="min-h-11" value="unreviewed">
+							Unreviewed
+						</SelectItem>
 					</SelectContent>
 				</Select>
 
@@ -196,7 +240,7 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 								next.delete("summary");
 								setSearchParams(next, { replace: true });
 							}}
-							className="ml-0.5 inline-flex items-center"
+							className="ml-1 inline-flex size-11 items-center justify-center rounded-[var(--bf-radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
 							<X className="h-3 w-3" />
 						</button>
@@ -209,7 +253,11 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				) : null}
 			</div>
 
-			<div className="agent-runs-filter-region">
+			<div
+				className={`agent-runs-filter-region shrink-0 ${shortDesktop ? "" : "lg:max-h-[40%] lg:overflow-auto"}`}
+				role="region"
+				aria-label="Run filter controls"
+			>
 				<CapturedDataFilter
 					agentId={agentId}
 					value={metadataConditions}
@@ -225,9 +273,35 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				/>
 			) : null}
 
+			{isError && (
+				<div
+					role="alert"
+					className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--bf-radius-surface)] border p-4 text-sm"
+				>
+					<p>
+						{isFetchNextPageError
+							? "Could not load more runs."
+							: "Could not load runs."}
+					</p>
+					<Button
+						type="button"
+						variant="outline"
+						className="min-h-11"
+						aria-label="Retry runs"
+						disabled={isFetching}
+						onClick={() =>
+							void (isFetchNextPageError
+								? fetchNextPage()
+								: refetch())
+						}
+					>
+						{isFetching ? "Retrying…" : "Retry"}
+					</Button>
+				</div>
+			)}
 			{/* Run list */}
 			<div
-				className="agent-runs-scroll-region flex flex-col gap-2"
+				className={`agent-runs-scroll-region flex flex-col gap-2 [&>*]:shrink-0 ${shortDesktop ? "" : "lg:min-h-0 lg:flex-1 lg:overflow-auto"}`}
 				role="region"
 				aria-label="Run history"
 			>
@@ -237,8 +311,8 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 						<Skeleton className="h-20 w-full" />
 						<Skeleton className="h-20 w-full" />
 					</>
-				) : runs.length === 0 ? (
-					<p className="rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10 py-8 text-center text-sm text-muted-foreground">
+				) : isError && !runsPages ? null : runs.length === 0 ? (
+					<p className="rounded-[var(--bf-radius-surface)] border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
 						No runs match this filter.
 					</p>
 				) : (
@@ -252,13 +326,31 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 								onOpen={() => setOpenRunId(r.id)}
 								onVerdict={(v) => applyVerdict(r.id, v)}
 								onNote={applyNote}
+								reviewDisabled={pendingReview !== null}
+								reviewFeedback={
+									pendingReview === r.id ||
+									Boolean(failedReviews[r.id]) ? (
+										<RunActionFeedback
+											pending={pendingReview === r.id}
+											failed={Boolean(
+												failedReviews[r.id],
+											)}
+											onRetry={() => {
+												if (failedReviews[r.id])
+													saveReview(
+														failedReviews[r.id],
+													);
+											}}
+										/>
+									) : null
+								}
 							/>
 						))}
 						{isFetchingNextPage ? (
 							<Skeleton className="h-20 w-full" />
 						) : null}
 						<InfiniteScrollSentinel
-							hasNext={!!hasNextPage}
+							hasNext={!!hasNextPage && !isError}
 							isLoading={isFetchingNextPage}
 							onLoadMore={() => fetchNextPage()}
 						/>
@@ -266,65 +358,10 @@ export function AgentRunsTab({ agentId }: AgentRunsTabProps) {
 				)}
 			</div>
 
-			<RunSheet
-				agentId={agentId}
+			<AgentRunSheet
 				openRunId={openRunId}
 				onClose={() => setOpenRunId(null)}
-				onVerdictChange={(v) =>
-					openRunId ? applyVerdict(openRunId, v) : null
-				}
 			/>
 		</div>
-	);
-}
-
-interface RunSheetProps {
-	agentId: string;
-	openRunId: string | null;
-	onClose: () => void;
-	onVerdictChange: (v: Verdict) => void;
-}
-
-function RunSheet({
-	agentId,
-	openRunId,
-	onClose,
-	onVerdictChange,
-}: RunSheetProps) {
-	void agentId;
-	const { data: runDetail } = useAgentRun(openRunId ?? undefined);
-	const { data: conversation } = useFlagConversation(
-		openRunId ?? undefined,
-	);
-	const sendMessage = useSendFlagMessage();
-	const [note, setNote] = useState("");
-
-	function onSendChat(text: string) {
-		if (!openRunId) return;
-		sendMessage.mutate({
-			params: { path: { run_id: openRunId } },
-			body: { content: text },
-		});
-	}
-
-	const open = !!openRunId;
-	const verdict =
-		(((runDetail as unknown as { verdict?: Verdict })?.verdict ??
-			null) as Verdict) ?? null;
-
-	return (
-		<RunReviewSheet
-			open={open}
-			onOpenChange={(o) => (o ? null : onClose())}
-			run={runDetail as never}
-			verdict={verdict}
-			note={note}
-			onVerdict={onVerdictChange}
-			onNote={setNote}
-			conversation={conversation ?? null}
-			onSendChat={onSendChat}
-			chatPending={sendMessage.isPending}
-			defaultTab={verdict === "down" ? "tune" : "review"}
-		/>
 	);
 }

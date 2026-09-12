@@ -14,7 +14,10 @@ function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
 			role="navigation"
 			aria-label="pagination"
 			data-slot="pagination"
-			className={cn("mx-auto flex w-full justify-center", className)}
+			className={cn(
+				"mx-auto flex min-w-0 w-full justify-center",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -27,7 +30,10 @@ function PaginationContent({
 	return (
 		<ul
 			data-slot="pagination-content"
-			className={cn("flex flex-row items-center gap-1", className)}
+			className={cn(
+				"flex min-w-0 flex-row flex-wrap items-center justify-center gap-1",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -46,10 +52,40 @@ function PaginationLink({
 	className,
 	isActive,
 	size = "icon",
+	href,
+	onClick,
+	onKeyDown,
+	tabIndex,
+	"aria-disabled": ariaDisabled,
 	...props
 }: PaginationLinkProps) {
+	const disabled = ariaDisabled === true || ariaDisabled === "true";
+	const action = !href && !!onClick;
 	return (
 		<a
+			href={href}
+			role={action ? "button" : undefined}
+			tabIndex={disabled ? -1 : (tabIndex ?? (action ? 0 : undefined))}
+			aria-disabled={ariaDisabled}
+			onClick={(event) => {
+				if (disabled) {
+					event.preventDefault();
+					return;
+				}
+				onClick?.(event);
+			}}
+			onKeyDown={(event) => {
+				onKeyDown?.(event);
+				if (
+					!event.defaultPrevented &&
+					!disabled &&
+					action &&
+					(event.key === "Enter" || event.key === " ")
+				) {
+					event.preventDefault();
+					event.currentTarget.click();
+				}
+			}}
 			aria-current={isActive ? "page" : undefined}
 			data-slot="pagination-link"
 			data-active={isActive}
@@ -58,6 +94,7 @@ function PaginationLink({
 					variant: isActive ? "outline" : "ghost",
 					size,
 				}),
+				"min-h-11 min-w-11 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed",
 				className,
 			)}
 			{...props}

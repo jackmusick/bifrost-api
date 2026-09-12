@@ -1,3 +1,4 @@
+import { AgentReviewPage } from "./AgentReviewPage";
 /**
  * Tests for AgentReviewPage (review flipbook).
  *
@@ -19,7 +20,13 @@ const mockSetVerdict = vi.fn();
 const mockClearVerdict = vi.fn();
 
 vi.mock("@/services/agentRuns", () => ({
-	useAgentRuns: (params: unknown) => mockUseAgentRuns(params),
+	useInfiniteAgentRuns: (params: unknown) => {
+		const result = mockUseAgentRuns(params);
+		return {
+			...result,
+			data: result.data ? { pages: [result.data] } : undefined,
+		};
+	},
 	useAgentRun: (id: string | undefined) => mockUseAgentRun(id),
 	useSetVerdict: () => ({ mutate: mockSetVerdict, isPending: false }),
 	useClearVerdict: () => ({ mutate: mockClearVerdict, isPending: false }),
@@ -35,13 +42,22 @@ vi.mock("@/components/agents/RunReviewPanel", () => ({
 		run,
 		verdict,
 		onVerdict,
+		note,
+		onNote,
 	}: {
 		run: { id: string };
+		note: string;
+		onNote: (value: string) => void;
 		verdict: string | null;
 		onVerdict: (v: string | null) => void;
 	}) => (
 		<div data-testid="run-review-panel" data-run-id={run.id}>
 			{verdict ?? "none"}
+			<input
+				aria-label="Review note"
+				value={note}
+				onChange={(event) => onNote(event.target.value)}
+			/>
 			<button
 				type="button"
 				onClick={() => onVerdict("up")}
@@ -64,10 +80,7 @@ vi.mock("@/components/agents/RunReviewPanel", () => ({
 // Fixtures
 // -----------------------------------------------------------------------------
 
-function makeRun(
-	id: string,
-	overrides: Record<string, unknown> = {},
-) {
+function makeRun(id: string, overrides: Record<string, unknown> = {}) {
 	return {
 		id,
 		agent_id: "agent-1",
@@ -113,14 +126,15 @@ beforeEach(() => {
 	// Default: invoke success callback so tests can observe auto-advance.
 	mockSetVerdict.mockImplementation((_args, opts) => {
 		opts?.onSuccess?.();
+		opts?.onSettled?.();
 	});
 	mockClearVerdict.mockImplementation((_args, opts) => {
 		opts?.onSuccess?.();
+		opts?.onSettled?.();
 	});
 });
 
 async function renderPage(path = "/agents/agent-1/review") {
-	const { AgentReviewPage } = await import("./AgentReviewPage");
 	function LocationProbe() {
 		const loc = useLocation();
 		return (
@@ -143,14 +157,8 @@ async function renderPage(path = "/agents/agent-1/review") {
 					</>
 				}
 			/>
-			<Route
-				path="/agents/:id"
-				element={<LocationProbe />}
-			/>
-			<Route
-				path="/agents/:id/runs/:runId"
-				element={<LocationProbe />}
-			/>
+			<Route path="/agents/:id" element={<LocationProbe />} />
+			<Route path="/agents/:id/runs/:runId" element={<LocationProbe />} />
 		</Routes>,
 		{ initialEntries: [path] },
 	);
@@ -260,7 +268,7 @@ describe("AgentReviewPage — verdict actions", () => {
 			expect(mockSetVerdict).toHaveBeenCalledWith(
 				expect.objectContaining({
 					params: { path: { run_id: "a" } },
-					body: { verdict: "up" },
+					body: { verdict: "up", note: "needs work" },
 				}),
 				expect.any(Object),
 			);
@@ -272,4 +280,190 @@ describe("AgentReviewPage — verdict actions", () => {
 			);
 		});
 	});
+});
+
+describe("AgentReviewPage — recovery and keyboard ownership", () => {
+	it("shows a failed queue read instead of a successful empty state and retries", async () => {
+		const refetch = vi.fn();
+		mockUseAgentRuns.mockReturnValue({
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch,
+		});
+		const { user } = await renderPage();
+		expect(screen.queryByTestId("review-empty")).not.toBeInTheDocument();
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Could not load review queue",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Retry review queue" }),
+		);
+		expect(refetch).toHaveBeenCalledOnce();
+	});
+	it("keeps cached runs visible when refreshing the queue fails", async () => {
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [makeRun("a")] },
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+		await renderPage();
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Previously loaded data is still shown",
+		);
+		expect(screen.getByTestId("run-review-panel")).toBeInTheDocument();
+	});
+	it("retries a failed detail read while preserving queue navigation", async () => {
+		const refetch = vi.fn();
+		mockUseAgentRun.mockReturnValue({
+			isError: true,
+			isFetching: false,
+			refetch,
+		});
+		const { user } = await renderPage();
+		expect(
+			screen.queryByTestId("run-review-panel"),
+		).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Retry run details" }),
+		);
+		expect(refetch).toHaveBeenCalledOnce();
+		expect(screen.getByTestId("next-button")).toBeEnabled();
+	});
+	it("does not intercept keys owned by controls or modifier shortcuts", async () => {
+		await renderPage();
+		fireEvent.keyDown(screen.getByTestId("next-button"), {
+			key: "ArrowRight",
+		});
+		fireEvent.keyDown(window, { key: "u", ctrlKey: true });
+		expect(screen.getByTestId("review-counter")).toHaveTextContent(
+			"1 of 3",
+		);
+		expect(mockSetVerdict).not.toHaveBeenCalled();
+	});
+});
+
+describe("AgentReviewPage — durable review edits", () => {
+	it("preserves a note while navigating and includes it in the saved verdict", async () => {
+		const { user } = await renderPage();
+		await user.clear(screen.getByRole("textbox", { name: "Review note" }));
+		await user.type(
+			screen.getByRole("textbox", { name: "Review note" }),
+			"Check renewal date",
+		);
+		await user.click(screen.getByTestId("next-button"));
+		await user.click(screen.getByTestId("prev-button"));
+		expect(
+			screen.getByRole("textbox", { name: "Review note" }),
+		).toHaveValue("Check renewal date");
+		await user.click(
+			screen.getByRole("button", { name: "Save note and continue" }),
+		);
+		expect(mockSetVerdict).toHaveBeenCalledWith(
+			expect.objectContaining({
+				body: { verdict: "down", note: "Check renewal date" },
+			}),
+			expect.any(Object),
+		);
+	});
+	it("prevents duplicate saves and navigation, and retains the current run after failure", async () => {
+		let callbacks: { onError: () => void; onSettled: () => void };
+		mockSetVerdict.mockImplementation((_args, options) => {
+			callbacks = options;
+		});
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("panel-up"));
+		expect(screen.getByTestId("next-button")).toBeDisabled();
+		expect(
+			screen.getByRole("textbox", { name: "Review note" }),
+		).toBeDisabled();
+		fireEvent.keyDown(window, { key: "u" });
+		expect(mockSetVerdict).toHaveBeenCalledOnce();
+		const { act } = await import("@testing-library/react");
+		act(() => {
+			callbacks.onError();
+			callbacks.onSettled();
+		});
+		expect(screen.getByTestId("review-counter")).toHaveTextContent(
+			"1 of 3",
+		);
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Could not save your review",
+		);
+		await user.click(screen.getByRole("button", { name: "Retry review" }));
+		expect(mockSetVerdict).toHaveBeenCalledTimes(2);
+	});
+	it("keeps the next run selected after the reviewed item leaves the queue", async () => {
+		const { user } = await renderPage();
+		await user.click(screen.getByTestId("panel-up"));
+		expect(screen.getByTestId("run-review-panel")).toHaveAttribute(
+			"data-run-id",
+			"b",
+		);
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [makeRun("b"), makeRun("c")] },
+			isLoading: false,
+		});
+		// Trigger a local rerender against the refreshed hook response.
+		fireEvent.keyDown(window, { key: "x" });
+		const note = screen.getByRole("textbox", { name: "Review note" });
+		await user.type(note, " refreshed");
+		expect(screen.getByTestId("run-review-panel")).toHaveAttribute(
+			"data-run-id",
+			"b",
+		);
+	});
+});
+
+describe("AgentReviewPage — queue pagination", () => {
+	it("shows the full total and loads additional flagged runs", async () => {
+		const fetchNextPage = vi.fn();
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [makeRun("a")], total: 51 },
+			hasNextPage: true,
+			isLoading: false,
+			fetchNextPage,
+		});
+		const { user } = await renderPage();
+		expect(screen.getByTestId("review-counter")).toHaveTextContent(
+			"1 of 51",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Load more flagged runs" }),
+		);
+		expect(fetchNextPage).toHaveBeenCalledOnce();
+	});
+	it("retains loaded reviews and retries a failed additional page", async () => {
+		const fetchNextPage = vi.fn();
+		mockUseAgentRuns.mockReturnValue({
+			data: { items: [makeRun("a")], total: 51 },
+			hasNextPage: true,
+			isLoading: false,
+			isError: true,
+			isFetchNextPageError: true,
+			fetchNextPage,
+		});
+		const { user } = await renderPage();
+		expect(screen.getByTestId("run-review-panel")).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Retry loading more runs" }),
+		);
+		expect(fetchNextPage).toHaveBeenCalledOnce();
+		expect(
+			screen.queryByRole("button", { name: "Retry review queue" }),
+		).not.toBeInTheDocument();
+	});
+});
+
+it("keeps the review available and retries failed agent information", async () => {
+	const refetch = vi.fn();
+	mockUseAgent.mockReturnValue({ isError: true, isFetching: false, refetch });
+	const { user } = await renderPage();
+	expect(screen.getByTestId("run-review-panel")).toBeInTheDocument();
+	await user.click(
+		screen.getByRole("button", { name: "Retry agent information" }),
+	);
+	expect(refetch).toHaveBeenCalledOnce();
 });

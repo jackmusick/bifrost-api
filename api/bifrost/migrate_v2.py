@@ -33,9 +33,11 @@ from bifrost.platform_names import PLATFORM_EXPORT_NAMES
 # React runtime names (subset of the platform surface) → "react".
 _REACT = frozenset({
     "React", "Fragment", "Suspense", "lazy", "memo", "forwardRef",
+    "createContext", "createElement",
     "useState", "useEffect", "useCallback", "useMemo", "useRef",
     "useContext", "useReducer", "useLayoutEffect", "useId",
     "useTransition", "useDeferredValue", "useImperativeHandle",
+    "useDebugValue", "useInsertionEffect", "useSyncExternalStore",
 })
 
 # react-router-dom names. In v2 there is no platform basename wrapper, so the

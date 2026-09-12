@@ -1,116 +1,63 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-	FileSpreadsheet,
-	FileText,
-	Image,
-	MoreHorizontal,
-	Pencil,
-	Presentation,
-	Search,
-	Trash2,
-	Video,
-} from "lucide-react";
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
+import { useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { ArtifactRecord } from "./ArtifactRecord";
+import { ArtifactDeleteDialog, ArtifactRenameDialog } from "./ArtifactDialogs";
+import { FilePreviewSheet } from "./FilePreviewSheet";
 import {
 	deleteChatArtifact,
-	formatBytes,
-	isImageAttachment,
-	isVideoAttachment,
 	listChatArtifacts,
 	renameChatArtifact,
 	type ChatArtifactPublic,
 } from "@/services/chatAttachments";
-import { FilePreviewSheet } from "./FilePreviewSheet";
 
 type LibraryFilter = "all" | "artifact" | "attachment";
 
-function ArtifactIcon({ artifact }: { artifact: ChatArtifactPublic }) {
-	if (isImageAttachment(artifact.content_type)) return <Image className="h-5 w-5" />;
-	if (isVideoAttachment(artifact.content_type)) return <Video className="h-5 w-5" />;
-	if (artifact.content_type.includes("spreadsheet")) {
-		return <FileSpreadsheet className="h-5 w-5" />;
-	}
-	if (artifact.content_type.includes("presentation")) {
-		return <Presentation className="h-5 w-5" />;
-	}
-	return <FileText className="h-5 w-5" />;
-}
-
-function formatArtifactDate(value: string): string {
-	return new Intl.DateTimeFormat(undefined, {
-		month: "short",
-		day: "numeric",
-		year: "numeric",
-	}).format(new Date(value));
-}
-
 export function ArtifactsLibrary() {
 	const queryClient = useQueryClient();
+	const headingRef = useRef<HTMLHeadingElement>(null);
+	const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
+	const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+	const renameBusyRef = useRef(false);
+	const deleteBusyRef = useRef(false);
+
 	const [search, setSearch] = useState("");
 	const [filter, setFilter] = useState<LibraryFilter>("all");
 	const [preview, setPreview] = useState<ChatArtifactPublic | null>(null);
-	const [renameTarget, setRenameTarget] = useState<ChatArtifactPublic | null>(null);
-	const [deleteTarget, setDeleteTarget] = useState<ChatArtifactPublic | null>(null);
+	const [renameTarget, setRenameTarget] = useState<ChatArtifactPublic | null>(
+		null,
+	);
+	const [deleteTarget, setDeleteTarget] = useState<ChatArtifactPublic | null>(
+		null,
+	);
 	const [filename, setFilename] = useState("");
+	const [isRenaming, setIsRenaming] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [renameError, setRenameError] = useState<string | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
+	const [deletePreferFallback, setDeletePreferFallback] = useState(false);
+
 	const artifactsQuery = useQuery({
 		queryKey: ["chat-artifacts"],
 		queryFn: listChatArtifacts,
 	});
+
 	const renameMutation = useMutation({
 		mutationFn: ({ id, name }: { id: string; name: string }) =>
 			renameChatArtifact(id, name),
-		onSuccess: (renamed) => {
-			queryClient.setQueryData<ChatArtifactPublic[]>(
-				["chat-artifacts"],
-				(current = []) =>
-					current.map((item) => (item.id === renamed.id ? renamed : item)),
-			);
-			setRenameTarget(null);
-			toast.success("Artifact renamed");
-		},
-		onError: (error: Error) => toast.error(error.message),
 	});
+
 	const deleteMutation = useMutation({
 		mutationFn: deleteChatArtifact,
-		onSuccess: (_, id) => {
-			queryClient.setQueryData<ChatArtifactPublic[]>(
-				["chat-artifacts"],
-				(current = []) => current.filter((item) => item.id !== id),
-			);
-			setDeleteTarget(null);
-			toast.success("Artifact deleted");
-		},
-		onError: (error: Error) => toast.error(error.message),
 	});
 
 	const filtered = useMemo(() => {
@@ -124,115 +71,246 @@ export function ArtifactsLibrary() {
 		});
 	}, [artifactsQuery.data, filter, search]);
 
-	const startRename = (artifact: ChatArtifactPublic) => {
+	const startRename = (
+		artifact: ChatArtifactPublic,
+		trigger: HTMLButtonElement,
+	) => {
+		renameTriggerRef.current = trigger;
+		renameBusyRef.current = false;
+		setIsRenaming(false);
+		setRenameError(null);
 		setRenameTarget(artifact);
 		setFilename(artifact.filename);
 	};
 
+	const startDelete = (
+		artifact: ChatArtifactPublic,
+		trigger: HTMLButtonElement,
+	) => {
+		deleteTriggerRef.current = trigger;
+		deleteBusyRef.current = false;
+		setIsDeleting(false);
+		setDeleteError(null);
+		setDeletePreferFallback(false);
+		setDeleteTarget(artifact);
+	};
+
+	const handleRenameSubmit = async () => {
+		if (!renameTarget?.id || renameBusyRef.current || !filename.trim())
+			return;
+
+		const renameId = renameTarget.id;
+		const nextFilename = filename.trim();
+		renameBusyRef.current = true;
+		setIsRenaming(true);
+		setRenameError(null);
+
+		try {
+			const renamed = await renameMutation.mutateAsync({
+				id: renameId,
+				name: nextFilename,
+			});
+
+			queryClient.setQueryData<ChatArtifactPublic[]>(
+				["chat-artifacts"],
+				(current = []) =>
+					current.map((item) =>
+						item.id === renamed.id ? renamed : item,
+					),
+			);
+			setRenameTarget(null);
+			toast.success("Artifact renamed");
+		} catch (error) {
+			setRenameError(
+				error instanceof Error
+					? error.message
+					: "Could not rename this artifact. Try again.",
+			);
+		} finally {
+			renameBusyRef.current = false;
+			setIsRenaming(false);
+		}
+	};
+
+	const handleDeleteConfirm = async () => {
+		if (!deleteTarget?.id || deleteBusyRef.current) return;
+
+		const deleteId = deleteTarget.id;
+		deleteBusyRef.current = true;
+		setIsDeleting(true);
+		setDeleteError(null);
+
+		try {
+			await deleteMutation.mutateAsync(deleteId);
+			queryClient.setQueryData<ChatArtifactPublic[]>(
+				["chat-artifacts"],
+				(current = []) =>
+					current.filter((item) => item.id !== deleteId),
+			);
+			setDeletePreferFallback(true);
+			setDeleteTarget(null);
+			toast.success("Artifact deleted");
+		} catch (error) {
+			setDeleteError(
+				error instanceof Error
+					? error.message
+					: "Could not delete this artifact. Try again.",
+			);
+		} finally {
+			deleteBusyRef.current = false;
+			setIsDeleting(false);
+		}
+	};
+
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto">
-			<div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
-				<div className="mb-7">
-					<h1 className="text-2xl font-semibold tracking-tight">Artifacts</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						Files created or used in your conversations.
-					</p>
-				</div>
-
-				<div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-					<div className="flex gap-1" aria-label="Artifact type">
-						{(["all", "artifact", "attachment"] as const).map((value) => (
-							<Button
-								key={value}
-								type="button"
-								variant={filter === value ? "secondary" : "ghost"}
-								size="sm"
-								onClick={() => setFilter(value)}
-								className="min-h-11 capitalize sm:min-h-7"
-							>
-								{value === "artifact" ? "Generated" : value === "attachment" ? "Uploaded" : value}
-							</Button>
-						))}
+		<div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
+			<PageWorkspace className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-8 sm:py-8">
+				<div className="shrink-0 space-y-6">
+					<div className="shrink-0">
+						<h1
+							ref={headingRef}
+							tabIndex={-1}
+							className="font-display text-2xl font-semibold tracking-tight outline-none"
+						>
+							Artifacts
+						</h1>
+						<p className="mt-1 text-sm text-muted-foreground">
+							Files created or used in your conversations.
+						</p>
 					</div>
-					<label className="relative block w-full sm:w-72">
-						<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-						<span className="sr-only">Search artifacts</span>
-						<Input
-							value={search}
-							onChange={(event) => setSearch(event.target.value)}
-							placeholder="Search files"
-							className="h-11 pl-9 sm:h-8"
-						/>
-					</label>
+
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div
+							className="flex shrink-0 flex-wrap gap-1"
+							role="group"
+							aria-label="Artifact type"
+						>
+							{(["all", "artifact", "attachment"] as const).map(
+								(value) => (
+									<Button
+										key={value}
+										type="button"
+										variant={
+											filter === value
+												? "secondary"
+												: "ghost"
+										}
+										size="sm"
+										aria-pressed={filter === value}
+										onClick={() => setFilter(value)}
+										className="min-h-11 capitalize"
+									>
+										{value === "artifact"
+											? "Generated"
+											: value === "attachment"
+												? "Uploaded"
+												: value}
+									</Button>
+								),
+							)}
+						</div>
+
+						<label className="relative block w-full sm:w-72">
+							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<span className="sr-only">Search artifacts</span>
+							<Input
+								value={search}
+								onChange={(event) =>
+									setSearch(event.target.value)
+								}
+								placeholder="Search files"
+								className="h-11 pl-9"
+							/>
+						</label>
+					</div>
 				</div>
 
-				<div className="overflow-hidden rounded-2xl border bg-background">
-					{artifactsQuery.isLoading ? (
-						<div className="space-y-1 p-2">
-							{[1, 2, 3, 4].map((item) => (
-								<Skeleton key={item} className="h-16 w-full" />
-							))}
-						</div>
-					) : artifactsQuery.isError ? (
-						<div className="p-8 text-center">
-							<p className="text-sm font-medium">Artifacts could not be loaded</p>
-							<Button variant="outline" size="sm" className="mt-3" onClick={() => artifactsQuery.refetch()}>
-								Try again
+				<PageScrollArea className="space-y-6">
+					{artifactsQuery.isError && (
+						<div
+							role="alert"
+							className="mb-4 flex flex-col items-start gap-3 rounded-[var(--bf-radius-control)] border border-[var(--bf-warning)]/20 bg-[var(--bf-warning-soft)] p-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+						>
+							<p>
+								{artifactsQuery.data
+									? "Could not refresh artifacts. Previously loaded files are still shown."
+									: "Artifacts could not be loaded. Retry to continue."}
+							</p>
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 shrink-0"
+								disabled={artifactsQuery.isFetching}
+								onClick={() => {
+									void artifactsQuery.refetch();
+								}}
+							>
+								{artifactsQuery.isFetching
+									? "Retrying…"
+									: "Retry artifacts"}
 							</Button>
 						</div>
-					) : filtered.length === 0 ? (
-						<div className="p-10 text-center">
-							<FileText className="mx-auto h-7 w-7 text-muted-foreground" />
-							<p className="mt-3 text-sm font-medium">
-								{search ? "No matching files" : "No artifacts yet"}
-							</p>
-							<p className="mt-1 text-sm text-muted-foreground">
-								Generated files and chat attachments will appear here.
-							</p>
-						</div>
-					) : (
-						<ul className="divide-y">
-							{filtered.map((artifact) => (
-								<li key={artifact.id} className="group flex min-h-16 items-center gap-3 px-3 py-2 hover:bg-muted/40">
-									<button
-										type="button"
-										aria-label={`Preview ${artifact.filename}`}
-										onClick={() => setPreview(artifact)}
-										className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									>
-										<span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", artifact.kind === "artifact" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
-											<ArtifactIcon artifact={artifact} />
-										</span>
-										<span className="min-w-0 flex-1">
-											<span className="block truncate text-sm font-medium">{artifact.filename}</span>
-											<span className="block truncate text-xs text-muted-foreground">
-												{artifact.kind === "artifact" ? "Generated" : "Uploaded"} · {formatBytes(artifact.size_bytes)}
-												{artifact.conversation_title ? ` · ${artifact.conversation_title}` : ""}
-											</span>
-										</span>
-										<span className="hidden text-xs text-muted-foreground sm:block">{formatArtifactDate(artifact.created_at)}</span>
-									</button>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-										<Button variant="ghost" size="icon-sm" className="size-11 sm:size-7" aria-label={`Manage ${artifact.filename}`}>
-												<MoreHorizontal className="h-4 w-4" />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end">
-											<DropdownMenuItem onSelect={() => startRename(artifact)}>
-												<Pencil /> Rename
-											</DropdownMenuItem>
-											<DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(artifact)}>
-												<Trash2 /> Delete
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</li>
-							))}
-						</ul>
 					)}
-				</div>
-			</div>
+
+					<div className="overflow-hidden rounded-[var(--bf-radius-surface)] border bg-background">
+						{artifactsQuery.isLoading ? (
+							<div
+								role="status"
+								aria-label="Loading artifacts"
+								className="space-y-1 p-2"
+							>
+								{[1, 2, 3, 4].map((item) => (
+									<Skeleton
+										key={item}
+										className="h-16 w-full"
+									/>
+								))}
+							</div>
+						) : artifactsQuery.isError &&
+						  !artifactsQuery.data ? null : filtered.length ===
+						  0 ? (
+							<div className="p-10 text-center">
+								<FileText className="mx-auto h-7 w-7 text-muted-foreground" />
+								<p className="mt-3 text-sm font-medium">
+									{search.trim() || filter !== "all"
+										? "No matching files"
+										: "No artifacts yet"}
+								</p>
+								<p className="mt-1 text-sm text-muted-foreground">
+									{search.trim() || filter !== "all"
+										? "Try another search or show all file types."
+										: "Generated files and chat attachments will appear here."}
+								</p>
+								{(search.trim() || filter !== "all") && (
+									<Button
+										type="button"
+										variant="outline"
+										className="mt-4 min-h-11"
+										onClick={() => {
+											setSearch("");
+											setFilter("all");
+										}}
+									>
+										Clear filters
+									</Button>
+								)}
+							</div>
+						) : (
+							<ul className="divide-y">
+								{filtered.map((artifact) => (
+									<ArtifactRecord
+										key={artifact.id}
+										artifact={artifact}
+										onPreview={setPreview}
+										onRename={startRename}
+										onDelete={startDelete}
+									/>
+								))}
+							</ul>
+						)}
+					</div>
+				</PageScrollArea>
+			</PageWorkspace>
 
 			<FilePreviewSheet
 				conversationId={preview?.conversation_id ?? ""}
@@ -244,44 +322,42 @@ export function ArtifactsLibrary() {
 				onOpenChange={(open) => !open && setPreview(null)}
 			/>
 
-			<Dialog open={renameTarget !== null} onOpenChange={(open) => !open && setRenameTarget(null)}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Rename artifact</DialogTitle>
-						<DialogDescription>Choose the filename shown in Chat and your artifact library.</DialogDescription>
-					</DialogHeader>
-					<Input value={filename} onChange={(event) => setFilename(event.target.value)} autoFocus />
-					<DialogFooter>
-						<Button variant="ghost" onClick={() => setRenameTarget(null)}>Cancel</Button>
-						<Button
-							disabled={!filename.trim() || renameMutation.isPending}
-							onClick={() => renameTarget && renameMutation.mutate({ id: renameTarget.id, name: filename.trim() })}
-						>
-							Rename
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<ArtifactRenameDialog
+				open={renameTarget !== null}
+				filename={filename}
+				pending={isRenaming}
+				error={renameError}
+				onOpenChange={(open) => {
+					if (!open) {
+						setRenameTarget(null);
+						setRenameError(null);
+					}
+				}}
+				onFilenameChange={setFilename}
+				onSubmit={() => {
+					void handleRenameSubmit();
+				}}
+				returnFocusRef={renameTriggerRef}
+			/>
 
-			<AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete artifact?</AlertDialogTitle>
-						<AlertDialogDescription>
-							{deleteTarget?.filename} will be removed from its conversation and cannot be recovered.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-							onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-						>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<ArtifactDeleteDialog
+				open={deleteTarget !== null}
+				target={deleteTarget}
+				pending={isDeleting}
+				error={deleteError}
+				preferFallback={deletePreferFallback}
+				fallbackRef={headingRef}
+				onOpenChange={(open) => {
+					if (!open) {
+						setDeleteTarget(null);
+						setDeleteError(null);
+					}
+				}}
+				onConfirm={() => {
+					void handleDeleteConfirm();
+				}}
+				returnFocusRef={deleteTriggerRef}
+			/>
 		</div>
 	);
 }

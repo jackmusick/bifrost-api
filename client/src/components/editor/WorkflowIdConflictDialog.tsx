@@ -7,14 +7,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { AlertTriangle } from "lucide-react";
 import type { components } from "@/lib/v1";
 
@@ -48,9 +40,9 @@ export function WorkflowIdConflictDialog({
 		<Dialog open={open} onOpenChange={(open) => !open && onCancel()}>
 			<DialogContent className="z-[100] sm:max-w-[600px]">
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2">
-						<AlertTriangle className="h-5 w-5 text-yellow-500" />
-						Workflow ID Conflict
+					<DialogTitle className="flex items-start gap-2">
+						<AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--bf-warning)]" />
+						Workflow ID conflict
 					</DialogTitle>
 					<DialogDescription>
 						{conflicts.length === 1
@@ -59,33 +51,7 @@ export function WorkflowIdConflictDialog({
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="max-h-[300px] overflow-y-auto">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Workflow Name</TableHead>
-								<TableHead>Function</TableHead>
-								<TableHead>Existing ID</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{conflicts.map((conflict) => (
-								<TableRow key={conflict.function_name}>
-									<TableCell className="font-medium">
-										{conflict.name}
-									</TableCell>
-									<TableCell className="font-mono text-sm text-muted-foreground">
-										{conflict.function_name}
-									</TableCell>
-									<TableCell className="font-mono text-xs text-muted-foreground">
-										{conflict.existing_id.substring(0, 8)}
-										...
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
+				<WorkflowConflictList conflicts={conflicts} />
 
 				<div className="text-sm text-muted-foreground space-y-2 border-t pt-4">
 					<p>
@@ -101,16 +67,71 @@ export function WorkflowIdConflictDialog({
 					</p>
 				</div>
 
-				<DialogFooter className="flex gap-2">
-					<Button variant="outline" onClick={onCancel}>
+				<DialogFooter className="flex flex-wrap gap-2">
+					<Button
+						type="button"
+						className="min-h-11 h-auto whitespace-normal"
+						variant="outline"
+						onClick={onCancel}
+					>
 						Cancel
 					</Button>
-					<Button variant="destructive" onClick={onGenerateNew}>
+					<Button
+						type="button"
+						className="min-h-11 h-auto whitespace-normal"
+						variant="destructive"
+						onClick={onGenerateNew}
+					>
 						Generate New IDs
 					</Button>
-					<Button onClick={onUseExisting}>Use Existing IDs</Button>
+					<Button
+						type="button"
+						className="min-h-11 h-auto whitespace-normal"
+						onClick={onUseExisting}
+					>
+						Use Existing IDs
+					</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function WorkflowConflictList({
+	conflicts,
+}: {
+	conflicts: WorkflowIdConflict[];
+}) {
+	return (
+		<ul
+			aria-label="Workflows with conflicting IDs"
+			tabIndex={0}
+			className="min-w-0 max-h-64 overflow-y-auto divide-y rounded-[var(--bf-radius-surface)] border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+		>
+			{conflicts.map((conflict) => (
+				<li
+					key={conflict.function_name}
+					className="min-w-0 space-y-3 p-3 [overflow-wrap:anywhere]"
+				>
+					<p className="text-sm font-medium">{conflict.name}</p>
+					<dl className="grid min-w-0 gap-3 text-sm sm:grid-cols-2">
+						<div className="min-w-0">
+							<dt className="text-muted-foreground">Function</dt>
+							<dd className="mt-1 font-mono">
+								{conflict.function_name}
+							</dd>
+						</div>
+						<div className="min-w-0">
+							<dt className="text-muted-foreground">
+								Existing ID
+							</dt>
+							<dd className="mt-1 font-mono">
+								{conflict.existing_id}
+							</dd>
+						</div>
+					</dl>
+				</li>
+			))}
+		</ul>
 	);
 }

@@ -66,6 +66,7 @@ class MCPToolAccessService:
         user_id: UUID | str | None = None,
         org_id: UUID | str | None = None,
         is_external: bool = False,
+        for_configuration: bool = False,
     ) -> MCPToolAccessResult:
         """
         Get all MCP tools accessible to the user.
@@ -139,6 +140,11 @@ class MCPToolAccessService:
                 agent, workflow_repo, seen_tool_ids
             ):
                 tools.append(workflow_info)
+
+        # The admin settings inventory must include blocked tools so they can
+        # be inspected and restored. Runtime callers retain config filtering.
+        if for_configuration and is_superuser:
+            return MCPToolAccessResult(tools=tools)
 
         # Step 3: Apply global MCP config allowlist/blocklist
         config_service = MCPConfigService(self.session)

@@ -49,6 +49,22 @@ describe("FlaggedRunCard", () => {
 		expect(screen.queryByTestId("run-review-panel")).toBeNull();
 	});
 
+	it("renders markdown in the collapsed title without showing markers", () => {
+		renderWithProviders(
+			<FlaggedRunCard
+				run={
+					{
+						...baseRun,
+						asked: "Send a **test** event",
+					} as never
+				}
+			/>,
+		);
+
+		expect(screen.getByText("test").tagName.toLowerCase()).toBe("strong");
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
 	it("expands to show the transcript when the header is clicked", async () => {
 		const { user } = renderWithProviders(
 			<FlaggedRunCard run={baseRun as never} />,

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { vi } from "vitest";
@@ -145,6 +145,28 @@ it("calls onOpenChange(false) when Cancel is clicked", async () => {
 	expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
+it("blocks dismissal while an export is pending", async () => {
+	const onOpenChange = vi.fn();
+	render(
+		<ExportSolutionDialog
+			open
+			onOpenChange={onOpenChange}
+			onExport={() => {}}
+			isPending
+		/>,
+	);
+
+	expect(screen.getByRole("button", { name: /exporting/i })).toBeDisabled();
+	expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+	const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+	expect(overlay).toBeTruthy();
+	if (overlay) {
+		fireEvent.pointerDown(overlay);
+	}
+	fireEvent.keyDown(document, { key: "Escape" });
+	expect(onOpenChange).not.toHaveBeenCalledWith(false);
+});
+
 it("offers backup content options only in Backup mode", async () => {
 	render(<ExportSolutionDialog open onOpenChange={() => {}} onExport={() => {}} />);
 	expect(screen.queryByLabelText(/config values/i)).toBeNull();
@@ -153,10 +175,10 @@ it("offers backup content options only in Backup mode", async () => {
 	expect(screen.queryByLabelText(/solution-owned files/i)).toBeNull();
 
 	await userEvent.click(screen.getByLabelText(/^backup/i));
-	expect(screen.getByLabelText(/config values/i)).toBeChecked();
-	expect(screen.getByLabelText(/secrets/i)).not.toBeChecked();
-	expect(screen.getByLabelText(/table data/i)).not.toBeChecked();
-	expect(screen.getByLabelText(/solution-owned files/i)).toBeChecked();
+	expect(screen.getAllByRole("checkbox", { name: /config values/i })[0]).toBeChecked();
+	expect(screen.getAllByRole("checkbox", { name: /secrets/i })[0]).not.toBeChecked();
+	expect(screen.getAllByRole("checkbox", { name: /table data/i })[0]).not.toBeChecked();
+	expect(screen.getAllByRole("checkbox", { name: /solution-owned files/i })[0]).toBeChecked();
 });
 
 it("sends the selected backup content options", async () => {

@@ -225,6 +225,10 @@ class TestNoInlineOrgScopingInRouters:
 # resolved by cascade. They do NOT need an OrgScopedRepository subclass.
 # See api/src/repositories/README.md for the classification table.
 IDENTITY_MODELS: set[str] = {
+    # Launcher collections are owner/shared identity records, never execution
+    # name-cascade resources. shared.home enforces owner/admin/org visibility
+    # and filters every resource reference through its own access checks.
+    "HomeCollection",
     "Execution",
     "ExecutionMetricsDaily",
     "WorkflowROIDaily",

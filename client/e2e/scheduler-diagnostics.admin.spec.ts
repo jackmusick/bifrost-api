@@ -56,8 +56,8 @@ test.describe("Scheduler diagnostics (platform admin)", () => {
 			"Memory",
 		]);
 		await expect(
-			diagnostics.getByText("Refresh Expiring OAuth Tokens", {
-				exact: true,
+			diagnostics.getByRole("row", {
+				name: "View recent runs for Refresh Expiring OAuth Tokens",
 			}),
 		).toBeVisible();
 		await expect(

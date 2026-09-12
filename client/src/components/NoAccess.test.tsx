@@ -29,7 +29,7 @@ describe("NoAccess", () => {
 		const { user } = renderWithProviders(<NoAccess />);
 
 		await user.click(
-			screen.getByRole("button", { name: /return to dashboard/i }),
+			screen.getByRole("button", { name: /go to home/i }),
 		);
 
 		expect(mockNavigate).toHaveBeenCalledWith("/");

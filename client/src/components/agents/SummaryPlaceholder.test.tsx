@@ -52,7 +52,9 @@ describe("SummaryPlaceholder", () => {
 
 	it("shows '—' when summary is completed", () => {
 		render(<SummaryPlaceholder status="completed" runStatus="completed" />);
-		expect(screen.getByText("—")).toBeInTheDocument();
+		expect(
+			screen.getByRole("status", { name: /summary completed/i }),
+		).toHaveTextContent("—");
 	});
 
 	it("falls back to 'Summary pending…' when runStatus is not provided", () => {

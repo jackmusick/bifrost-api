@@ -1,3 +1,7 @@
+import {
+	PageWorkspace,
+	PageScrollArea,
+} from "@/components/layout/PageWorkspace";
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, XCircle } from "lucide-react";
@@ -21,7 +25,13 @@ export function RunForm() {
 	const [embedClaims] = useState(() => getEmbedTokenClaims());
 	const embedFormId = embedClaims?.form_id;
 	const runtimeFormId = formId || embedFormId;
-	const { data: form, isLoading, error } = useFormRuntime(runtimeFormId);
+	const {
+		data: form,
+		isLoading,
+		error,
+		isFetching,
+		refetch,
+	} = useFormRuntime(runtimeFormId);
 	const embedPresentation = parseFormEmbedPresentation(
 		location.pathname,
 		location.search,
@@ -49,29 +59,48 @@ export function RunForm() {
 		localStorage.setItem(DEV_MODE_STORAGE_KEY, String(devMode));
 	}, [devMode]);
 
-	if (isLoading) {
+	if (isLoading && !form) {
 		return (
-			<div className="space-y-6">
-				<Skeleton className="h-12 w-64" />
+			<div
+				role="status"
+				aria-label="Loading form"
+				className="mx-auto w-full max-w-2xl space-y-6"
+			>
+				<Skeleton className="h-12 w-64 max-w-full" />
 				<Skeleton className="h-96 w-full" />
 			</div>
 		);
 	}
 
-	if (error || !form) {
+	if (!form) {
 		return (
 			<div className="space-y-6">
 				<Alert variant="destructive">
 					<XCircle className="h-4 w-4" />
-					<AlertTitle>Error</AlertTitle>
+					<AlertTitle>
+						{error ? "Form unavailable" : "Form not found"}
+					</AlertTitle>
 					<AlertDescription>
-						{error ? "Failed to load form" : "Form not found"}
+						{error
+							? "Could not load this form. Try again."
+							: "This form is no longer available."}
 					</AlertDescription>
 				</Alert>
-				<Button onClick={() => navigate("/forms")}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Forms
-				</Button>
+				{error && (
+					<Button
+						size="lg"
+						disabled={isFetching}
+						onClick={() => void refetch()}
+					>
+						{isFetching ? "Retrying…" : "Retry form"}
+					</Button>
+				)}
+				{!isEmbed && (
+					<Button size="lg" onClick={() => navigate("/forms")}>
+						<ArrowLeft className="mr-2 h-4 w-4" />
+						Back to Forms
+					</Button>
+				)}
 			</div>
 		);
 	}
@@ -85,20 +114,39 @@ export function RunForm() {
 						This form is currently inactive and cannot be submitted.
 					</AlertDescription>
 				</Alert>
-				<Button onClick={() => navigate("/forms")}>
-					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Forms
-				</Button>
+				{!isEmbed && (
+					<Button size="lg" onClick={() => navigate("/forms")}>
+						<ArrowLeft className="mr-2 h-4 w-4" />
+						Back to Forms
+					</Button>
+				)}
 			</div>
 		);
 	}
 
+	const refreshNotice = error ? (
+		<Alert variant="destructive" className="mx-auto max-w-2xl">
+			<AlertDescription>
+				Form details could not refresh. Your entries are preserved.
+			</AlertDescription>
+			<Button
+				variant="outline"
+				className="mt-3 min-h-11"
+				disabled={isFetching}
+				onClick={() => void refetch()}
+			>
+				{isFetching ? "Retrying…" : "Retry form"}
+			</Button>
+		</Alert>
+	) : null;
+
 	if (isEmbed) {
 		return (
 			<div className="mx-auto min-h-full max-w-2xl space-y-6 p-4 sm:p-6">
+				{refreshNotice}
 				{embedPresentation?.showHeader !== false ? (
 					<div className="text-center">
-						<h1 className="text-4xl font-extrabold tracking-tight">
+						<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
 							{form.name}
 						</h1>
 						{form.description && (
@@ -118,41 +166,47 @@ export function RunForm() {
 	}
 
 	return (
-		<div className="space-y-6">
-			{/* Header with back button on left, centered title/description */}
-			<div className="flex justify-center">
-				<div className="w-full max-w-2xl">
-					<div className="flex items-start gap-4">
-						<Button
-							variant="outline"
-							size="icon"
-							onClick={() => navigate("/forms")}
-							title="Back to Forms"
-							className="shrink-0 mt-1"
-						>
-							<ArrowLeft className="h-4 w-4" />
-						</Button>
-						<div className="flex-1 text-center">
-							<h1 className="text-4xl font-extrabold tracking-tight">
-								{form.name}
-							</h1>
-							{form.description && (
-								<p className="mt-2 text-muted-foreground">
-									{form.description}
-								</p>
-							)}
+		<PageWorkspace>
+			<div className="shrink-0 space-y-6">
+				{refreshNotice}
+				{/* Header with back button on left, centered title/description */}
+				<div className="flex justify-center">
+					<div className="w-full max-w-2xl">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+							<Button
+								variant="outline"
+								size="icon-lg"
+								onClick={() => navigate("/forms")}
+								title="Back to Forms"
+								aria-label="Back to Forms"
+								className="shrink-0 self-start sm:mt-1"
+							>
+								<ArrowLeft className="h-4 w-4" />
+							</Button>
+							<div className="flex-1 text-left sm:text-center">
+								<h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+									{form.name}
+								</h1>
+								{form.description && (
+									<p className="mt-2 text-muted-foreground">
+										{form.description}
+									</p>
+								)}
+							</div>
+							{/* Spacer to balance the back button for true centering */}
+							<div className="hidden w-11 shrink-0 sm:block" />
 						</div>
-						{/* Spacer to balance the back button for true centering */}
-						<div className="w-9 shrink-0" />
 					</div>
 				</div>
 			</div>
 
-			<FormRenderer
-				form={form}
-				devMode={isPlatformAdmin && devMode}
-				onDevModeChange={isPlatformAdmin ? setDevMode : undefined}
-			/>
-		</div>
+			<PageScrollArea className="space-y-6">
+				<FormRenderer
+					form={form}
+					devMode={isPlatformAdmin && devMode}
+					onDevModeChange={isPlatformAdmin ? setDevMode : undefined}
+				/>
+			</PageScrollArea>
+		</PageWorkspace>
 	);
 }

@@ -9,6 +9,8 @@ Forms are virtual entities stored only in the database.
 They are serialized to JSON on-the-fly for git sync operations.
 """
 
+import asyncio
+import base64
 import logging
 import json
 import re
@@ -16,7 +18,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, File, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -77,6 +80,11 @@ from shared.form_runtime import (
     validate_embed_upload_references,
     validate_form_submission,
 )
+from shared.logo_processing import (
+    LogoProcessingError,
+    is_logo_thumbnail_version,
+    process_logo,
+)
 
 # Import cache invalidation
 try:
@@ -92,6 +100,41 @@ from src.services.workflow_role_service import sync_form_roles_to_workflows
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/forms", tags=["Forms"])
+
+
+def _logo_data_url(data: bytes | None, content_type: str | None) -> str | None:
+    """Encode a binary logo as a data URL, or None if no logo is set."""
+    if not data:
+        return None
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{content_type or 'application/octet-stream'};base64,{encoded}"
+
+
+def _form_logo_url(form: FormORM) -> str | None:
+    """Return a logo URL without hiding legacy images during thumbnail backfill."""
+    if is_logo_thumbnail_version(form.logo_thumbnail_version):
+        return f"/api/forms/{form.id}/logo?v={form.logo_thumbnail_version}"
+    if form.logo_content_type:
+        return f"/api/forms/{form.id}/logo"
+    return None
+
+
+def _attach_form_logo_fields(form_public: FormPublic, form: FormORM, *, include_inline_logo: bool = False) -> FormPublic:
+    form_public.logo = (
+        _logo_data_url(
+            form.logo_thumbnail_data or form.logo_data,
+            form.logo_thumbnail_content_type or form.logo_content_type,
+        )
+        if include_inline_logo
+        else None
+    )
+    form_public.logo_url = _form_logo_url(form)
+    form_public.logo_version = (
+        form.logo_thumbnail_version
+        if is_logo_thumbnail_version(form.logo_thumbnail_version)
+        else None
+    )
+    return form_public
 
 _FORM_EMBED_LIMITERS = {
     "runtime": RateLimiter(max_requests=120, window_seconds=60),
@@ -318,12 +361,18 @@ async def list_forms(
         # Use list_all_in_scope which skips role checks (appropriate for superusers)
         # Pass filter_type to control org scoping behavior
         forms = await repo.list_all_in_scope(filter_type=filter_type, active_only=False)
-        result = [FormPublic.model_validate(f) for f in forms]
+        result = [
+            _attach_form_logo_fields(FormPublic.model_validate(f), f)
+            for f in forms
+        ]
     else:
         # For org users: repository handles cascade scoping + role-based access
         # list_forms() applies both cascade scope and role checks automatically
         forms = await repo.list_forms(active_only=True)
-        result = [FormPublic.model_validate(f) for f in forms]
+        result = [
+            _attach_form_logo_fields(FormPublic.model_validate(f), f)
+            for f in forms
+        ]
 
     # Compute dependency counts for each form
     for form_public in result:
@@ -531,7 +580,7 @@ async def create_form(
         await invalidate_form(org_id, str(form.id))
 
     form.role_ids = await _load_form_role_ids(db, form.id)  # type: ignore[attr-defined]
-    return FormPublic.model_validate(form)
+    return _attach_form_logo_fields(FormPublic.model_validate(form), form, include_inline_logo=True)
 
 
 @router.get(
@@ -800,7 +849,11 @@ async def get_form(
 
     async def _to_public(orm_form: FormORM) -> FormPublic:
         orm_form.role_ids = await _load_form_role_ids(db, orm_form.id)  # type: ignore[attr-defined]
-        return FormPublic.model_validate(orm_form)
+        return _attach_form_logo_fields(
+            FormPublic.model_validate(orm_form),
+            orm_form,
+            include_inline_logo=True,
+        )
 
     # Platform admins see all forms.
     if ctx.user.is_superuser:
@@ -894,17 +947,17 @@ async def update_form(
 
     if request.name is not None:
         form.name = request.name
-    if request.description is not None:
+    if "description" in request.model_fields_set:
         form.description = request.description
     if request.confirmation_markdown is not None:
         form.confirmation_markdown = request.confirmation_markdown
     if request.workflow_id is not None:
         form.workflow_id = request.workflow_id
-    if request.launch_workflow_id is not None:
+    if "launch_workflow_id" in request.model_fields_set:
         form.launch_workflow_id = request.launch_workflow_id
-    if request.default_launch_params is not None:
+    if "default_launch_params" in request.model_fields_set:
         form.default_launch_params = request.default_launch_params
-    if request.allowed_query_params is not None:
+    if "allowed_query_params" in request.model_fields_set:
         form.allowed_query_params = request.allowed_query_params
     if request.form_schema is not None:
         # Delete all existing fields using bulk delete
@@ -972,7 +1025,7 @@ async def update_form(
         await invalidate_form(org_id, str(form_id))
 
     form.role_ids = await _load_form_role_ids(db, form_id)  # type: ignore[attr-defined]
-    return FormPublic.model_validate(form)
+    return _attach_form_logo_fields(FormPublic.model_validate(form), form, include_inline_logo=True)
 
 
 # Keep PUT for backwards compatibility
@@ -992,6 +1045,138 @@ async def update_form_put(
 ) -> FormPublic:
     """Update a form (PUT - for backwards compatibility)."""
     return await update_form(form_id, request, ctx, user, db)
+
+
+# =============================================================================
+# Form Logo Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/{form_id}/logo",
+    summary="Upload form logo",
+)
+async def upload_form_logo(
+    form_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+    file: UploadFile = File(..., description="Logo image (PNG/JPEG/SVG, ≤5MB)"),
+) -> dict:
+    """Upload a square logo for a form."""
+    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    form = result.scalar_one_or_none()
+    if not form:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    assert_not_solution_managed(form)
+
+    content = await file.read()
+    try:
+        processed = await asyncio.to_thread(process_logo, content, file.content_type or "")
+    except LogoProcessingError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    form.logo_data = processed.original_data
+    form.logo_content_type = processed.original_content_type
+    form.logo_thumbnail_data = processed.thumbnail_data
+    form.logo_thumbnail_content_type = processed.thumbnail_content_type
+    form.logo_thumbnail_version = processed.thumbnail_version
+    await db.commit()
+
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
+        org_id = str(form.organization_id) if form.organization_id else None
+        await invalidate_form(org_id, str(form_id))
+
+    return {"ok": True}
+
+
+@router.get(
+    "/{form_id}/logo",
+    summary="Get form logo",
+    responses={
+        200: {
+            "content": {
+                "image/webp": {},
+                "image/png": {},
+                "image/jpeg": {},
+                "image/svg+xml": {},
+            }
+        },
+        404: {"description": "No logo set"},
+    },
+)
+async def get_form_logo(
+    form_id: UUID,
+    ctx: Context,
+    db: DbSession,
+) -> Response:
+    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    form = result.scalar_one_or_none()
+    if form is None or not form.is_active or not form.logo_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not set")
+
+    if ctx.user.embed:
+        if not _embed_can_access_form(ctx, form):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not set")
+    elif not await _check_form_access(
+        db,
+        form,
+        ctx.user.user_id,
+        ctx.org_id,
+        ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not set")
+
+    thumbnail_ready = bool(form.logo_thumbnail_data and form.logo_thumbnail_version)
+    headers = (
+        {
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "ETag": f'"{form.logo_thumbnail_version}"',
+        }
+        if thumbnail_ready
+        else {"Cache-Control": "no-store"}
+    )
+    return Response(
+        content=form.logo_thumbnail_data or form.logo_data,
+        media_type=(
+            form.logo_thumbnail_content_type
+            or form.logo_content_type
+            or "application/octet-stream"
+        ),
+        headers=headers,
+    )
+
+
+@router.delete(
+    "/{form_id}/logo",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete form logo",
+)
+async def delete_form_logo(
+    form_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> Response:
+    result = await db.execute(select(FormORM).where(FormORM.id == form_id))
+    form = result.scalar_one_or_none()
+    if not form:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    assert_not_solution_managed(form)
+
+    form.logo_data = None
+    form.logo_content_type = None
+    form.logo_thumbnail_data = None
+    form.logo_thumbnail_content_type = None
+    form.logo_thumbnail_version = None
+    await db.commit()
+
+    if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
+        org_id = str(form.organization_id) if form.organization_id else None
+        await invalidate_form(org_id, str(form_id))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(

@@ -1,42 +1,18 @@
+import { FormEmbedCodePanel } from "./FormEmbedCodePanel";
+import { HmacSecretCreateForm, type HmacScheme } from "./HmacSecretCreateForm";
+import { HmacSecretDeleteDialog } from "./HmacSecretDeleteDialog";
+import { HmacSecretReveal } from "./HmacSecretReveal";
+import { HmacSecretList, type HmacSecretSummary } from "./HmacSecretList";
 /**
  * Form HMAC Integration Section
  *
  * HMAC sharing tab for trusted systems that sign dynamic embed parameters.
  */
 
-import { useState, useEffect, useCallback } from "react";
-import {
-	Plus,
-	Trash2,
-	Copy,
-	Check,
-	AlertTriangle,
-	Link,
-	X,
-} from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+
 import { authFetch } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -44,15 +20,8 @@ import { toast } from "sonner";
 // Types
 // ============================================================================
 
-type HmacScheme = "shopify" | "halopsa";
 
-interface EmbedSecret {
-	id: string;
-	name: string;
-	is_active: boolean;
-	hmac_scheme: HmacScheme;
-	created_at: string;
-}
+type EmbedSecret = HmacSecretSummary;
 
 interface EmbedSecretCreated extends EmbedSecret {
 	raw_secret: string;
@@ -60,15 +29,17 @@ interface EmbedSecretCreated extends EmbedSecret {
 
 interface FormEmbedSectionProps {
 	formId: string;
+	onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
+export function FormEmbedSection({ formId, onBusyChange }: FormEmbedSectionProps) {
 	const [secrets, setSecrets] = useState<EmbedSecret[]>([]);
-	const [isLoading, setIsLoading] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
+	const [loadError, setLoadError] = useState(false);
 
 	// Create form state
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -76,14 +47,22 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 	const [createSecret, setCreateSecret] = useState("");
 	const [createScheme, setCreateScheme] = useState<HmacScheme>("shopify");
 	const [isCreating, setIsCreating] = useState(false);
+	const [createError, setCreateError] = useState(false);
 
 	// Reveal state (shown once after creation)
 	const [revealedSecret, setRevealedSecret] =
 		useState<EmbedSecretCreated | null>(null);
-	const [copied, setCopied] = useState(false);
 
 	// Delete confirmation state
 	const [deleteTarget, setDeleteTarget] = useState<EmbedSecret | null>(null);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [isToggling, setIsToggling] = useState(false);
+	const [deleteError, setDeleteError] = useState(false);
+	const mutationPending = useRef(false);
+	const busy = isCreating || isDeleting || isToggling;
+	useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+	useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+
 
 	// ========================================================================
 	// Data fetching
@@ -93,11 +72,11 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 		setIsLoading(true);
 		try {
 			const res = await authFetch(`/api/forms/${formId}/embed-secrets`);
-			if (res.ok) {
-				setSecrets(await res.json());
-			}
+			if (!res.ok) throw new Error("Could not load embed secrets");
+			setSecrets(await res.json());
+			setLoadError(false);
 		} catch {
-			toast.error("Failed to load embed secrets");
+			setLoadError(true);
 		} finally {
 			setIsLoading(false);
 		}
@@ -117,7 +96,10 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 		e.preventDefault();
 		if (!createName.trim()) return;
 
+		if (mutationPending.current) return;
+		mutationPending.current = true;
 		setIsCreating(true);
+		setCreateError(false);
 		try {
 			const res = await authFetch(`/api/forms/${formId}/embed-secrets`, {
 				method: "POST",
@@ -138,13 +120,17 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 			fetchSecrets();
 			toast.success("Embed secret created");
 		} catch {
-			toast.error("Failed to create embed secret");
+			setCreateError(true);
 		} finally {
+			mutationPending.current = false;
 			setIsCreating(false);
 		}
 	};
 
 	const handleToggleActive = async (secret: EmbedSecret) => {
+		if (mutationPending.current) return;
+		mutationPending.current = true;
+		setIsToggling(true);
 		try {
 			const res = await authFetch(
 				`/api/forms/${formId}/embed-secrets/${secret.id}`,
@@ -161,29 +147,27 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 			);
 		} catch {
 			toast.error("Failed to update secret");
-		}
+		} finally { mutationPending.current = false; setIsToggling(false); }
 	};
 
 	const handleDelete = async () => {
-		if (!deleteTarget) return;
+		if (!deleteTarget || mutationPending.current) return;
+		mutationPending.current = true;
+		setIsDeleting(true);
+		setDeleteError(false);
 		try {
 			const res = await authFetch(
 				`/api/forms/${formId}/embed-secrets/${deleteTarget.id}`,
 				{ method: "DELETE" },
 			);
 			if (!res.ok) throw new Error(await res.text());
+			setSecrets(current => current.filter(secret => secret.id !== deleteTarget.id));
 			setDeleteTarget(null);
 			fetchSecrets();
 			toast.success("Secret deleted");
 		} catch {
-			toast.error("Failed to delete secret");
-		}
-	};
-
-	const handleCopy = (text: string) => {
-		navigator.clipboard.writeText(text);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+			setDeleteError(true);
+		} finally { mutationPending.current = false; setIsDeleting(false); }
 	};
 
 	// ========================================================================
@@ -212,280 +196,36 @@ export function FormEmbedSection({ formId }: FormEmbedSectionProps) {
 							embedding. After submission, the iframe opens the
 							execution result for that signed session.
 						</p>
-						<Button size="sm" onClick={() => setIsCreateOpen(true)}>
+						<Button type="button" className="min-h-11 shrink-0" disabled={busy} onClick={() => { setCreateError(false); setIsCreateOpen(true); }}>
 							<Plus className="mr-2 h-4 w-4" />
 							Create Secret
 						</Button>
 					</div>
 
-					{isLoading ? (
-						<p className="text-sm text-muted-foreground py-4 text-center">
-							Loading...
-						</p>
-					) : secrets.length === 0 ? (
-						<div className="text-center py-4 text-muted-foreground">
-							<Link className="h-6 w-6 mx-auto mb-2 opacity-50" />
-							<p className="text-sm">
-								No embed secrets configured.
-							</p>
-							<p className="text-xs mt-1">
-								Create a secret to enable iframe embedding.
-							</p>
-						</div>
-					) : (
-						<div className="space-y-2">
-							{secrets.map((secret) => (
-								<div
-									key={secret.id}
-									className={`flex flex-col items-start justify-between gap-3 rounded-lg p-3 ring-1 ring-foreground/5 sm:flex-row sm:items-center ${
-										secret.is_active
-											? "border-l-4 border-l-green-500"
-											: "border-l-4 border-l-gray-300 opacity-60"
-									}`}
-								>
-									<div className="flex flex-wrap items-center gap-3">
-										<div>
-											<p className="text-sm font-medium">
-												{secret.name}
-											</p>
-											<p className="text-xs text-muted-foreground">
-												Created{" "}
-												{new Date(
-													secret.created_at,
-												).toLocaleDateString()}
-											</p>
-										</div>
-										<Badge
-											variant={
-												secret.is_active
-													? "default"
-													: "secondary"
-											}
-										>
-											{secret.is_active
-												? "Active"
-												: "Inactive"}
-										</Badge>
-										<Badge variant="outline">
-											{secret.hmac_scheme === "halopsa"
-												? "HaloPSA"
-												: "Standard"}
-										</Badge>
-									</div>
-									<div className="flex items-center gap-1 self-end sm:self-auto">
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() =>
-												handleToggleActive(secret)
-											}
-										>
-											{secret.is_active
-												? "Deactivate"
-												: "Activate"}
-										</Button>
-										<Button
-											variant="ghost"
-											size="icon"
-											onClick={() =>
-												setDeleteTarget(secret)
-											}
-										>
-											<Trash2 className="h-4 w-4 text-destructive" />
-										</Button>
-									</div>
-								</div>
-							))}
-						</div>
-					)}
+					<HmacSecretList secrets={secrets} loading={isLoading} busy={busy} error={loadError} onRetry={() => void fetchSecrets()} onToggle={secret => void handleToggleActive(secret)} onDelete={secret => { setDeleteError(false); setDeleteTarget(secret); }} />
 
 					{/* Inline create form */}
 					{isCreateOpen && (
-						<form
-							onSubmit={handleCreate}
-							className="space-y-3 rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5"
-						>
-							<div className="space-y-2">
-								<Label htmlFor="embed-secret-name">Name</Label>
-								<Input
-									id="embed-secret-name"
-									placeholder="e.g., Halo Production"
-									value={createName}
-									onChange={(e) =>
-										setCreateName(e.target.value)
-									}
-									autoFocus
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="embed-secret-value">
-									Secret (optional)
-								</Label>
-								<Input
-									id="embed-secret-value"
-									placeholder="Leave blank to auto-generate"
-									value={createSecret}
-									onChange={(e) =>
-										setCreateSecret(e.target.value)
-									}
-									className="font-mono text-sm"
-								/>
-							</div>
-							<div className="space-y-2">
-								<Label htmlFor="embed-secret-scheme">
-									HMAC scheme
-								</Label>
-								<Select
-									value={createScheme}
-									onValueChange={(v) =>
-										setCreateScheme(v as HmacScheme)
-									}
-								>
-									<SelectTrigger id="embed-secret-scheme">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="shopify">
-											Standard
-										</SelectItem>
-										<SelectItem value="halopsa">
-											HaloPSA
-										</SelectItem>
-									</SelectContent>
-								</Select>
-								<p className="text-xs text-muted-foreground">
-									{createScheme === "shopify"
-										? "Signs all query parameters (recommended for most integrations)."
-										: "Signs only agent_id. Use for HaloPSA Custom Tab embeds."}
-								</p>
-							</div>
-							<div className="flex gap-2 justify-end">
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() => {
-										setIsCreateOpen(false);
-										setCreateName("");
-										setCreateSecret("");
-										setCreateScheme("shopify");
-									}}
-								>
-									Cancel
-								</Button>
-								<Button
-									type="submit"
-									size="sm"
-									disabled={isCreating || !createName.trim()}
-								>
-									{isCreating ? "Creating..." : "Add"}
-								</Button>
-							</div>
-						</form>
+						<HmacSecretCreateForm name={createName} secret={createSecret} scheme={createScheme} busy={busy} creating={isCreating} error={createError} onName={setCreateName} onSecret={setCreateSecret} onScheme={setCreateScheme} onSubmit={handleCreate} onCancel={() => {
+							setIsCreateOpen(false);
+							setCreateName("");
+							setCreateSecret("");
+							setCreateScheme("shopify");
+							setCreateError(false);
+						}} />
 					)}
 
 					{/* One-time secret reveal */}
 					{revealedSecret && (
-						<div className="relative rounded-lg bg-amber-500/10 p-4 pr-10 space-y-3 ring-1 ring-amber-500/30">
-							<button
-								type="button"
-								className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-								onClick={() => setRevealedSecret(null)}
-							>
-								<X className="h-4 w-4" />
-							</button>
-							<div className="flex items-start gap-2">
-								<AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-								<p className="text-sm font-medium">
-									Copy this secret now — it will not be shown
-									again.
-								</p>
-							</div>
-							<div className="flex gap-2">
-								<code className="flex-1 rounded-md bg-black/30 px-3 py-2 font-mono text-sm select-all truncate">
-									{revealedSecret.raw_secret}
-								</code>
-								<Button
-									variant="outline"
-									size="icon"
-									className="shrink-0"
-									onClick={() =>
-										handleCopy(revealedSecret.raw_secret)
-									}
-								>
-									{copied ? (
-										<Check className="h-4 w-4" />
-									) : (
-										<Copy className="h-4 w-4" />
-									)}
-								</Button>
-							</div>
-						</div>
+						<HmacSecretReveal key={revealedSecret.id} value={revealedSecret.raw_secret} onDismiss={() => setRevealedSecret(null)} />
 					)}
 				</div>
 
-				{/* ============ Integration Guide ============ */}
-				<div className="space-y-2 pt-2">
-					<p className="text-xs text-muted-foreground">
-						Embed iframe
-					</p>
-					<div className="relative rounded-md overflow-hidden">
-						<SyntaxHighlighter
-							language="html"
-							style={oneDark}
-							wrapLongLines
-							codeTagProps={{
-								style: {
-									whiteSpace: "pre-wrap",
-									wordBreak: "break-all",
-								},
-							}}
-							customStyle={{
-								margin: 0,
-								paddingRight: "2.5rem",
-								fontSize: "0.75rem",
-							}}
-						>
-							{iframeSnippet}
-						</SyntaxHighlighter>
-						<Button
-							variant="ghost"
-							size="icon"
-							className="absolute top-2 right-2 h-6 w-6"
-							onClick={() => handleCopy(iframeSnippet)}
-						>
-							<Copy className="h-3 w-3" />
-						</Button>
-					</div>
-				</div>
+				<FormEmbedCodePanel code={iframeSnippet} />
 			</div>
 
 			{/* ============ Delete Confirmation ============ */}
-			<AlertDialog
-				open={!!deleteTarget}
-				onOpenChange={(open) => {
-					if (!open) setDeleteTarget(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Delete embed secret?
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will permanently delete &quot;
-							{deleteTarget?.name}&quot;. Any integrations using
-							this secret will stop working.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleDelete}>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<HmacSecretDeleteDialog name={deleteTarget?.name ?? null} pending={isDeleting} error={deleteError} onClose={() => { if (!mutationPending.current) setDeleteTarget(null); }} onConfirm={() => void handleDelete()} />
 		</>
 	);
 }

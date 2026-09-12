@@ -1,4 +1,4 @@
-import { UserCog, FileCode, Shield, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -19,6 +19,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUserRoles, useUserForms } from "@/hooks/useUsers";
 import { formatDate, formatDateShort } from "@/lib/utils";
 import type { components } from "@/lib/v1";
+import {
+	AlertCircle,
+	UserCog,
+	FileCode,
+	Shield,
+	Clock,
+	X,
+} from "lucide-react";
 type User = components["schemas"]["UserPublic"];
 type UserRolesResponse = components["schemas"]["UserRolesResponse"];
 type UserFormsResponse = components["schemas"]["RoleFormsResponse"];
@@ -29,32 +37,80 @@ interface UserDetailsDialogProps {
 	onClose: () => void;
 }
 
+function ReadErrorState({
+	title,
+	message,
+	onRetry,
+	pending,
+}: {
+	title: string;
+	message: string;
+	onRetry: () => void;
+	pending: boolean;
+}) {
+	return (
+		<div
+			role="alert"
+			aria-label={title}
+			className="rounded-[var(--bf-radius-surface)] border border-[var(--bf-danger)]/20 bg-[var(--bf-danger-soft)] p-4 text-sm text-[var(--bf-danger)]"
+		>
+			<div className="flex items-start gap-2">
+				<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+				<div className="space-y-1">
+					<p className="font-medium">{title}</p>
+					<p className="[overflow-wrap:anywhere]">{message}</p>
+				</div>
+			</div>
+			<Button type="button" variant="outline" className="mt-3 min-h-11" disabled={pending} onClick={onRetry}>{pending ? "Retrying…" : "Retry"}</Button>
+		</div>
+	);
+}
+
 export function UserDetailsDialog({
 	user,
 	open,
 	onClose,
 }: UserDetailsDialogProps) {
-	const { data: roles, isLoading: rolesLoading } = useUserRoles(user?.id);
-	const { data: formsAccess, isLoading: formsLoading } = useUserForms(
-		user?.id,
-	);
+	const { data: roles, isLoading: rolesLoading, error: rolesError, isFetching: rolesFetching, refetch: refetchRoles } =
+		useUserRoles(user?.id);
+	const { data: formsAccess, isLoading: formsLoading, error: formsError, isFetching: formsFetching, refetch: refetchForms } =
+		useUserForms(user?.id);
 
 	if (!user) return null;
 
 	return (
 		<Dialog open={open} onOpenChange={onClose}>
-			<DialogContent className="sm:max-w-[700px]">
-				<DialogHeader>
-					<DialogTitle>{user.name || user.email}</DialogTitle>
-					<DialogDescription>
-						{user.email} •{" "}
-						{user.is_superuser
-							? "MSP Technician"
-							: "Organization User"}
-					</DialogDescription>
+			<DialogContent
+				showCloseButton={false}
+				className="flex h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden rounded-none border-border/70 p-0 shadow-xl motion-reduce:transition-none motion-reduce:animate-none sm:h-auto sm:max-h-[min(90vh,48rem)] sm:w-[min(92vw,700px)] sm:rounded-[var(--bf-radius-feature)]"
+			>
+				<DialogHeader className="shrink-0 border-b border-border/70 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] text-left sm:px-6">
+					<div className="flex items-start gap-3">
+						<div className="min-w-0 flex-1">
+							<DialogTitle className="text-pretty [overflow-wrap:anywhere]">
+								{user.name || user.email}
+							</DialogTitle>
+							<DialogDescription className="mt-1.5 text-sm leading-5 [overflow-wrap:anywhere]">
+								{user.email} •{" "}
+								{user.is_superuser
+									? "MSP Technician"
+									: "Organization User"}
+							</DialogDescription>
+						</div>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-lg"
+							onClick={onClose}
+							aria-label="Close dialog"
+							className="h-11 w-11 shrink-0 rounded-[var(--bf-radius-control)] border border-border/70 bg-background/90 text-foreground hover:bg-muted motion-reduce:transition-none"
+						>
+							<X className="h-5 w-5" />
+						</Button>
+					</div>
 				</DialogHeader>
 
-				<div className="space-y-4 mt-4">
+				<div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
 					{/* User Info Card */}
 					<Card>
 						<CardHeader>
@@ -90,8 +146,11 @@ export function UserDetailsDialog({
 									Status
 								</span>
 								<Badge
-									variant={
-										user.is_active ? "default" : "secondary"
+									variant="outline"
+									className={
+										user.is_active
+											? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
+											: "border-border/70 bg-muted/50 text-muted-foreground"
 									}
 								>
 									{user.is_active ? "Active" : "Inactive"}
@@ -126,12 +185,12 @@ export function UserDetailsDialog({
 					{/* Roles and Forms Tabs (only for org users - non-superusers with org) */}
 					{!user.is_superuser && user.organization_id && (
 						<Tabs defaultValue="roles">
-							<TabsList className="grid w-full grid-cols-2">
-								<TabsTrigger value="roles">
+							<TabsList className="grid min-h-14 w-full grid-cols-2">
+								<TabsTrigger value="roles" className="min-h-11">
 									<UserCog className="mr-2 h-4 w-4" />
 									Roles
 								</TabsTrigger>
-								<TabsTrigger value="forms">
+								<TabsTrigger value="forms" className="min-h-11">
 									<FileCode className="mr-2 h-4 w-4" />
 									Form Access
 								</TabsTrigger>
@@ -149,7 +208,18 @@ export function UserDetailsDialog({
 										</CardDescription>
 									</CardHeader>
 									<CardContent>
-										{rolesLoading ? (
+										{rolesError ? (
+											<ReadErrorState
+												title="Unable to load roles"
+												onRetry={() => { void refetchRoles(); }}
+												pending={rolesFetching}
+												message={
+													rolesError instanceof Error
+														? rolesError.message
+														: "The assigned roles could not be loaded."
+												}
+											/>
+										) : rolesLoading ? (
 											<div className="space-y-2">
 												{[...Array(2)].map((_, i) => (
 													<Skeleton
@@ -210,7 +280,18 @@ export function UserDetailsDialog({
 										</CardDescription>
 									</CardHeader>
 									<CardContent>
-										{formsLoading ? (
+										{formsError ? (
+											<ReadErrorState
+												title="Unable to load form access"
+												onRetry={() => { void refetchForms(); }}
+												pending={formsFetching}
+												message={
+													formsError instanceof Error
+														? formsError.message
+														: "The accessible forms could not be loaded."
+												}
+											/>
+										) : formsLoading ? (
 											<div className="space-y-2">
 												{[...Array(2)].map((_, i) => (
 													<Skeleton
@@ -265,11 +346,11 @@ export function UserDetailsDialog({
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<div className="rounded-lg bg-blue-50 p-4 ring-1 ring-blue-200 dark:bg-blue-950 dark:ring-blue-800">
-									<p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+								<div className="rounded-lg border border-sky-500/20 bg-sky-500/10 p-4 text-sky-900 dark:text-sky-200">
+									<p className="text-sm font-medium">
 										Full Platform Access
 									</p>
-									<p className="text-sm text-blue-700 dark:text-blue-300">
+									<p className="text-sm">
 										{user.is_superuser
 											? "MSP Admin - Full access to all platform features"
 											: "MSP Technician - Access to manage workflows and configurations"}

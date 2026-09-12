@@ -18,8 +18,8 @@ export function PageLoader({
 	};
 
 	const containerClasses = fullScreen
-		? "flex h-screen w-screen items-center justify-center bg-background"
-		: "flex min-h-[400px] h-full w-full items-center justify-center";
+		? "flex h-[100dvh] w-full items-center justify-center bg-background px-4 py-8"
+		: "flex h-full min-h-[400px] w-full items-center justify-center px-4 py-8";
 
 	return (
 		<div
@@ -28,12 +28,14 @@ export function PageLoader({
 			aria-live="polite"
 			aria-label={message}
 		>
-			<div className="flex flex-col items-center gap-4">
+			<div className="flex max-w-xs flex-col items-center gap-4 text-center">
 				<Loader2
 					aria-hidden="true"
 					className={`${sizeClasses[size]} animate-spin text-primary motion-reduce:animate-none`}
 				/>
-				<p className="text-sm text-muted-foreground">{message}</p>
+				<p className="text-balance text-sm text-muted-foreground [overflow-wrap:anywhere]">
+					{message}
+				</p>
 			</div>
 		</div>
 	);

@@ -1,4 +1,10 @@
-import { useState } from "react";
+import { GitHubTokenField } from "./GitHubTokenField";
+import { GitHubResourceSelect } from "./GitHubResourceSelect";
+import { GitHubCreateRepositoryDialog } from "./GitHubCreateRepositoryDialog";
+import { GitHubDisconnectDialog } from "./GitHubDisconnectDialog";
+import { SettingsReadError } from "./SettingsReadError";
+import { GitHubConnectionSummary } from "./GitHubConnectionSummary";
+import { useRef, useState } from "react";
 import {
 	Card,
 	CardContent,
@@ -7,28 +13,10 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
 	Loader2,
-	CheckCircle2,
-	AlertCircle,
 	Plus,
 } from "lucide-react";
 import { Github } from "@/components/icons/GithubIcon";
@@ -46,6 +34,10 @@ import {
 } from "@/hooks/useGitHub";
 
 export function GitHub() {
+	const headingRef = useRef<HTMLDivElement>(null);
+	const branchRequest = useRef(0);
+	const [branchError, setBranchError] = useState(false);
+	const [disconnected, setDisconnected] = useState(false);
 	const [config, setConfig] = useState<GitHubConfigResponse | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [testingToken, setTestingToken] = useState(false);
@@ -70,11 +62,11 @@ export function GitHub() {
 	const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
 
 	// Load current GitHub configuration
-	const { data: configData, isLoading: configLoading } = useGitHubConfig();
+	const { data: configData, isLoading: configLoading, isError: configError, isFetching: configFetching, refetch: refetchConfig } = useGitHubConfig();
 
 	// Load repositories when token is saved but not configured
 	const shouldLoadRepos = configData?.token_saved && !configData?.configured;
-	const { data: reposData } = useGitHubRepositories(shouldLoadRepos ?? false);
+	const { data: reposData, isError: reposError, isFetching: reposFetching, refetch: refetchRepos } = useGitHubRepositories(shouldLoadRepos ?? false);
 
 	// Mutations
 	const configureMutation = useConfigureGitHub();
@@ -111,6 +103,7 @@ export function GitHub() {
 
 	// Validate token and load repositories
 	const handleTokenValidation = async () => {
+		if (testingToken || saving) return;
 		if (!token.trim()) {
 			toast.error("Please enter a GitHub Personal Access Token");
 			return;
@@ -129,21 +122,7 @@ export function GitHub() {
 
 			// Auto-select detected repo if available
 			if (response.detected_repo) {
-				setSelectedRepo(response.detected_repo.full_name);
-				setSelectedBranch(response.detected_repo.branch);
-
-				// Load branches for detected repo
-				try {
-					const branchList = await listGitHubBranches(
-						response.detected_repo.full_name,
-					);
-					setBranches(branchList);
-				} catch (error) {
-					console.error(
-						"Failed to load branches for detected repo:",
-						error,
-					);
-				}
+				await handleRepoSelection(response.detected_repo.full_name, response.detected_repo.branch);
 
 				toast.success("Token validated successfully", {
 					description: `Detected existing repository: ${response.detected_repo.full_name}`,
@@ -165,34 +144,40 @@ export function GitHub() {
 	};
 
 	// Load branches when repository is selected
-	const handleRepoSelection = async (repoFullName: string) => {
+	const handleRepoSelection = async (repoFullName: string, preferredBranch?: string) => {
+		const request = ++branchRequest.current;
+		setBranchError(false);
 		setSelectedRepo(repoFullName);
 		setBranches([]);
-		setSelectedBranch("main");
+		setSelectedBranch(preferredBranch || "main");
 
 		if (!repoFullName) return;
 
 		setLoadingBranches(true);
 		try {
 			const branchList = await listGitHubBranches(repoFullName);
+			if (request !== branchRequest.current) return;
 			setBranches(branchList);
 
 			// Auto-select main/master if available
 			const defaultBranch =
+				branchList.find((b) => b.name === preferredBranch) ||
 				branchList.find((b) => b.name === "main") ||
 				branchList.find((b) => b.name === "master");
 			if (defaultBranch) {
 				setSelectedBranch(defaultBranch.name);
 			}
 		} catch {
-			toast.error("Failed to load branches");
+			if (request !== branchRequest.current) return;
+			setBranchError(true);
 		} finally {
-			setLoadingBranches(false);
+			if (request === branchRequest.current) setLoadingBranches(false);
 		}
 	};
 
 	// Create new repository
 	const handleCreateRepository = async () => {
+		if (creatingRepo) return;
 		if (!newRepoName.trim()) {
 			toast.error("Please enter a repository name");
 			return;
@@ -229,11 +214,8 @@ export function GitHub() {
 			setNewRepoName("");
 			setNewRepoDescription("");
 			setNewRepoPrivate(true);
-		} catch (error) {
-			toast.error("Failed to create repository", {
-				description:
-					error instanceof Error ? error.message : "Unknown error",
-			});
+		} catch {
+			// The dialog retains the draft and displays the mutation failure inline.
 		} finally {
 			setCreatingRepo(false);
 		}
@@ -241,6 +223,7 @@ export function GitHub() {
 
 	// Configure GitHub integration
 	const handleConfigure = async () => {
+		if (saving || testingToken || loadingBranches || branchError) return;
 		// Token must be saved to configure
 		if (!config?.token_saved && !savedToken) {
 			toast.error("Please validate your token first");
@@ -284,11 +267,14 @@ export function GitHub() {
 
 	// Disconnect GitHub integration
 	const handleDisconnect = async () => {
+		if (saving) return;
 		setSaving(true);
-		setShowDisconnectConfirm(false);
 
 		try {
 			await disconnectMutation.mutateAsync({});
+			setDisconnected(true);
+			setShowDisconnectConfirm(false);
+			setSavedToken(null);
 
 			// Reset all state
 			setConfig({
@@ -320,19 +306,23 @@ export function GitHub() {
 
 	if (configLoading) {
 		return (
-			<div className="flex items-center justify-center py-12">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+			<div role="status" aria-label="Loading GitHub configuration" className="flex items-center justify-center py-12">
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
 
+	const readError = configError ? <SettingsReadError resource="GitHub configuration" cached={!!configData} pending={configFetching} onRetry={() => { void refetchConfig(); }} /> : null;
+	if (!configData) return readError;
+
 	return (
 		<div className="space-y-6">
+			{readError}
 			<Card>
 				<CardHeader>
 					<div className="flex items-center gap-2">
 						<Github className="h-5 w-5" />
-						<CardTitle>GitHub Integration</CardTitle>
+						<CardTitle ref={headingRef} tabIndex={-1} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">GitHub Integration</CardTitle>
 					</div>
 					<CardDescription>
 						Connect your workspace to a GitHub repository for
@@ -342,119 +332,10 @@ export function GitHub() {
 				<CardContent className="space-y-6">
 					{/* Current Status */}
 					{config?.configured ? (
-						<div className="space-y-4">
-							<div className="rounded-lg bg-muted/50 p-4 ring-1 ring-foreground/5">
-								<div className="flex items-center justify-between mb-2">
-									<div className="flex items-center gap-2">
-										<CheckCircle2 className="h-4 w-4 text-green-500" />
-										<span className="text-sm font-medium">
-											Currently Connected
-										</span>
-									</div>
-									<Button
-										variant="destructive"
-										size="sm"
-										onClick={() =>
-											setShowDisconnectConfirm(true)
-										}
-										disabled={saving}
-									>
-										{saving ? (
-											<Loader2 className="h-4 w-4 animate-spin" />
-										) : (
-											"Disconnect"
-										)}
-									</Button>
-								</div>
-								<div className="space-y-1 text-sm text-muted-foreground">
-									<div>
-										<strong>Repository:</strong>{" "}
-										{config.repo_url}
-									</div>
-									<div>
-										<strong>Branch:</strong> {config.branch}
-									</div>
-								</div>
-							</div>
-							<p className="text-sm text-muted-foreground">
-								Use the <strong>Source Control</strong> panel in
-								the Code Editor to commit, push, and pull
-								changes.
-							</p>
-						</div>
+						<GitHubConnectionSummary config={config} pending={saving} onDisconnect={() => { disconnectMutation.reset(); setDisconnected(false); setShowDisconnectConfirm(true); }} />
 					) : (
 						<>
-							{/* GitHub Token */}
-							<div className="space-y-2">
-								<Label htmlFor="github-token">
-									GitHub Personal Access Token
-								</Label>
-								<div className="flex flex-col gap-2 sm:flex-row">
-									<Input
-										id="github-token"
-										type="password"
-										autoComplete="off"
-										placeholder={
-											config?.token_saved
-												? "Token saved - enter new token to change"
-												: "ghp_xxxxxxxxxxxxxxxxxxxx"
-										}
-										value={token}
-										onChange={(e) => {
-											setToken(e.target.value);
-											// Only invalidate if we actually had a validated token from manual validation
-											// Don't clear if token was just saved (not manually validated)
-											if (tokenValid === true) {
-												setTokenValid(null);
-											}
-										}}
-									/>
-									<Button
-										onClick={handleTokenValidation}
-										disabled={testingToken || !token.trim()}
-										variant={
-											tokenValid === true
-												? "default"
-												: tokenValid === false
-													? "destructive"
-													: "secondary"
-										}
-										className="gap-2"
-									>
-										{testingToken ? (
-											<>
-												<Loader2 className="h-4 w-4 animate-spin" />
-												Validating...
-											</>
-										) : tokenValid === true ? (
-											<>
-												<CheckCircle2 className="h-4 w-4" />
-												Validated
-											</>
-										) : tokenValid === false ? (
-											<>
-												<AlertCircle className="h-4 w-4" />
-												Invalid
-											</>
-										) : (
-											"Validate"
-										)}
-									</Button>
-								</div>
-								<p className="text-xs text-muted-foreground">
-									Create a token at{" "}
-									<a
-										href="https://github.com/settings/tokens/new"
-										target="_blank"
-										rel="noopener noreferrer"
-										className="underline hover:text-foreground"
-									>
-										github.com/settings/tokens
-									</a>{" "}
-									with <code className="text-xs">repo</code>{" "}
-									scope
-								</p>
-							</div>
+							<GitHubTokenField value={token} saved={!!config?.token_saved} valid={tokenValid} pending={testingToken} disabled={saving} onChange={(value) => { setToken(value); setTokenValid(null); }} onValidate={() => { void handleTokenValidation(); }} />
 
 							{/* Repository Selection - always show if token is valid or saved */}
 							{(tokenValid || config?.token_saved) && (
@@ -466,41 +347,17 @@ export function GitHub() {
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() =>
-												setShowCreateRepo(true)
-											}
+											className="min-h-11"
+											disabled={saving}
+											onClick={() => { createRepoMutation.reset(); setShowCreateRepo(true); }}
 										>
 											<Plus className="h-4 w-4 mr-1" />
 											Create New
 										</Button>
 									</div>
-									<Select
-										value={selectedRepo}
-										onValueChange={handleRepoSelection}
-									>
-										<SelectTrigger id="repository">
-											<SelectValue placeholder="Select a repository" />
-										</SelectTrigger>
-										<SelectContent>
-											{repositories.map((repo) => (
-												<SelectItem
-													key={repo.full_name}
-													value={repo.full_name}
-												>
-													<div className="flex items-center gap-2">
-														<span>
-															{repo.full_name}
-														</span>
-														{repo.private && (
-															<span className="text-xs text-muted-foreground">
-																(private)
-															</span>
-														)}
-													</div>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<GitHubResourceSelect id="repository" value={selectedRepo} onChange={(value) => { void handleRepoSelection(value); }} placeholder={reposFetching && repositories.length === 0 ? "Loading repositories…" : "Select a repository"} disabled={saving || (repositories.length === 0 && (reposFetching || reposError))} options={repositories.map(repo => ({ value: repo.full_name, detail: repo.private ? "Private" : undefined }))} />
+									{reposError && <SettingsReadError resource="GitHub repositories" cached={repositories.length > 0} pending={reposFetching} onRetry={() => { void refetchRepos(); }} />}
+									{!reposError && !reposFetching && repositories.length === 0 && <p className="text-sm text-muted-foreground">No repositories available. Create one or check the saved token’s repository access.</p>}
 								</div>
 							)}
 
@@ -508,45 +365,8 @@ export function GitHub() {
 							{(tokenValid || config?.token_saved) && (
 								<div className="space-y-2">
 									<Label htmlFor="branch">Branch</Label>
-									<Select
-										value={selectedBranch}
-										onValueChange={setSelectedBranch}
-										disabled={
-											!selectedRepo || loadingBranches
-										}
-									>
-										<SelectTrigger id="branch">
-											{loadingBranches ? (
-												<div className="flex items-center gap-2">
-													<Loader2 className="h-4 w-4 animate-spin" />
-													<span>
-														Loading branches...
-													</span>
-												</div>
-											) : (
-												<SelectValue placeholder="Select a branch" />
-											)}
-										</SelectTrigger>
-										<SelectContent>
-											{branches.map((branch) => (
-												<SelectItem
-													key={branch.name}
-													value={branch.name}
-												>
-													<div className="flex items-center gap-2">
-														<span>
-															{branch.name}
-														</span>
-														{branch.protected && (
-															<span className="text-xs text-muted-foreground">
-																(protected)
-															</span>
-														)}
-													</div>
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<GitHubResourceSelect id="branch" value={selectedBranch} onChange={setSelectedBranch} placeholder="Select a branch" loading={loadingBranches} disabled={!selectedRepo || branchError || saving} options={branches.map(branch => ({ value: branch.name, detail: branch.protected ? "Protected" : undefined }))} />
+									{branchError && <SettingsReadError resource="repository branches" cached={false} pending={loadingBranches} onRetry={() => { void handleRepoSelection(selectedRepo, selectedBranch); }} />}
 									{!selectedRepo && (
 										<p className="text-xs text-muted-foreground">
 											Select a repository first
@@ -555,12 +375,16 @@ export function GitHub() {
 								</div>
 							)}
 
+							{configureMutation.isError && <p role="alert" className="text-sm text-destructive">Could not start GitHub configuration. Your repository and branch selections are still here. Try again.</p>}
+							{configureMutation.isSuccess && <p role="status" className="text-sm text-muted-foreground">Configuration queued. Follow its progress in notifications.</p>}
+
 							{/* Save Button */}
 							<div className="flex justify-end">
 								<Button
 									onClick={handleConfigure}
+									className="min-h-11 w-full sm:w-auto"
 									disabled={
-										saving ||
+										saving || testingToken || loadingBranches || branchError ||
 										!selectedRepo ||
 										(!config?.token_saved &&
 											!token.trim()) ||
@@ -570,7 +394,7 @@ export function GitHub() {
 								>
 									{saving ? (
 										<>
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											<Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
 											Configuring...
 										</>
 									) : (
@@ -613,125 +437,9 @@ export function GitHub() {
 				</CardContent>
 			</Card>
 
-			{/* Create Repository Modal */}
-			<Dialog open={showCreateRepo} onOpenChange={setShowCreateRepo}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Create New Repository</DialogTitle>
-						<DialogDescription>
-							Create a new GitHub repository in your account
-						</DialogDescription>
-					</DialogHeader>
+			<GitHubCreateRepositoryDialog open={showCreateRepo} name={newRepoName} description={newRepoDescription} isPrivate={newRepoPrivate} pending={creatingRepo} failed={createRepoMutation.isError} onClose={() => setShowCreateRepo(false)} onConfirm={() => { void handleCreateRepository(); }} onNameChange={setNewRepoName} onDescriptionChange={setNewRepoDescription} onPrivateChange={setNewRepoPrivate} />
 
-					<div className="space-y-4">
-						<div className="space-y-2">
-							<Label htmlFor="new-repo-name">
-								Repository Name
-							</Label>
-							<Input
-								id="new-repo-name"
-								placeholder="my-repository"
-								value={newRepoName}
-								onChange={(e) => setNewRepoName(e.target.value)}
-							/>
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="new-repo-desc">
-								Description (Optional)
-							</Label>
-							<Input
-								id="new-repo-desc"
-								placeholder="A brief description"
-								value={newRepoDescription}
-								onChange={(e) =>
-									setNewRepoDescription(e.target.value)
-								}
-							/>
-						</div>
-
-						<div className="flex items-center space-x-2">
-							<input
-								type="checkbox"
-								id="new-repo-private"
-								checked={newRepoPrivate}
-								onChange={(e) =>
-									setNewRepoPrivate(e.target.checked)
-								}
-								className="h-4 w-4"
-							/>
-							<Label
-								htmlFor="new-repo-private"
-								className="text-sm font-normal"
-							>
-								Private repository
-							</Label>
-						</div>
-					</div>
-
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setShowCreateRepo(false)}
-						>
-							Cancel
-						</Button>
-						<Button
-							onClick={handleCreateRepository}
-							disabled={!newRepoName.trim() || creatingRepo}
-						>
-							{creatingRepo ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Creating...
-								</>
-							) : (
-								"Create Repository"
-							)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Disconnect Confirmation Dialog */}
-			<Dialog
-				open={showDisconnectConfirm}
-				onOpenChange={setShowDisconnectConfirm}
-			>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Disconnect GitHub Integration</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to disconnect GitHub
-							integration? This will remove all stored credentials
-							and you'll need to reconfigure to reconnect.
-						</DialogDescription>
-					</DialogHeader>
-					<DialogFooter>
-						<Button
-							variant="outline"
-							onClick={() => setShowDisconnectConfirm(false)}
-							disabled={saving}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="destructive"
-							onClick={handleDisconnect}
-							disabled={saving}
-						>
-							{saving ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Disconnecting...
-								</>
-							) : (
-								"Disconnect"
-							)}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			<GitHubDisconnectDialog open={showDisconnectConfirm} pending={saving} failed={disconnectMutation.isError} completed={disconnected} returnFocusRef={headingRef} onClose={() => setShowDisconnectConfirm(false)} onConfirm={() => { void handleDisconnect(); }} />
 		</div>
 	);
 }

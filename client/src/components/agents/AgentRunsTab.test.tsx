@@ -1,3 +1,4 @@
+import { AgentRunsTab } from "./AgentRunsTab";
 /**
  * Tests for AgentRunsTab.
  *
@@ -6,6 +7,7 @@
  * pulling in the entire shadcn Sheet machinery.
  */
 
+import { act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
@@ -76,7 +78,10 @@ function makeRun(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-function makeInfinitePages(items: ReturnType<typeof makeRun>[], total?: number) {
+function makeInfinitePages(
+	items: ReturnType<typeof makeRun>[],
+	total?: number,
+) {
 	return {
 		data: {
 			pages: [{ items, total: total ?? items.length, next_cursor: null }],
@@ -99,7 +104,7 @@ beforeEach(() => {
 });
 
 async function renderTab(agentId = "agent-1") {
-	const { AgentRunsTab } = await import("./AgentRunsTab");
+
 	return renderWithProviders(<AgentRunsTab agentId={agentId} />);
 }
 
@@ -163,9 +168,7 @@ describe("AgentRunsTab — search", () => {
 describe("AgentRunsTab — verdict actions", () => {
 	it("calls useSetVerdict mutate when a 👍 toggle is clicked", async () => {
 		const { user } = await renderTab();
-		await user.click(
-			screen.getByRole("button", { name: /mark as good/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /mark as good/i }));
 		await waitFor(() => {
 			expect(mockSetVerdict).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -182,12 +185,53 @@ describe("AgentRunsTab — verdict actions", () => {
 			makeInfinitePages([makeRun({ verdict: "up" })]),
 		);
 		const { user } = await renderTab();
-		await user.click(
-			screen.getByRole("button", { name: /mark as good/i }),
-		);
+		await user.click(screen.getByRole("button", { name: /mark as good/i }));
 		await waitFor(() => {
 			expect(mockClearVerdict).toHaveBeenCalled();
 		});
+	});
+
+	it("locks review actions while saving and retries the exact failed note", async () => {
+		mockUseInfiniteAgentRuns.mockReturnValue(
+			makeInfinitePages([
+				makeRun({ verdict: "down", verdict_note: "Previous note" }),
+			]),
+		);
+		const { user } = await renderTab();
+		const note = screen.getByRole("textbox", {
+			name: "What should it have done?",
+		});
+		await user.clear(note);
+		await user.type(note, "Check renewal terms");
+		await user.tab();
+		expect(mockSetVerdict).toHaveBeenCalledTimes(1);
+		expect(
+			screen.getByRole("button", { name: /mark as good/i }),
+		).toBeDisabled();
+		expect(note).toBeDisabled();
+		expect(screen.getByText("Saving review…")).toHaveAttribute(
+			"role",
+			"status",
+		);
+		const callbacks = mockSetVerdict.mock.calls[0][1];
+		act(() => {
+			callbacks.onError();
+			callbacks.onSettled();
+		});
+		expect(screen.getByRole("alert")).toHaveFocus();
+		expect(note).toHaveValue("Check renewal terms");
+		await user.click(screen.getByRole("button", { name: "Retry review" }));
+		expect(mockSetVerdict).toHaveBeenCalledTimes(2);
+		expect(mockSetVerdict.mock.calls[1][0].body).toEqual({
+			verdict: "down",
+			note: "Check renewal terms",
+		});
+		act(() => {
+			mockSetVerdict.mock.calls[1][1].onSuccess();
+			mockSetVerdict.mock.calls[1][1].onSettled();
+		});
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+		expect(note).toBeEnabled();
 	});
 
 	it("renders the queue banner when there are flagged runs", async () => {
@@ -221,7 +265,9 @@ describe("AgentRunsTab — infinite scroll", () => {
 	});
 
 	it("does not render the sentinel when there are no more pages", async () => {
-		mockUseInfiniteAgentRuns.mockReturnValue(makeInfinitePages([makeRun()]));
+		mockUseInfiniteAgentRuns.mockReturnValue(
+			makeInfinitePages([makeRun()]),
+		);
 		await renderTab();
 		expect(
 			screen.queryByTestId("infinite-scroll-sentinel"),
@@ -244,4 +290,40 @@ describe("AgentRunsTab — sheet open", () => {
 		const sheet = await screen.findByTestId("run-sheet");
 		expect(sheet).toHaveAttribute("data-run-id", "run-1");
 	});
+});
+
+it("retries an initial read failure without claiming there are no matching runs", async () => {
+	const refetch = vi.fn();
+	mockUseInfiniteAgentRuns.mockReturnValue({
+		...makeInfinitePages([]),
+		data: undefined,
+		isError: true,
+		refetch,
+	});
+	const { user } = await renderTab();
+	expect(screen.getByText("Could not load runs.")).toBeVisible();
+	expect(
+		screen.queryByText("No runs match this filter."),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry runs" }));
+	expect(refetch).toHaveBeenCalledOnce();
+});
+
+it("retains loaded runs and retries the failed next page", async () => {
+	const fetchNextPage = vi.fn();
+	const refetch = vi.fn();
+	mockUseInfiniteAgentRuns.mockReturnValue({
+		...makeInfinitePages([makeRun()]),
+		isError: true,
+		isFetchNextPageError: true,
+		hasNextPage: true,
+		fetchNextPage,
+		refetch,
+	});
+	const { user } = await renderTab();
+	expect(screen.getByText("How do I reset my password?")).toBeVisible();
+	expect(screen.getByText("Could not load more runs.")).toBeVisible();
+	await user.click(screen.getByRole("button", { name: "Retry runs" }));
+	expect(fetchNextPage).toHaveBeenCalledOnce();
+	expect(refetch).not.toHaveBeenCalled();
 });

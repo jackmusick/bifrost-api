@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 
 import { renderWithProviders, screen, waitFor } from "@/test-utils";
 
+import { AgentTuneWorkbench } from "./AgentTuneWorkbench";
 const mockUseAgent = vi.fn();
 const mockUseAgentRuns = vi.fn();
 const mockUseAgentStats = vi.fn();
@@ -16,7 +17,13 @@ vi.mock("@/hooks/useAgents", () => ({
 }));
 
 vi.mock("@/services/agentRuns", () => ({
-	useAgentRuns: (params: unknown) => mockUseAgentRuns(params),
+	useInfiniteAgentRuns: (params: unknown) => {
+		const result = mockUseAgentRuns(params);
+		return {
+			...result,
+			data: result.data ? { pages: [result.data] } : undefined,
+		};
+	},
 	useAgentRun: () => ({ data: null, isLoading: false }),
 }));
 
@@ -83,7 +90,11 @@ function makeRun(id: string) {
 beforeEach(() => {
 	mockUseAgent.mockReturnValue({ data: baseAgent });
 	mockUseAgentRuns.mockReturnValue({
-		data: { items: [makeRun("a"), makeRun("b")], total: 2, next_cursor: null },
+		data: {
+			items: [makeRun("a"), makeRun("b")],
+			total: 2,
+			next_cursor: null,
+		},
 		isLoading: false,
 	});
 	mockUseAgentStats.mockReturnValue({ data: baseStats, isLoading: false });
@@ -93,7 +104,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { AgentTuneWorkbench } = await import("./AgentTuneWorkbench");
 	return renderWithProviders(
 		<Routes>
 			<Route path="/agents/:id/tune" element={<AgentTuneWorkbench />} />
@@ -180,9 +190,7 @@ describe("AgentTuneWorkbench — generate proposal", () => {
 	it("renders the editable textarea with the proposal after generate", async () => {
 		const { user } = await renderPage();
 		await user.click(screen.getByTestId("generate-proposal-button"));
-		const textarea = await screen.findByTestId(
-			"proposal-textarea",
-		);
+		const textarea = await screen.findByTestId("proposal-textarea");
 		expect(textarea).toHaveValue(sampleProposal.proposed_prompt);
 	});
 
@@ -304,9 +312,7 @@ describe("AgentTuneWorkbench — dry-run", () => {
 
 		await user.click(screen.getByTestId("dryrun-button"));
 		await waitFor(() => {
-			expect(
-				screen.queryByText(/still answers itself/i),
-			).toBeNull();
+			expect(screen.queryByText(/still answers itself/i)).toBeNull();
 			expect(
 				screen.getByText(/different outcome this time/i),
 			).toBeInTheDocument();
@@ -320,7 +326,6 @@ function LocationProbe() {
 }
 
 async function renderPageWithProbe() {
-	const { AgentTuneWorkbench } = await import("./AgentTuneWorkbench");
 	return renderWithProviders(
 		<Routes>
 			<Route
@@ -332,10 +337,7 @@ async function renderPageWithProbe() {
 					</>
 				}
 			/>
-			<Route
-				path="/agents/:id"
-				element={<LocationProbe />}
-			/>
+			<Route path="/agents/:id" element={<LocationProbe />} />
 		</Routes>,
 		{ initialEntries: ["/agents/agent-1/tune"] },
 	);

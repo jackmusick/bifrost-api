@@ -7,6 +7,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { $api, apiClient } from "@/lib/api-client";
+import { samePathAndBodyExcept } from "@/lib/paginated-query";
 import { toast } from "sonner";
 import type { components } from "@/lib/v1";
 
@@ -156,19 +157,31 @@ export function useDeleteTable() {
 export function useDocuments(
 	tableId: string,
 	query: Partial<DocumentQuery> = {},
+	options: { preservePageData?: boolean } = {},
 ) {
 	const fullQuery: DocumentQuery = { ...DEFAULT_QUERY, ...query };
+	const path = { table_id: tableId };
 
 	return $api.useQuery(
 		"post",
 		"/api/tables/{table_id}/documents/query",
 		{
 			params: {
-				path: { table_id: tableId },
+				path,
 			},
 			body: fullQuery,
 		},
-		{ enabled: !!tableId },
+		{
+			enabled: !!tableId,
+			placeholderData: options.preservePageData
+				? (previousData, previousQuery) =>
+						samePathAndBodyExcept(path, fullQuery, previousQuery, [
+							"offset",
+						])
+							? previousData
+							: undefined
+				: undefined,
+		},
 	);
 }
 

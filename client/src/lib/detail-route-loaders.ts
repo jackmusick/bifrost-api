@@ -59,10 +59,11 @@ export function prefetchApplicationDetail(
 	application: ApplicationPublic,
 	preview: boolean,
 ): void {
-	queryClient.setQueryData(
-		applicationDetailQueryOptions(application.slug).queryKey,
-		application,
-	);
+	const detailKey = applicationDetailQueryOptions(application.slug).queryKey;
+	if (!queryClient.getQueryData(detailKey)) {
+		queryClient.setQueryData(detailKey, application);
+	}
+	if (!preview && !application.is_published) return;
 	void Promise.all([
 		decodeImage(application.logo_url),
 		prepareAppBundle({ appId: application.id, isPreview: preview }),
@@ -77,6 +78,7 @@ export function applicationDetailLoader(preview: boolean) {
 		const application = await queryClient.ensureQueryData(
 			applicationDetailQueryOptions(slug),
 		);
+		if (!preview && !application.is_published) return null;
 		await Promise.all([
 			decodeImage(application.logo_url),
 			prepareAppBundle({

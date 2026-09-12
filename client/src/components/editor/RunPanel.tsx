@@ -1,4 +1,13 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject } from "react";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+	useState,
+	useEffect,
+	useRef,
+	useCallback,
+	useMemo,
+	type MutableRefObject,
+} from "react";
 import {
 	Play,
 	Loader2,
@@ -75,13 +84,14 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 	const openFile = activeTab?.file || null;
 	const fileContent = activeTab?.content || "";
 
-	const { data: metadata, isLoading: isLoadingMetadata } =
-		useWorkflowsMetadata() as {
-			data?: {
-				workflows?: WorkflowMetadata[];
-			};
-			isLoading: boolean;
-		};
+	const {
+		data: metadata,
+		isLoading: isLoadingMetadata,
+		isError: metadataError,
+		isFetching: metadataFetching,
+		hasData: hasMetadata,
+		refetch: refetchMetadata,
+	} = useWorkflowsMetadata();
 	const executeWorkflow = useExecuteWorkflow();
 	const [isExecuting, setIsExecuting] = useState(false);
 	const [isValidating, setIsValidating] = useState(false);
@@ -89,6 +99,8 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		null,
 	);
 	const [variablesExpanded, setVariablesExpanded] = useState(true);
+	const [runError, setRunError] = useState<string | null>(null);
+	const [retryRun, setRetryRun] = useState<(() => void) | null>(null);
 	const [lastExecutionVariables, setLastExecutionVariables] = useState<
 		Record<string, unknown>
 	>({});
@@ -171,6 +183,15 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		null,
 	);
 	const firstInputRef = useRef<HTMLInputElement>(null);
+	const runContextKey = `${openFile?.path ?? ""}::${selectedWorkflowId ?? ""}`;
+	const [prevRunContextKey, setPrevRunContextKey] = useState<string | null>(
+		null,
+	);
+	if (prevRunContextKey !== runContextKey) {
+		setPrevRunContextKey(runContextKey);
+		setRunError(null);
+		setRetryRun(null);
+	}
 
 	// Get stream state and actions from store
 	const streamState = useExecutionStreamStore((state) =>
@@ -299,7 +320,6 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [streamState?.isComplete, currentExecutionId]);
 
-
 	// Create a stable dependency for workflow changes based on IDs, not array reference
 	// This prevents infinite loops from array reference instability
 	const workflowIds = useMemo(() => {
@@ -309,7 +329,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 	// Auto-select workflow when there's only one, reset when file changes.
 	// Adjust during render with a previous-IDs sentinel rather than via
 	// setState-in-effect.
-	const [prevWorkflowIds, setPrevWorkflowIds] = useState(workflowIds);
+	const [prevWorkflowIds, setPrevWorkflowIds] = useState<string | null>(null);
 	if (prevWorkflowIds !== workflowIds) {
 		setPrevWorkflowIds(workflowIds);
 		const workflows = detectedItem.workflows || [];
@@ -329,6 +349,127 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		return detectedItem.workflows.find((w) => w.id === selectedWorkflowId);
 	}, [selectedWorkflowId, detectedItem.workflows]);
 
+	const handleExecuteScript = useCallback(async () => {
+		if (!openFile || !fileContent) {
+			toast.error("No file content to execute");
+			return;
+		}
+
+		// Get filename without extension to use as identifier
+		const fileName = openFile.name.replace(".py", "");
+
+		setIsExecuting(true);
+		setRunError(null);
+		setRetryRun(() => () => void handleExecuteScript());
+		setLastExecutionVariables({}); // Clear variables on new execution
+		try {
+			// Encode file content as base64
+			const codeBase64 = btoa(fileContent);
+
+			// Execute script via workflow API with transient flag and code
+			const result = (await executeWorkflow.mutateAsync({
+				body: {
+					workflow_id: null,
+					input_data: {},
+					form_id: null,
+					transient: true, // Editor executions are transient (no DB writes)
+					code: codeBase64, // Base64-encoded script content
+					script_name: fileName, // Script identifier for logging
+				},
+			})) as WorkflowExecutionResponse;
+
+			// For synchronous executions, logs come back immediately in the response
+			// Display them directly instead of waiting for streaming
+			if (result.logs && result.logs.length > 0) {
+				appendTerminalOutput({
+					loggerOutput: result.logs.map(
+						(log: Record<string, unknown>) => {
+							const logEntry: LogEntry = {
+								level: String(log["level"] || "INFO"),
+								message: String(log["message"] || ""),
+								timestamp: log["timestamp"]
+									? String(log["timestamp"])
+									: new Date().toISOString(),
+								source: String(log["source"] || "script"),
+							};
+							return logEntry;
+						},
+					),
+					variables: {},
+					status: result.status || "Unknown",
+					error: result.error || undefined,
+				});
+				// Set variables directly for synchronous execution
+				setLastExecutionVariables(
+					(result.variables as Record<string, unknown>) || {},
+				);
+				// Synchronous execution - done immediately
+				setIsExecuting(false);
+				setRetryRun(null);
+				setRunError(null);
+
+				// Show completion toast for sync execution
+				if (result.status === "Success") {
+					toast.success("Script executed successfully", {
+						description: result.duration_ms
+							? `Completed in ${result.duration_ms}ms`
+							: undefined,
+					});
+				} else {
+					toast.error("Script execution failed", {
+						description: result.error || "Unknown error",
+					});
+				}
+			} else {
+				// No immediate logs - this is an async execution
+				// Enable streaming for this execution
+				// Keep isExecuting true - it will be cleared when streaming completes
+
+				// Initialize the stream in the store and add "started" message
+				const store = useExecutionStreamStore.getState();
+				store.startStreaming(result.execution_id, "Running");
+				store.appendLog(result.execution_id, {
+					level: "INFO",
+					message: `Script execution started (ID: ${result.execution_id})`,
+					timestamp: new Date().toISOString(),
+				});
+
+				// Set execution ID to trigger useExecutionStream hook
+				setCurrentExecutionId(result.execution_id);
+				setCurrentStreamingExecutionId(result.execution_id);
+			}
+		} catch (error) {
+			// On error, clear executing state and show in terminal
+			setIsExecuting(false);
+
+			// Push error to terminal (no toast - terminal is the primary feedback)
+			const errorMessage = getErrorMessage(
+				error,
+				"Unknown error occurred",
+			);
+			setRunError(`Could not execute script. ${errorMessage}`);
+			appendTerminalOutput({
+				loggerOutput: [
+					{
+						level: "ERROR",
+						message: `Failed to execute script: ${errorMessage}`,
+						source: "system",
+						timestamp: new Date().toISOString(),
+					},
+				],
+				variables: {},
+				status: "Failed",
+				error: undefined,
+			});
+		}
+	}, [
+		openFile,
+		fileContent,
+		executeWorkflow,
+		appendTerminalOutput,
+		setCurrentStreamingExecutionId,
+	]);
+
 	const handleExecuteWorkflow = async (params: Record<string, unknown>) => {
 		// Use selectedWorkflow (derived from selectedWorkflowId) for execution
 		if (detectedItem.type !== "workflow" || !selectedWorkflow) return;
@@ -336,6 +477,8 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		performance.mark("workflow-execute-start");
 
 		setIsExecuting(true);
+		setRunError(null);
+		setRetryRun(() => () => void handleExecuteWorkflow(params));
 		setLastExecutionVariables({}); // Clear variables on new execution
 		try {
 			const result = (await executeWorkflow.mutateAsync({
@@ -383,6 +526,8 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 				);
 				// Synchronous execution - done immediately
 				setIsExecuting(false);
+				setRetryRun(null);
+				setRunError(null);
 
 				// Show completion toast for sync execution
 				if (result.status === "Success") {
@@ -419,6 +564,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 				error,
 				"Unknown error occurred",
 			);
+			setRunError(`Could not execute workflow. ${errorMessage}`);
 			appendTerminalOutput({
 				loggerOutput: [
 					{
@@ -434,122 +580,6 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 			});
 		}
 	};
-
-	const handleExecuteScript = useCallback(async () => {
-		if (!openFile || !fileContent) {
-			toast.error("No file content to execute");
-			return;
-		}
-
-		// Get filename without extension to use as identifier
-		const fileName = openFile.name.replace(".py", "");
-
-		setIsExecuting(true);
-		setLastExecutionVariables({}); // Clear variables on new execution
-		try {
-			// Encode file content as base64
-			const codeBase64 = btoa(fileContent);
-
-			// Execute script via workflow API with transient flag and code
-			const result = (await executeWorkflow.mutateAsync({
-				body: {
-					workflow_id: null,
-					input_data: {},
-					form_id: null,
-					transient: true, // Editor executions are transient (no DB writes)
-					code: codeBase64, // Base64-encoded script content
-					script_name: fileName, // Script identifier for logging
-				},
-			})) as WorkflowExecutionResponse;
-
-			// For synchronous executions, logs come back immediately in the response
-			// Display them directly instead of waiting for streaming
-			if (result.logs && result.logs.length > 0) {
-				appendTerminalOutput({
-					loggerOutput: result.logs.map(
-						(log: Record<string, unknown>) => {
-							const logEntry: LogEntry = {
-								level: String(log["level"] || "INFO"),
-								message: String(log["message"] || ""),
-								timestamp: log["timestamp"]
-									? String(log["timestamp"])
-									: new Date().toISOString(),
-								source: String(log["source"] || "script"),
-							};
-							return logEntry;
-						},
-					),
-					variables: {},
-					status: result.status || "Unknown",
-					error: result.error || undefined,
-				});
-				// Set variables directly for synchronous execution
-				setLastExecutionVariables(
-					(result.variables as Record<string, unknown>) || {},
-				);
-				// Synchronous execution - done immediately
-				setIsExecuting(false);
-
-				// Show completion toast for sync execution
-				if (result.status === "Success") {
-					toast.success("Script executed successfully", {
-						description: result.duration_ms
-							? `Completed in ${result.duration_ms}ms`
-							: undefined,
-					});
-				} else {
-					toast.error("Script execution failed", {
-						description: result.error || "Unknown error",
-					});
-				}
-			} else {
-				// No immediate logs - this is an async execution
-				// Enable streaming for this execution
-				// Keep isExecuting true - it will be cleared when streaming completes
-
-				// Initialize the stream in the store and add "started" message
-				const store = useExecutionStreamStore.getState();
-				store.startStreaming(result.execution_id, "Running");
-				store.appendLog(result.execution_id, {
-					level: "INFO",
-					message: `Script execution started (ID: ${result.execution_id})`,
-					timestamp: new Date().toISOString(),
-				});
-
-				// Set execution ID to trigger useExecutionStream hook
-				setCurrentExecutionId(result.execution_id);
-				setCurrentStreamingExecutionId(result.execution_id);
-			}
-		} catch (error) {
-			// On error, clear executing state and show in terminal
-			setIsExecuting(false);
-
-			// Push error to terminal (no toast - terminal is the primary feedback)
-			const errorMessage = getErrorMessage(
-				error,
-				"Unknown error occurred",
-			);
-			appendTerminalOutput({
-				loggerOutput: [
-					{
-						level: "ERROR",
-						message: `Failed to execute script: ${errorMessage}`,
-						source: "system",
-						timestamp: new Date().toISOString(),
-					},
-				],
-				variables: {},
-				status: "Failed",
-				error: undefined,
-			});
-		}
-	}, [
-		openFile,
-		fileContent,
-		executeWorkflow,
-		appendTerminalOutput,
-		setCurrentStreamingExecutionId,
-	]);
 
 	const handleValidateWorkflow = useCallback(async () => {
 		if (!openFile || !fileContent) {
@@ -682,6 +712,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 
 	// Register execute callback via ref so EditorLayout can call directly
 	const handleExecuteEvent = useCallback(() => {
+		if (isLoadingMetadata || (metadataError && !hasMetadata)) return;
 		// Check if there are parameters (use selectedWorkflow for workflows)
 		const hasParameters =
 			detectedItem.type === "workflow" &&
@@ -696,7 +727,14 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 			// Execute script immediately if no parameters
 			handleExecuteScript();
 		}
-	}, [detectedItem, selectedWorkflow, handleExecuteScript]);
+	}, [
+		detectedItem,
+		selectedWorkflow,
+		handleExecuteScript,
+		isLoadingMetadata,
+		metadataError,
+		hasMetadata,
+	]);
 
 	useEffect(() => {
 		if (executeRef) {
@@ -737,7 +775,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 	if (isLoadingMetadata) {
 		return (
 			<div className="flex h-full flex-col items-center justify-center">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 motion-safe:animate-spin text-muted-foreground" />
 				<p className="text-sm text-muted-foreground mt-3">
 					Detecting file type...
 				</p>
@@ -745,9 +783,72 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		);
 	}
 
+	const metadataFeedback = metadataError ? (
+		<Alert className="m-3 w-auto min-w-0 shrink-0">
+			<AlertTitle>Could not load workflows</AlertTitle>
+			<AlertDescription className="min-w-0 space-y-3">
+				<p className="[overflow-wrap:anywhere]">
+					{hasMetadata
+						? "Previously loaded workflows are still available."
+						: "Retry to load the run controls for this file. Your code has been kept."}
+				</p>
+				<Button
+					type="button"
+					variant="outline"
+					className="h-auto min-h-11 max-w-full whitespace-normal"
+					disabled={metadataFetching}
+					onClick={() => void refetchMetadata()}
+				>
+					{metadataFetching ? "Retrying…" : "Retry workflows"}
+				</Button>
+			</AlertDescription>
+		</Alert>
+	) : null;
+	if (metadataError && !hasMetadata) return metadataFeedback;
+	if (detectedItem.type === "workflow" && !detectedItem.workflows?.length)
+		return (
+			<div className="min-w-0 space-y-3 p-3">
+				{metadataFeedback}
+				<p className="text-sm leading-6 text-muted-foreground">
+					No workflow metadata was found for this file. Save your
+					workflow, then refresh to load its run controls.
+				</p>
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11"
+					disabled={metadataFetching}
+					onClick={() => void refetchMetadata()}
+				>
+					Refresh workflows
+				</Button>
+			</div>
+		);
 	// Render based on detected type
 	return (
 		<div className="flex h-full flex-col">
+			{metadataFeedback}
+			{runError ? (
+				<Alert
+					variant="destructive"
+					className="mx-3 mt-3 w-[calc(100%-1.5rem)] rounded-[var(--bf-radius-surface)]"
+				>
+					<AlertTitle>Run failed</AlertTitle>
+					<AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+						<span>{runError}</span>
+						{retryRun ? (
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11 shrink-0"
+								onClick={retryRun}
+							>
+								Retry last submission
+							</Button>
+						) : null}
+					</AlertDescription>
+				</Alert>
+			) : null}
 			{/* Content */}
 			<div className="flex-1 overflow-auto">
 				{detectedItem.type === "workflow" && (
@@ -773,10 +874,13 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 										value={selectedWorkflowId || ""}
 										onValueChange={setSelectedWorkflowId}
 									>
-										<SelectTrigger className="w-full">
+										<SelectTrigger
+											aria-label="Select workflow"
+											className="w-full"
+										>
 											<SelectValue placeholder="Select a workflow to run" />
 										</SelectTrigger>
-										<SelectContent>
+										<SelectContent className="z-[200]">
 											{detectedItem.workflows?.map(
 												(w) => (
 													<SelectItem
@@ -863,29 +967,37 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 					<>
 						<div className="m-3 mb-0">
 							<div className="rounded-md ring-1 ring-foreground/5 flex items-center gap-3 p-2 bg-muted/50">
-								<button
+								<Button
+									type="button"
+									variant="default"
+									size="icon"
+									aria-label="Run script"
 									onClick={handleExecuteScript}
 									disabled={isLoading}
-									className="flex items-center justify-center w-8 h-8 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+									className="size-11 shrink-0 sm:size-8"
 								>
 									{isLoading ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
+										<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 									) : (
 										<Play className="h-4 w-4" />
 									)}
-								</button>
-								<button
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="icon"
+									aria-label="Validate workflow"
 									onClick={handleValidateWorkflow}
 									disabled={isValidating}
-									className="flex items-center justify-center w-8 h-8 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+									className="size-11 shrink-0 sm:size-8"
 									title="Validate Workflow"
 								>
 									{isValidating ? (
-										<Loader2 className="h-4 w-4 animate-spin" />
+										<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
 									) : (
 										<CheckCircle className="h-4 w-4" />
 									)}
-								</button>
+								</Button>
 								<div className="flex items-center gap-2 flex-1 min-w-0">
 									<FileCode className="h-4 w-4 text-muted-foreground flex-shrink-0" />
 									<div className="min-w-0">

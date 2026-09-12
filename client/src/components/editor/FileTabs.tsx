@@ -1,3 +1,4 @@
+import { UnsavedTabsDialog } from "./UnsavedTabsDialog";
 import { X, Cloud, Loader2, CloudCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "@/stores/editorStore";
@@ -25,19 +26,50 @@ import { FileTabConflictMenu } from "@/components/editor/FileTabConflictMenu";
  * Each tab shows file name, unsaved indicator, and close button
  * Right-click for context menu: Close, Close Others, Close All
  */
-export function FileTabs() {
+export function FileTabs({ onEmpty }: { onEmpty?: () => void }) {
 	const {
 		tabs,
 		activeTabIndex,
 		setActiveTab,
 		closeTab,
-		closeAllTabs,
-		closeOtherTabs,
 		openFileInTab,
 		setLoadingFile,
 		reorderTabs,
 		setConflictState,
 	} = useEditorSession();
+
+	const tabsRef = useRef<HTMLDivElement>(null);
+	const closeOriginRef = useRef<HTMLElement | null>(null);
+	const [pendingClosePaths, setPendingClosePaths] = useState<string[]>([]);
+	const focusActiveTab = () => {
+		const activeButton = tabsRef.current?.querySelector<HTMLButtonElement>(
+			'button[aria-pressed="true"]',
+		);
+		if (activeButton) activeButton.focus();
+		else onEmpty?.();
+	};
+	const closePaths = (paths: string[]) => {
+		// Resolve current indices so tab reordering cannot close a different file.
+		tabs.map((tab, index) => (paths.includes(tab.file.path) ? index : -1))
+			.filter((index) => index >= 0)
+			.reverse()
+			.forEach((index) => closeTab(index));
+		requestAnimationFrame(focusActiveTab);
+	};
+	const requestClose = (paths: string[], origin?: HTMLElement | null) => {
+		closeOriginRef.current =
+			origin ??
+			(document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null);
+		if (
+			tabs.some(
+				(tab) => paths.includes(tab.file.path) && tab.unsavedChanges,
+			)
+		)
+			setPendingClosePaths(paths);
+		else closePaths(paths);
+	};
 
 	// Handle tab click - only load from server if content is empty
 	const handleTabClick = async (index: number) => {
@@ -48,7 +80,11 @@ export function FileTabs() {
 
 		// If content already loaded, check for conflicts before switching
 		// Skip conflict check during indexing (server modifies file, creating etag mismatch)
-		if (tab.content !== "" && tab.etag && !useEditorStore.getState().isIndexing) {
+		if (
+			tab.content !== "" &&
+			tab.etag &&
+			!useEditorStore.getState().isIndexing
+		) {
 			try {
 				const serverFile = await fileService.readFile(tab.file.path);
 
@@ -105,7 +141,12 @@ export function FileTabs() {
 	}
 
 	return (
-		<div className="flex h-10 items-center border-b bg-muted/30 overflow-x-auto">
+		<div
+			className="flex min-h-11 items-stretch overflow-x-auto border-b bg-muted/30"
+			ref={tabsRef}
+			aria-label="Open files"
+			role="group"
+		>
 			<div className="flex min-w-full">
 				{tabs.map((tab, index) => (
 					<FileTab
@@ -114,13 +155,57 @@ export function FileTabs() {
 						index={index}
 						isActive={index === activeTabIndex}
 						onTabClick={() => handleTabClick(index)}
-						onClose={() => closeTab(index)}
-						onCloseOthers={() => closeOtherTabs(index)}
-						onCloseAll={() => closeAllTabs()}
+						onClose={(origin) =>
+							requestClose([tab.file.path], origin)
+						}
+						onCloseOthers={() =>
+							requestClose(
+								tabs
+									.filter(
+										(other) =>
+											other.file.path !== tab.file.path,
+									)
+									.map((other) => other.file.path),
+							)
+						}
+						onCloseAll={() =>
+							requestClose(tabs.map((other) => other.file.path))
+						}
 						onReorder={reorderTabs}
 					/>
 				))}
 			</div>
+			<UnsavedTabsDialog
+				isSaving={tabs.some(
+					(tab) =>
+						pendingClosePaths.includes(tab.file.path) &&
+						tab.saveState === "saving",
+				)}
+				onReturnFocus={() => {
+					const origin = closeOriginRef.current;
+					if (
+						origin?.isConnected &&
+						tabsRef.current?.contains(origin)
+					)
+						origin.focus();
+					else focusActiveTab();
+				}}
+				open={pendingClosePaths.length > 0}
+				paths={tabs
+					.filter(
+						(tab) =>
+							pendingClosePaths.includes(tab.file.path) &&
+							tab.unsavedChanges,
+					)
+					.map((tab) => tab.file.path)}
+				onOpenChange={(open) => {
+					if (!open) setPendingClosePaths([]);
+				}}
+				onDiscard={() => {
+					closePaths(pendingClosePaths);
+					setPendingClosePaths([]);
+				}}
+			/>
 		</div>
 	);
 }
@@ -131,15 +216,13 @@ interface FileTabProps {
 		unsavedChanges: boolean;
 		saveState?: "clean" | "dirty" | "saving" | "saved" | "conflict";
 		conflictReason?:
-			| "content_changed"
-			| "path_not_found"
-			| "workflows_would_deactivate";
+			"content_changed" | "path_not_found" | "workflows_would_deactivate";
 		serverContentDiffers?: boolean;
 	};
 	index: number;
 	isActive: boolean;
 	onTabClick: () => void;
-	onClose: () => void;
+	onClose: (origin?: HTMLElement | null) => void;
 	onCloseOthers: () => void;
 	onCloseAll: () => void;
 	onReorder: (fromIndex: number, toIndex: number) => void;
@@ -202,7 +285,7 @@ function FileTab({
 				<div
 					ref={tabRef}
 					className={cn(
-						"group flex items-center gap-2 border-r px-3 py-2 text-sm transition-all min-w-[120px] max-w-[200px] cursor-pointer",
+						"group flex min-w-[160px] max-w-[280px] shrink-0 items-center border-r text-sm transition-colors motion-reduce:transition-none",
 						isActive
 							? "bg-background text-foreground"
 							: "bg-muted/30 text-muted-foreground hover:bg-muted/50",
@@ -211,35 +294,50 @@ function FileTab({
 							"bg-primary/20 border-l-2 border-l-primary",
 					)}
 				>
-					{/* Clickable area for tab */}
-					<div
+					{tab.saveState === "conflict" && tab.conflictReason && (
+						<FileTabConflictMenu
+							fileName={tab.file.name}
+							conflictReason={tab.conflictReason}
+							onResolve={(action) => {
+								if (action === "close")
+									onClose(
+										tabRef.current?.querySelector<HTMLButtonElement>(
+											"button",
+										),
+									);
+								else resolveConflict(index, action);
+							}}
+						/>
+					)}
+					<button
+						type="button"
 						onClick={onTabClick}
-						className="flex items-center gap-2 flex-1 min-w-0"
+						aria-pressed={isActive}
+						aria-label={`Open ${tab.file.path}`}
+						title={tab.file.path}
+						className="flex min-h-11 min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 					>
-						{/* Save state icon - always show cloud */}
-						{tab.saveState === "conflict" && tab.conflictReason ? (
-							<FileTabConflictMenu
-								fileName={tab.file.name}
-								conflictReason={tab.conflictReason}
-								onResolve={(action) =>
-									resolveConflict(index, action)
-								}
-							/>
-						) : tab.saveState === "dirty" ? (
-							<Cloud className="h-3.5 w-3.5 flex-shrink-0 text-blue-500" />
-						) : tab.saveState === "saving" ? (
-							<Loader2 className="h-3.5 w-3.5 flex-shrink-0 text-blue-500 animate-spin" />
+						{tab.saveState === "saving" ? (
+							<Loader2 className="size-3.5 shrink-0 animate-spin text-primary motion-reduce:animate-none!" />
 						) : tab.saveState === "saved" ? (
-							<CloudCheck className="h-3.5 w-3.5 flex-shrink-0 text-green-500" />
+							<CloudCheck className="size-3.5 shrink-0 text-[var(--bf-success)]" />
 						) : (
-							<Cloud className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50" />
+							<Cloud
+								className={cn(
+									"size-3.5 shrink-0",
+									tab.unsavedChanges
+										? "text-primary"
+										: "text-muted-foreground",
+								)}
+							/>
 						)}
-
-						{/* File name */}
-						<span className="flex-1 truncate text-left">
+						<span className="min-w-0 [overflow-wrap:anywhere]">
 							{tab.file.name}
 						</span>
-					</div>
+						{tab.unsavedChanges && (
+							<span className="sr-only">Unsaved changes</span>
+						)}
+					</button>
 
 					{/* Close button - always visible */}
 					<button
@@ -247,15 +345,19 @@ function FileTab({
 							e.stopPropagation();
 							onClose();
 						}}
-						className="flex-shrink-0 rounded-md p-0.5 hover:bg-muted-foreground/20 opacity-0 group-hover:opacity-100 transition-opacity"
+						type="button"
+						className="flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] hover:bg-muted-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 						title="Close"
+						aria-label={`Close ${tab.file.name}`}
 					>
 						<X className="h-3 w-3" />
 					</button>
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
-				<ContextMenuItem onClick={onClose}>Close</ContextMenuItem>
+				<ContextMenuItem onClick={() => onClose()}>
+					Close
+				</ContextMenuItem>
 				<ContextMenuItem onClick={onCloseOthers}>
 					Close Others
 				</ContextMenuItem>

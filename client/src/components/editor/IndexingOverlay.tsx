@@ -23,15 +23,18 @@ export function IndexingOverlay() {
 	}
 
 	return (
-		<div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-			<div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-card shadow-lg ring-1 ring-foreground/5 dark:ring-foreground/10">
-				<Loader2 className="h-8 w-8 animate-spin text-primary" />
+		<div className="absolute inset-0 z-50 flex items-center justify-center overflow-auto p-4 bg-background/80 backdrop-blur-sm">
+			<div
+				role="status"
+				className="flex min-w-0 max-w-full flex-col items-center gap-3 rounded-[var(--bf-radius-surface)] border border-border bg-card p-4 text-center shadow-lg [overflow-wrap:anywhere]"
+			>
+				<Loader2 className="h-8 w-8 shrink-0 motion-safe:animate-spin text-primary" />
 				<div className="text-center">
 					<p className="text-sm font-medium">
-						{indexingMessage || "Indexing workflow..."}
+						{indexingMessage || "Indexing workflow…"}
 					</p>
-					<p className="text-xs text-muted-foreground mt-1">
-						This only happens once per file
+					<p className="text-sm leading-5 text-muted-foreground mt-1">
+						The editor will be available when indexing finishes.
 					</p>
 				</div>
 			</div>

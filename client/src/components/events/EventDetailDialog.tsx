@@ -2,12 +2,12 @@ import { useState } from "react";
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { EventStatusBadge } from "./EventStatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	Accordion,
@@ -15,116 +15,150 @@ import {
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-	Clock,
-	CheckCircle2,
-	XCircle,
-	Loader2,
-	Copy,
-	Check,
-	Globe,
-} from "lucide-react";
+import { XCircle, Loader2, Copy, Check } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import {
-	useEvent,
-	useDeliveries,
-	type Event,
-	type EventStatus,
-} from "@/services/events";
+import { useEvent, useDeliveries, type Event } from "@/services/events";
 import { DeliveriesTable } from "./DeliveriesTable";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 
 interface EventDetailDialogProps {
 	event: Event | null;
+	eventId?: string;
 	onClose: () => void;
 }
 
-function getStatusIcon(status: EventStatus) {
-	switch (status) {
-		case "received":
-			return <Clock className="h-4 w-4 text-muted-foreground" />;
-		case "processing":
-			return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-		case "completed":
-			return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-		case "failed":
-			return <XCircle className="h-4 w-4 text-destructive" />;
-	}
-}
-
-function getStatusLabel(status: EventStatus) {
-	switch (status) {
-		case "received":
-			return "Received";
-		case "processing":
-			return "Processing";
-		case "completed":
-			return "Completed";
-		case "failed":
-			return "Failed";
-	}
-}
-
-function getStatusVariant(
-	status: EventStatus,
-): "default" | "secondary" | "destructive" | "outline" {
-	switch (status) {
-		case "completed":
-			return "default";
-		case "failed":
-			return "destructive";
-		case "processing":
-			return "outline";
-		default:
-			return "secondary";
-	}
+function EventReadError({
+	label,
+	pending,
+	onRetry,
+}: {
+	label: string;
+	pending: boolean;
+	onRetry: () => void;
+}) {
+	return (
+		<div
+			role="alert"
+			className="min-w-0 space-y-3 rounded-[var(--bf-radius-surface)] border p-4 text-sm leading-6"
+		>
+			<p>
+				Could not load {label.toLowerCase()}. Any previously loaded data
+				remains visible below.
+			</p>
+			<Button
+				type="button"
+				variant="outline"
+				className="min-h-11"
+				disabled={pending}
+				onClick={onRetry}
+			>
+				{pending && (
+					<Loader2 className="size-4 motion-safe:animate-spin" />
+				)}
+				Retry {label.toLowerCase()}
+			</Button>
+		</div>
+	);
 }
 
 function TextViewer({ data, label }: { data: unknown; label: string }) {
-	const [copied, setCopied] = useState(false);
-
+	const [copiedText, setCopiedText] = useState<string | null>(null);
+	const [copyFailed, setCopyFailed] = useState(false);
 	const displayText =
-		typeof data === "string" ? data : JSON.stringify(data, null, 2);
-
+		(typeof data === "string" ? data : JSON.stringify(data, null, 2)) ?? "";
+	const copied = copiedText === displayText;
 	const handleCopy = async () => {
 		try {
 			await navigator.clipboard.writeText(displayText);
-			setCopied(true);
+			setCopiedText(displayText);
+			setCopyFailed(false);
 			toast.success(`${label} copied to clipboard`);
-			setTimeout(() => setCopied(false), 2000);
 		} catch {
-			toast.error("Failed to copy");
+			setCopyFailed(true);
+			setCopiedText(null);
 		}
 	};
-
 	return (
-		<div className="relative">
+		<div className="min-w-0 space-y-2">
 			<Button
-				variant="ghost"
-				size="icon"
-				className="absolute top-2 right-2 h-6 w-6"
+				type="button"
+				variant="outline"
+				className="min-h-11"
 				onClick={handleCopy}
+				aria-label={`Copy ${label.toLowerCase()}`}
 			>
 				{copied ? (
-					<Check className="h-3 w-3 text-green-500" />
+					<Check className="size-4 text-[var(--bf-success)]" />
 				) : (
-					<Copy className="h-3 w-3" />
+					<Copy className="size-4" />
 				)}
+				{copied ? "Copied" : `Copy ${label.toLowerCase()}`}
 			</Button>
-			<pre className="bg-muted/50 ring-1 ring-foreground/5 p-4 rounded-md overflow-auto max-h-80 text-sm font-mono whitespace-pre-wrap">
+			{copyFailed && (
+				<p role="alert" className="text-sm leading-6 text-destructive">
+					Could not copy. Select the text below to copy it.
+				</p>
+			)}
+			<pre
+				tabIndex={0}
+				aria-label={label}
+				className="max-h-80 min-w-0 overflow-auto whitespace-pre-wrap rounded-[var(--bf-radius-surface)] border bg-muted/50 p-4 font-mono text-sm leading-6 [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			>
 				{displayText}
 			</pre>
 		</div>
 	);
 }
 
-function EventDetailContent({ eventId }: { eventId: string }) {
-	const { data: event, isLoading: eventLoading } = useEvent(eventId);
-	const { data: deliveriesData, isLoading: deliveriesLoading } =
-		useDeliveries(eventId);
+function EventMetadata({ event }: { event: Event }) {
+	return (
+		<dl className="grid min-w-0 gap-4 border-b pb-6 text-sm leading-6 @sm/event:grid-cols-2">
+			<div className="min-w-0 @sm/event:col-span-2">
+				<dt className="text-muted-foreground">Event Type</dt>
+				<dd className="mt-1 font-mono [overflow-wrap:anywhere]">
+					{event.event_type || "—"}
+				</dd>
+			</div>
+			<div className="min-w-0">
+				<dt className="text-muted-foreground">Status</dt>
+				<dd className="mt-1">
+					<EventStatusBadge status={event.status} />
+				</dd>
+			</div>
+			<div className="min-w-0">
+				<dt className="text-muted-foreground">Received At</dt>
+				<dd className="mt-1 font-medium">
+					{format(new Date(event.received_at), "PPpp")}
+				</dd>
+			</div>
+			<div className="min-w-0 @sm/event:col-span-2">
+				<dt className="text-muted-foreground">Source IP</dt>
+				<dd className="mt-1 font-mono [overflow-wrap:anywhere]">
+					{event.source_ip || "Unknown"}
+				</dd>
+			</div>
+		</dl>
+	);
+}
 
-	if (eventLoading) {
+function EventDetailContent({ eventId }: { eventId: string }) {
+	const {
+		data: event,
+		isLoading: eventLoading,
+		isError: eventError,
+		isFetching: eventFetching,
+		refetch: refetchEvent,
+	} = useEvent(eventId);
+	const {
+		data: deliveriesData,
+		isLoading: deliveriesLoading,
+		isError: deliveriesError,
+		isFetching: deliveriesFetching,
+		refetch: refetchDeliveries,
+	} = useDeliveries(eventId);
+
+	if (eventLoading && !event) {
 		return (
 			<div className="space-y-4">
 				<Skeleton className="h-24 w-full" />
@@ -132,6 +166,15 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 			</div>
 		);
 	}
+
+	if (!event && eventError)
+		return (
+			<EventReadError
+				label="Event"
+				pending={eventFetching}
+				onRetry={() => void refetchEvent()}
+			/>
+		);
 
 	if (!event) {
 		return (
@@ -143,67 +186,21 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 	}
 
 	return (
-		<div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-			{/* Metadata Card */}
-			<Card>
-				<CardHeader className="pb-3">
-					<CardTitle className="text-base">Event Details</CardTitle>
-				</CardHeader>
-				<CardContent className="space-y-3">
-					<div className="grid grid-cols-2 gap-4">
-						<div>
-							<span className="text-sm text-muted-foreground">
-								Event Type
-							</span>
-							<div className="mt-1">
-								{event.event_type ? (
-									<Badge variant="outline">
-										{event.event_type}
-									</Badge>
-								) : (
-									<span className="text-muted-foreground">
-										—
-									</span>
-								)}
-							</div>
-						</div>
-						<div>
-							<span className="text-sm text-muted-foreground">
-								Status
-							</span>
-							<div className="mt-1 flex items-center gap-1.5">
-								{getStatusIcon(event.status)}
-								<Badge variant={getStatusVariant(event.status)}>
-									{getStatusLabel(event.status)}
-								</Badge>
-							</div>
-						</div>
-						<div>
-							<span className="text-sm text-muted-foreground">
-								Received At
-							</span>
-							<div className="mt-1 font-medium">
-								{format(new Date(event.received_at), "PPpp")}
-							</div>
-						</div>
-						<div>
-							<span className="text-sm text-muted-foreground">
-								Source IP
-							</span>
-							<div className="mt-1 font-mono text-sm flex items-center gap-1.5">
-								<Globe className="h-3.5 w-3.5 text-muted-foreground" />
-								{event.source_ip || "Unknown"}
-							</div>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
+		<div className="@container/event min-w-0 space-y-6">
+			{eventError && (
+				<EventReadError
+					label="Event"
+					pending={eventFetching}
+					onRetry={() => void refetchEvent()}
+				/>
+			)}
+			<EventMetadata event={event} />
 
 			{/* Headers Accordion */}
 			{event.headers && Object.keys(event.headers).length > 0 && (
 				<Accordion type="single" collapsible>
 					<AccordionItem value="headers">
-						<AccordionTrigger className="text-base font-semibold">
+						<AccordionTrigger className="min-h-11 text-base font-semibold">
 							Request Headers ({Object.keys(event.headers).length}
 							)
 						</AccordionTrigger>
@@ -233,29 +230,56 @@ function EventDetailContent({ eventId }: { eventId: string }) {
 			{/* Deliveries */}
 			<div>
 				<h4 className="text-base font-semibold mb-3">
-					Deliveries ({deliveriesData?.total || 0})
+					Deliveries
+					{deliveriesData ? ` (${deliveriesData.total})` : ""}
 				</h4>
-				{deliveriesLoading ? (
+				{deliveriesError && (
+					<EventReadError
+						label="Deliveries"
+						pending={deliveriesFetching}
+						onRetry={() => void refetchDeliveries()}
+					/>
+				)}
+				{deliveriesLoading && !deliveriesData ? (
 					<Skeleton className="h-32 w-full" />
-				) : (
+				) : deliveriesData ? (
 					<DeliveriesTable
 						deliveries={deliveriesData?.items || []}
 						eventId={eventId}
 					/>
-				)}
+				) : null}
 			</div>
 		</div>
 	);
 }
 
-export function EventDetailDialog({ event, onClose }: EventDetailDialogProps) {
+export function EventDetailDialog({
+	event,
+	eventId,
+	onClose,
+}: EventDetailDialogProps) {
+	const dialogEventId = event?.id ?? eventId;
 	return (
-		<Dialog open={!!event} onOpenChange={(open) => !open && onClose()}>
-			<DialogContent className="sm:max-w-[700px]">
-				<DialogHeader>
+		<Dialog
+			open={!!dialogEventId}
+			onOpenChange={(open) => !open && onClose()}
+		>
+			<DialogContent className="flex flex-col overflow-hidden sm:max-w-[700px]">
+				<DialogHeader className="shrink-0 border-b pb-4">
 					<DialogTitle>Event Details</DialogTitle>
+					<DialogDescription>
+						Inspect the received payload and its workflow or agent
+						deliveries.
+					</DialogDescription>
 				</DialogHeader>
-				{event && <EventDetailContent eventId={event.id} />}
+				{dialogEventId && (
+					<div className="-mx-1 min-h-0 min-w-0 overflow-y-auto px-1">
+						<EventDetailContent
+							key={dialogEventId}
+							eventId={dialogEventId}
+						/>
+					</div>
+				)}
 			</DialogContent>
 		</Dialog>
 	);

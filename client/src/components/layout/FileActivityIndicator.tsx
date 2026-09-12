@@ -1,16 +1,18 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useId } from "react";
 import { Radio } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFileActivityStore } from "@/stores/fileActivityStore";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipTrigger,
-} from "@/components/ui/tooltip";
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function FileActivityIndicator() {
 	const { user } = useAuth();
+	const titleId = useId();
 	const activeWatchers = useFileActivityStore((s) => s.activeWatchers);
 	const recentPushes = useFileActivityStore((s) => s.recentPushes);
 
@@ -47,45 +49,67 @@ export function FileActivityIndicator() {
 			: "";
 
 	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<div className="flex items-center gap-1.5 mr-2 text-xs text-muted-foreground">
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button
+					type="button"
+					variant="ghost"
+					aria-label={`File activity: ${label}`}
+					className="min-h-11 min-w-11 max-w-60 gap-2 text-muted-foreground"
+				>
 					<Radio
 						className={cn(
-							"h-3.5 w-3.5",
+							"h-4 w-4 shrink-0",
 							hasLiveWatcher
-								? "text-green-500 animate-pulse"
-								: "text-blue-500",
+								? "text-[var(--bf-success)] motion-safe:animate-pulse"
+								: "text-[var(--bf-info)]",
 						)}
 					/>
-					<span className="hidden lg:inline max-w-48 truncate">
+					<span className="hidden min-w-0 lg:inline max-w-48 truncate">
 						{label}
 					</span>
-				</div>
-			</TooltipTrigger>
-			<TooltipContent side="bottom" className="max-w-64">
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				side="bottom"
+				collisionPadding={16}
+				sideOffset={8}
+				align="end"
+				aria-labelledby={titleId}
+				className="max-h-[min(28rem,var(--radix-popover-content-available-height))] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto [overflow-wrap:anywhere]"
+			>
+				<h2 id={titleId} className="font-medium">
+					File activity
+				</h2>
 				{activeWatchers.length > 0 && (
-					<div className="space-y-1">
+					<div className="space-y-2">
 						<p className="font-medium">Active watchers:</p>
 						{activeWatchers.map((w) => (
 							<p key={`${w.user_id}:${w.prefix}`}>
-								{w.user_name} — {w.prefix}
+								<span className="block">{w.user_name}</span>
+								<span className="block font-mono text-sm text-muted-foreground">
+									{w.prefix}
+								</span>
 							</p>
 						))}
 					</div>
 				)}
 				{recentOtherPushes.length > 0 && (
-					<div className="space-y-1 mt-1">
+					<div className="space-y-2 border-t pt-3">
 						<p className="font-medium">Recent file changes:</p>
 						{recentOtherPushes.slice(-5).map((p, i) => (
 							<p key={i}>
-								{p.user_name} — {p.file_count} files to{" "}
-								{p.prefix}
+								<span className="block">
+									{p.user_name} · {p.file_count} files
+								</span>
+								<span className="block font-mono text-sm text-muted-foreground">
+									{p.prefix}
+								</span>
 							</p>
 						))}
 					</div>
 				)}
-			</TooltipContent>
-		</Tooltip>
+			</PopoverContent>
+		</Popover>
 	);
 }

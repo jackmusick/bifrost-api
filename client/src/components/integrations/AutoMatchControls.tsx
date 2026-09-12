@@ -36,10 +36,11 @@ export function AutoMatchControls({
 	};
 
 	return (
-		<div className="flex items-center gap-3">
+		<div className="flex min-w-0 flex-wrap items-center gap-3">
 			{/* Match Mode Selection */}
 			<ToggleGroup
 				type="single"
+				aria-label="Matching mode"
 				value={matchMode}
 				onValueChange={(value) => {
 					if (value) setMatchMode(value as MatchMode);
@@ -47,9 +48,13 @@ export function AutoMatchControls({
 				disabled={disabled || isMatching}
 				size="sm"
 			>
-				<ToggleGroupItem value="exact">Exact</ToggleGroupItem>
-				<ToggleGroupItem value="fuzzy">Fuzzy</ToggleGroupItem>
-				<ToggleGroupItem value="ai" disabled>
+				<ToggleGroupItem className="min-h-11" value="exact">
+					Exact
+				</ToggleGroupItem>
+				<ToggleGroupItem className="min-h-11" value="fuzzy">
+					Fuzzy
+				</ToggleGroupItem>
+				<ToggleGroupItem className="min-h-11" value="ai" disabled>
 					AI
 					<Badge
 						variant="secondary"
@@ -65,6 +70,7 @@ export function AutoMatchControls({
 				<>
 					<Button
 						size="sm"
+						className="min-h-11"
 						variant="default"
 						onClick={onAcceptAll}
 						disabled={disabled}
@@ -74,16 +80,18 @@ export function AutoMatchControls({
 					</Button>
 					<Button
 						size="sm"
+						className="min-h-11"
 						variant="ghost"
 						onClick={onClear}
 						disabled={disabled}
 					>
-						<X className="h-3.5 w-3.5" />
+						<X className="h-3.5 w-3.5" /> Clear suggestions
 					</Button>
 				</>
 			) : (
 				<Button
 					size="sm"
+					className="min-h-11"
 					variant="default"
 					onClick={handleRunAutoMatch}
 					disabled={disabled || isMatching}

@@ -13,7 +13,13 @@ import { defineConfig, devices } from "@playwright/test";
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
+	metadata: {
+		sourceRevision: process.env.TEST_SOURCE_REVISION ?? "unrecorded",
+		sourceDirty: process.env.TEST_SOURCE_DIRTY ?? "unrecorded",
+	},
 	testDir: "./e2e",
+	// This directory is mounted out of the disposable runner container.
+	outputDir: "./playwright-results/artifacts",
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	// A browser failure is a result to diagnose, not an invitation to mutate the

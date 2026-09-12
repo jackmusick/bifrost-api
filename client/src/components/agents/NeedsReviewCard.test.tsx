@@ -35,6 +35,27 @@ describe("NeedsReviewCard", () => {
 		).toBeInTheDocument();
 	});
 
+	it("renders markdown in preview text without showing markers", () => {
+		renderWithProviders(
+			<NeedsReviewCard
+				run={{
+					...baseRun,
+					asked: "Why was **the ticket** closed?",
+					verdict_note: null,
+					did: "Closed as **duplicate**",
+				}}
+			/>,
+		);
+
+		expect(screen.getByText("the ticket").tagName.toLowerCase()).toBe(
+			"strong",
+		);
+		expect(screen.getByText("duplicate").tagName.toLowerCase()).toBe(
+			"strong",
+		);
+		expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+	});
+
 	it("renders the Flagged badge", () => {
 		renderWithProviders(<NeedsReviewCard run={baseRun} />);
 		expect(screen.getByText(/flagged/i)).toBeInTheDocument();
@@ -42,9 +63,7 @@ describe("NeedsReviewCard", () => {
 
 	it("prefers verdict_note over did when present", () => {
 		renderWithProviders(<NeedsReviewCard run={baseRun} />);
-		expect(
-			screen.getByText(/should not have closed/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/should not have closed/i)).toBeInTheDocument();
 		expect(
 			screen.queryByText(/closed as duplicate/i),
 		).not.toBeInTheDocument();
@@ -52,9 +71,7 @@ describe("NeedsReviewCard", () => {
 
 	it("falls back to did when verdict_note is missing", () => {
 		renderWithProviders(
-			<NeedsReviewCard
-				run={{ ...baseRun, verdict_note: null }}
-			/>,
+			<NeedsReviewCard run={{ ...baseRun, verdict_note: null }} />,
 		);
 		expect(screen.getByText(/closed as duplicate/i)).toBeInTheDocument();
 	});

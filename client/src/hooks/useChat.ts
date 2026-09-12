@@ -265,11 +265,6 @@ export function useDeleteConversation() {
 
 				toast.success("Conversation deleted");
 			},
-			onError: (error) => {
-				toast.error("Failed to delete conversation", {
-					description: getErrorMessage(error, "Unknown error"),
-				});
-			},
 		},
 	);
 }

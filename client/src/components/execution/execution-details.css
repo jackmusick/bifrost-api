@@ -1,0 +1,84 @@
+.execution-shell {
+	background: var(--background);
+}
+
+.execution-detail-card {
+	position: relative;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	border-radius: var(--bf-radius-feature);
+	background: var(--card);
+	box-shadow: none;
+}
+
+.execution-detail-card[data-active="true"]::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	padding: 1px;
+	border-radius: inherit;
+	background: var(--bf-activity-gradient);
+	animation: bf-running-orbit 2.4s linear infinite;
+	pointer-events: none;
+	mask:
+		conic-gradient(
+			from var(--bf-orbit-angle),
+			transparent 0deg,
+			transparent 220deg,
+			#000 276deg,
+			#000 318deg,
+			transparent 360deg
+		),
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	mask-composite: intersect, exclude;
+}
+
+.execution-detail-card > * {
+	position: relative;
+}
+
+.execution-live-row {
+	border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.execution-live-row:first-child {
+	border-top: 0;
+}
+
+.execution-live-row[data-latest="true"] {
+	border-radius: var(--bf-radius-surface);
+	background: linear-gradient(
+		90deg,
+		color-mix(in srgb, var(--primary) 20%, transparent),
+		transparent
+	);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.execution-detail-card[data-active="true"]::before {
+		animation: none;
+	}
+}
+
+/* Animate only messages received after mounting, not a historical replay. */
+.execution-live-row[data-arriving="true"] {
+	animation: execution-message-arrive 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes execution-message-arrive {
+	from {
+		opacity: 0.35;
+		transform: translateY(5px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.execution-live-row[data-arriving="true"] {
+		animation: none;
+	}
+}

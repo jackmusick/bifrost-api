@@ -21,12 +21,7 @@ import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import * as yaml from "js-yaml";
 
 import { CodeEditor } from "@/components/tables/CodeEditor";
-import {
-	Tabs,
-	TabsContent,
-	TabsList,
-	TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export type JsonYamlFormat = "json" | "yaml";
 
@@ -61,6 +56,7 @@ export interface JsonYamlEditorProps<T> {
 	 *  becomes valid (or is cleared). Used by consumers that need to
 	 *  disable AST-driven mutations while a buffer is broken. */
 	onParseErrorChange?: (error: string | null) => void;
+	readOnly?: boolean;
 	className?: string;
 }
 
@@ -82,6 +78,7 @@ export function JsonYamlEditor<T>({
 	paths,
 	hideParseError = false,
 	onParseErrorChange,
+	readOnly = false,
 	className,
 }: JsonYamlEditorProps<T>): JSX.Element {
 	// `_schema` accepted but not yet wired into Monaco. Read here once so
@@ -173,9 +170,7 @@ export function JsonYamlEditor<T>({
 		}
 		try {
 			const raw = JSON.parse(next);
-			const parsed = validateParsed
-				? validateParsed(raw)
-				: (raw as T);
+			const parsed = validateParsed ? validateParsed(raw) : (raw as T);
 			setJsonParseError(null);
 			emit(parsed);
 		} catch (err) {
@@ -226,9 +221,7 @@ export function JsonYamlEditor<T>({
 					parsed = null;
 				} else {
 					const raw = JSON.parse(jsonText);
-					parsed = validateParsed
-						? validateParsed(raw)
-						: (raw as T);
+					parsed = validateParsed ? validateParsed(raw) : (raw as T);
 				}
 			} catch (err) {
 				setJsonParseError(
@@ -297,6 +290,7 @@ export function JsonYamlEditor<T>({
 
 				<TabsContent value="json" className="min-h-[320px]">
 					<CodeEditor
+						readOnly={readOnly}
 						mode="json"
 						text={jsonText}
 						onChange={handleJsonText}
@@ -307,6 +301,7 @@ export function JsonYamlEditor<T>({
 
 				<TabsContent value="yaml" className="min-h-[320px]">
 					<CodeEditor
+						readOnly={readOnly}
 						mode="yaml"
 						text={yamlText}
 						onChange={handleYamlText}

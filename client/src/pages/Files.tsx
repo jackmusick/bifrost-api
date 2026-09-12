@@ -1,4 +1,4 @@
-import { FolderOpen } from "lucide-react";
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { FilesExplorer } from "@/components/files/FilesExplorer";
@@ -14,16 +14,16 @@ export function Files() {
 	});
 
 	return (
-		<div className="flex h-full min-h-0 flex-col gap-4">
-			<header className="flex shrink-0 items-center gap-2">
-				<FolderOpen className="h-5 w-5 text-muted-foreground" />
-				<div className="min-w-0">
-					<h1 className="text-2xl font-semibold tracking-tight">Files</h1>
-					<p className="text-sm text-muted-foreground">
-						Browse shares, manage file policies, and test effective access.
-					</p>
-				</div>
-			</header>
+		<div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-4">
+			<ListPageHeader
+				className="shrink-0"
+				title="Files"
+				description={
+					install
+						? "Browse solution files and inspect their access rules."
+						: "Browse shared files and manage their access."
+				}
+			/>
 			<div className="min-h-0 flex-1">
 				<FilesExplorer install={install} installName={solution?.name} />
 			</div>

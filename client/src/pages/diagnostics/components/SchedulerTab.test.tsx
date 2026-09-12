@@ -111,9 +111,31 @@ vi.mock("@/services/websocket", () => ({
 	},
 }));
 
+import { getSchedulerDiagnostics } from "@/services/schedulerDiagnostics";
 import { SchedulerTab } from "./SchedulerTab";
 
 describe("SchedulerTab", () => {
+	it("offers recovery when the initial scheduler snapshot fails", async () => {
+		vi.mocked(getSchedulerDiagnostics).mockRejectedValueOnce(
+			new Error("unavailable"),
+		);
+		const user = userEvent.setup();
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<SchedulerTab />
+			</QueryClientProvider>,
+		);
+		await user.click(
+			await screen.findByRole("button", { name: "Retry scheduler" }),
+		);
+		expect(
+			await screen.findByRole("tab", { name: "Platform Jobs" }),
+		).toBeInTheDocument();
+	});
+
 	it("shows schedule state and both scaling signals", async () => {
 		const user = userEvent.setup();
 		const client = new QueryClient({
@@ -133,10 +155,14 @@ describe("SchedulerTab", () => {
 		expect(screen.getByText(/Add scheduler replicas/i)).toBeInTheDocument();
 		await user.click(screen.getByRole("tab", { name: "System Schedules" }));
 		expect(
-			await screen.findByText("Refresh Expiring OAuth Tokens"),
+			(await screen.findAllByText("Refresh Expiring OAuth Tokens"))[0],
 		).toBeInTheDocument();
-		expect(screen.getByText("Succeeded")).toHaveClass("text-green-700");
-		expect(screen.getByText("Waiting")).toHaveClass("text-amber-700");
+		expect(screen.getAllByText("Succeeded")[0]).toHaveClass(
+			"text-[var(--bf-success)]",
+		);
+		expect(screen.getAllByText("Waiting")[0]).toHaveClass(
+			"text-[var(--bf-warning)]",
+		);
 		expect(screen.getAllByText("Distributed Job")[0]).toBeInTheDocument();
 		const scheduleRow = screen.getByRole("row", {
 			name: "View recent runs for Refresh Expiring OAuth Tokens",

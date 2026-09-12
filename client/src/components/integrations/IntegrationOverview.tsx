@@ -34,7 +34,12 @@ const formatDateTime = (dateStr?: string | null) => {
 
 	// Parse the date - backend sends UTC timestamps without 'Z' suffix
 	// Add 'Z' to explicitly mark it as UTC, then JavaScript will convert to local time
-	const utcDateStr = dateStr.endsWith("Z") || dateStr.includes("+") || dateStr.includes("-", 10) ? dateStr : `${dateStr}Z`;
+	const utcDateStr =
+		dateStr.endsWith("Z") ||
+		dateStr.includes("+") ||
+		dateStr.includes("-", 10)
+			? dateStr
+			: `${dateStr}Z`;
 	const date = new Date(utcDateStr);
 	const now = new Date();
 	const diffMs = date.getTime() - now.getTime();
@@ -137,114 +142,120 @@ export function IntegrationOverview({
 	isRefreshPending,
 }: IntegrationOverviewProps) {
 	return (
-		<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+		<div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
 			{/* Configuration Defaults */}
 			<Card>
 				<CardHeader className="pb-3">
-					<div>
-						<CardTitle className="text-base">
-							Configuration Defaults
-						</CardTitle>
-						<CardDescription>
-							Default config values for new mappings
-						</CardDescription>
+					<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+						<div className="min-w-0">
+							<CardTitle className="text-base">
+								Configuration Defaults
+							</CardTitle>
+							<CardDescription>
+								Default config values for new mappings
+							</CardDescription>
+						</div>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="min-h-11 self-start"
+							onClick={onOpenDefaultsDialog}
+							aria-label="Configure default values"
+						>
+							<Pencil className="h-4 w-4 shrink-0" /> Configure
+						</Button>
 					</div>
 				</CardHeader>
 				<CardContent>
 					{/* Default Entity ID section */}
-					<div className="mb-4">
-						<div className="flex items-center justify-between text-sm">
-							<div className="flex flex-col">
+					<div className="space-y-2">
+						<div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm">
+							<div className="flex min-w-0 flex-col gap-0.5">
 								<span className="text-muted-foreground">
 									Default{" "}
-									{integration.entity_id_name ||
-										"Entity ID"}
+									{integration.entity_id_name || "Entity ID"}
 								</span>
-								<span className="text-xs text-muted-foreground/70">
+								<span className="text-xs text-muted-foreground">
 									Used when org mapping is not set
 								</span>
 							</div>
-							<div className="flex items-center gap-2">
-								<span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-									{integration.default_entity_id || "\u2014"}
-								</span>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-6 w-6 p-0"
-									onClick={onOpenDefaultsDialog}
-									title="Edit default values"
-								>
-									<Pencil className="h-3 w-3" />
-								</Button>
-							</div>
+							<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
+								{integration.default_entity_id || "\u2014"}
+							</span>
 						</div>
-					</div>
 
-					{integration.config_schema &&
-					integration.config_schema.length > 0 ? (
-						<div className="space-y-2">
-							{integration.config_schema.map((field) => {
-								const defaultValue =
-									integration.config_defaults?.[
-										field.key
-									];
-								return (
-									<div
-										key={field.key}
-										className="flex items-center justify-between text-sm"
-									>
-										<span className="text-muted-foreground">
-											{field.key}
-											{field.required && (
-												<span className="text-destructive ml-1">
-													*
-												</span>
-											)}
-										</span>
-										<span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
-											{defaultValue !== null &&
-											defaultValue !== undefined
-												? field.type === "secret"
-													? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-													: String(defaultValue)
-												: "\u2014"}
-										</span>
-									</div>
-								);
-							})}
-						</div>
-					) : null}
+						{integration.config_schema &&
+						integration.config_schema.length > 0 ? (
+							<div className="space-y-1.5 border-t border-border/60 pt-2">
+								{integration.config_schema.map((field) => {
+									const defaultValue =
+										integration.config_defaults?.[
+											field.key
+										];
+									return (
+										<div
+											key={field.key}
+											className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-sm"
+										>
+											<span className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">
+												{field.key}
+												{field.required && (
+													<span className="text-destructive ml-1">
+														*
+													</span>
+												)}
+											</span>
+											<span className="max-w-full font-mono text-xs bg-muted px-2 py-1 rounded-[var(--bf-radius-control)] [overflow-wrap:anywhere]">
+												{defaultValue !== null &&
+												defaultValue !== undefined
+													? field.type === "secret"
+														? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+														: typeof defaultValue ===
+															  "object"
+															? JSON.stringify(
+																	defaultValue,
+																)
+															: String(
+																	defaultValue,
+																)
+													: "\u2014"}
+											</span>
+										</div>
+									);
+								})}
+							</div>
+						) : null}
+					</div>
 				</CardContent>
 			</Card>
 
 			{/* Compact OAuth Status */}
-			<Card className="hover:shadow-md transition-shadow">
+			<Card className="min-w-0">
 				<CardHeader className="pb-3">
-					<div className="flex items-center justify-between">
+					<div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
 						<div>
-							<CardTitle className="text-base">
-								OAuth
-							</CardTitle>
+							<CardTitle className="text-base">OAuth</CardTitle>
 							<CardDescription>
 								Connection status and authentication
 							</CardDescription>
 						</div>
-						<div className="flex items-center gap-2">
+						<div className="flex min-w-0 flex-wrap items-center gap-2">
 							{oauthConfig && (
 								<Badge
 									variant="outline"
-									className="text-xs"
+									className="h-auto min-h-5 max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs"
 								>
 									{oauthConfig.oauth_flow_type}
 								</Badge>
 							)}
-							{isOAuthConnected ? (
-								<CheckCircle2 className="h-4 w-4 text-green-600" />
+							{isOAuthExpired ? (
+								<XCircle className="h-4 w-4 text-destructive" />
+							) : isOAuthConnected ? (
+								<CheckCircle2 className="h-4 w-4 text-[var(--bf-success)]" />
 							) : oauthConfig?.status === "failed" ? (
-								<XCircle className="h-4 w-4 text-red-600" />
+								<XCircle className="h-4 w-4 text-destructive" />
 							) : integration.has_oauth_config ? (
-								<AlertCircle className="h-4 w-4 text-yellow-600" />
+								<AlertCircle className="h-4 w-4 text-[var(--bf-warning)]" />
 							) : null}
 							{integration.has_oauth_config && (
 								<DropdownMenu>
@@ -252,9 +263,10 @@ export function IntegrationOverview({
 										<Button
 											variant="ghost"
 											size="icon"
-											className="h-8 w-8"
+											className="min-h-11 min-w-11"
+											aria-label="OAuth configuration actions"
 										>
-											<MoreVertical className="h-4 w-4" />
+											<MoreVertical className="h-4 w-4 shrink-0" />
 										</Button>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="end">
@@ -265,8 +277,9 @@ export function IntegrationOverview({
 											Edit Configuration
 										</DropdownMenuItem>
 										<DropdownMenuItem
+											variant="destructive"
 											onClick={onDeleteOAuthConfig}
-											className="text-destructive focus:text-destructive"
+											className="focus:text-destructive"
 										>
 											<Trash2 className="h-4 w-4 mr-2" />
 											Delete Configuration
@@ -282,14 +295,14 @@ export function IntegrationOverview({
 						<div className="space-y-3">
 							{/* Expiration warnings */}
 							{isOAuthExpired && (
-								<div className="flex items-center gap-2 p-2 rounded-md bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 text-sm">
-									<AlertCircle className="h-4 w-4" />
+								<div className="flex min-w-0 flex-wrap items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
+									<AlertCircle className="h-4 w-4 shrink-0" />
 									Token expired - reconnect required
 								</div>
 							)}
 							{isOAuthExpiringSoon && !isOAuthExpired && (
-								<div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
-									<Clock className="h-4 w-4" />
+								<div className="flex min-w-0 flex-wrap items-center gap-2 p-2 rounded-md bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] text-sm">
+									<Clock className="h-4 w-4 shrink-0" />
 									Token expires soon - consider refreshing
 								</div>
 							)}
@@ -299,47 +312,46 @@ export function IntegrationOverview({
 								oauthConfig &&
 								oauthConfig.has_refresh_token === false &&
 								canUseAuthCodeFlow && (
-									<div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300 text-sm">
-										<AlertCircle className="h-4 w-4" />
-										No refresh token - manual
-										reconnection required when token
-										expires
+									<div className="flex min-w-0 flex-wrap items-center gap-2 p-2 rounded-md bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] text-sm">
+										<AlertCircle className="h-4 w-4 shrink-0" />
+										No refresh token - manual reconnection
+										required when token expires
 									</div>
 								)}
 
 							{/* Connection status */}
-							<div className="flex items-center justify-between">
+							<div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
 								<span className="text-sm text-muted-foreground">
 									Status
 								</span>
 								<span className="text-sm font-medium">
-									{isOAuthConnected
-										? "Connected"
-										: oauthConfig?.status === "failed"
-											? "Failed"
-											: oauthConfig
-												? getStatusLabel(
-														oauthConfig.status,
-													)
-												: "Not Connected"}
+									{isOAuthExpired
+										? "Expired"
+										: isOAuthConnected
+											? "Connected"
+											: oauthConfig?.status === "failed"
+												? "Failed"
+												: oauthConfig
+													? getStatusLabel(
+															oauthConfig.status,
+														)
+													: "Not Connected"}
 								</span>
 							</div>
 
 							{oauthConfig?.expires_at && !isOAuthExpired && (
-								<div className="flex items-center justify-between">
+								<div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
 									<span className="text-sm text-muted-foreground">
 										Expires
 									</span>
 									<span className="text-sm font-mono">
-										{formatDateTime(
-											oauthConfig.expires_at,
-										)}
+										{formatDateTime(oauthConfig.expires_at)}
 									</span>
 								</div>
 							)}
 
 							{/* Action buttons */}
-							<div className="flex items-center gap-2 pt-1">
+							<div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
 								{canUseAuthCodeFlow && (
 									<Button
 										variant={
@@ -348,13 +360,13 @@ export function IntegrationOverview({
 												: "default"
 										}
 										size="sm"
-										className="flex-1"
+										className="min-h-11 flex-1"
 										onClick={onOAuthConnect}
 										disabled={isAuthorizePending}
 									>
 										{isAuthorizePending ? (
 											<>
-												<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+												<Loader2 className="mr-2 h-3 w-3 animate-spin motion-reduce:animate-none" />
 												Connecting...
 											</>
 										) : isOAuthConnected ? (
@@ -371,13 +383,13 @@ export function IntegrationOverview({
 										<Button
 											variant="default"
 											size="sm"
-											className="flex-1"
+											className="min-h-11 flex-1"
 											onClick={onOAuthRefresh}
 											disabled={isRefreshPending}
 										>
 											{isRefreshPending ? (
 												<>
-													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+													<Loader2 className="mr-2 h-3 w-3 animate-spin motion-reduce:animate-none" />
 													Getting Token...
 												</>
 											) : oauthConfig?.status ===
@@ -393,12 +405,13 @@ export function IntegrationOverview({
 										<Button
 											variant="outline"
 											size="sm"
+											className="min-h-11"
 											onClick={onOAuthRefresh}
 											disabled={isRefreshPending}
 										>
 											{isRefreshPending ? (
 												<>
-													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+													<Loader2 className="mr-2 h-3 w-3 animate-spin motion-reduce:animate-none" />
 													Refreshing...
 												</>
 											) : (
@@ -411,19 +424,28 @@ export function IntegrationOverview({
 									)}
 							</div>
 							<p className="text-xs text-muted-foreground mt-1">
-								Used when an organization isn't individually connected via its mapping.
+								Used when an organization isn't individually
+								connected via its mapping.
 							</p>
 						</div>
 					) : (
-						<div className="text-center py-4">
-							<LinkIcon className="h-8 w-8 text-muted-foreground mx-auto" />
-							<p className="mt-2 text-sm text-muted-foreground">
-								No OAuth configured
-							</p>
+						<div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div className="flex min-w-0 items-center gap-3">
+								<LinkIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+								<div className="min-w-0">
+									<p className="text-sm font-medium">
+										No OAuth configured
+									</p>
+									<p className="text-sm text-muted-foreground">
+										Add OAuth settings when this integration
+										needs default authentication.
+									</p>
+								</div>
+							</div>
 							<Button
 								variant="outline"
 								size="sm"
-								className="mt-3"
+								className="min-h-11 self-start sm:self-auto"
 								onClick={onCreateOAuthConfig}
 							>
 								<Plus className="h-3 w-3 mr-2" />

@@ -12,11 +12,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach, MockInstance } from "vitest";
-import { renderWithProviders, screen, within } from "@/test-utils";
+import { renderWithProviders, screen, within, fireEvent } from "@/test-utils";
 import { ExecutionLogsPanel } from "./ExecutionLogsPanel";
 import type { LogEntry } from "./ExecutionLogsPanel";
+import * as clipboard from "@/lib/clipboard";
+import { toast } from "sonner";
 
-function log(level: string, message: string, ts = "2026-04-20T12:00:00Z"): LogEntry {
+function log(
+	level: string,
+	message: string,
+	ts = "2026-04-20T12:00:00Z",
+): LogEntry {
 	return { level, message, timestamp: ts } as LogEntry;
 }
 
@@ -34,7 +40,11 @@ beforeEach(() => {
 describe("ExecutionLogsPanel — empty states", () => {
 	it("shows 'Waiting for logs...' while running with no logs yet", () => {
 		renderWithProviders(
-			<ExecutionLogsPanel logs={[]} status="Running" isConnected={true} />,
+			<ExecutionLogsPanel
+				logs={[]}
+				status="Running"
+				isConnected={true}
+			/>,
 		);
 		expect(screen.getByText(/waiting for logs/i)).toBeInTheDocument();
 	});
@@ -46,7 +56,9 @@ describe("ExecutionLogsPanel — empty states", () => {
 
 	it("shows 'No execution in progress' when status is undefined", () => {
 		renderWithProviders(<ExecutionLogsPanel logs={[]} />);
-		expect(screen.getByText(/no execution in progress/i)).toBeInTheDocument();
+		expect(
+			screen.getByText(/no execution in progress/i),
+		).toBeInTheDocument();
 	});
 });
 
@@ -94,7 +106,8 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 		// Confirm DOM order by walking the rendered NodeList.
 		const positions = messages.map(
 			(el) =>
-				Array.from(document.body.querySelectorAll("*")).indexOf(el) >>> 0,
+				Array.from(document.body.querySelectorAll("*")).indexOf(el) >>>
+				0,
 		);
 		expect(positions).toEqual([...positions].sort((a, b) => a - b));
 	});
@@ -107,9 +120,7 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 				isPlatformAdmin={true}
 			/>,
 		);
-		expect(
-			screen.queryByText(/INFO and above/i),
-		).not.toBeInTheDocument();
+		expect(screen.queryByText(/INFO and above/i)).not.toBeInTheDocument();
 	});
 
 	it("tells non-admin viewers which levels are filtered", () => {
@@ -120,9 +131,7 @@ describe("ExecutionLogsPanel — rendering logs", () => {
 				isPlatformAdmin={false}
 			/>,
 		);
-		expect(
-			screen.getByText(/INFO and above/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/INFO and above/i)).toBeInTheDocument();
 	});
 });
 
@@ -147,6 +156,28 @@ describe("ExecutionLogsPanel — copy button", () => {
 		expect(payload).toContain("hello");
 		expect(payload).toContain("ERROR");
 		expect(payload).toContain("oh no");
+	});
+
+	it("toasts an error when copying fails", async () => {
+		const copySpy = vi
+			.spyOn(clipboard, "copyToClipboard")
+			.mockResolvedValue(false);
+		const toastSpy = vi
+			.spyOn(toast, "error")
+			.mockImplementation(() => "copy-error");
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Running"
+				logs={[log("INFO", "hello")]}
+			/>,
+		);
+
+		await user.click(screen.getByTitle(/copy logs/i));
+
+		expect(copySpy).toHaveBeenCalledTimes(1);
+		expect(toastSpy).toHaveBeenCalledWith("Failed to copy logs");
+		copySpy.mockRestore();
+		toastSpy.mockRestore();
 	});
 });
 
@@ -177,7 +208,9 @@ describe("ExecutionLogsPanel — live streaming header", () => {
 				logs={[]}
 			/>,
 		);
-		expect(screen.queryByText(/live/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText("Live", { exact: true }),
+		).not.toBeInTheDocument();
 	});
 });
 
@@ -197,7 +230,9 @@ describe("ExecutionLogsPanel — traceback coalescing", () => {
 		const blocks = screen.getAllByTestId("log-traceback-block");
 		expect(blocks).toHaveLength(1);
 		// The block contains all three lines joined.
-		expect(blocks[0]).toHaveTextContent("Traceback (most recent call last):");
+		expect(blocks[0]).toHaveTextContent(
+			"Traceback (most recent call last):",
+		);
 		expect(blocks[0]).toHaveTextContent("RuntimeError: boom");
 		// The repeated level label renders exactly once (exact node match —
 		// the message text also contains the word "Traceback").
@@ -233,4 +268,121 @@ describe("ExecutionLogsPanel — header affordances", () => {
 			expect.stringContaining("one"),
 		);
 	});
+});
+
+describe("ExecutionLogsPanel — filtering and export", () => {
+	it("filters visible log lines by search text", async () => {
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Success"
+				logs={[
+					log("INFO", "invoice started"),
+					log("ERROR", "payment token rejected"),
+				]}
+			/>,
+		);
+
+		await user.type(
+			screen.getByRole("textbox", { name: "Search logs" }),
+			"token",
+		);
+
+		expect(screen.getByText("payment token rejected")).toBeVisible();
+		expect(screen.queryByText("invoice started")).not.toBeInTheDocument();
+		expect(screen.getByText(/1 visible/i)).toBeVisible();
+	});
+
+	it("filters visible log lines by level", async () => {
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Success"
+				logs={[log("INFO", "started"), log("ERROR", "failed")]}
+			/>,
+		);
+
+		await user.click(screen.getByRole("combobox"));
+		await user.click(screen.getByRole("option", { name: "Error" }));
+
+		expect(screen.getByText("failed")).toBeVisible();
+		expect(screen.queryByText("started")).not.toBeInTheDocument();
+	});
+
+	it("downloads the full unfiltered log stream", async () => {
+		const createObjectURL = vi
+			.spyOn(URL, "createObjectURL")
+			.mockReturnValue("blob:execution-logs");
+		const revokeObjectURL = vi
+			.spyOn(URL, "revokeObjectURL")
+			.mockImplementation(() => {});
+		const click = vi
+			.spyOn(HTMLAnchorElement.prototype, "click")
+			.mockImplementation(() => {});
+		const { user } = renderWithProviders(
+			<ExecutionLogsPanel
+				status="Success"
+				logs={[log("INFO", "one"), log("ERROR", "two")]}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: "Download all logs" }),
+		);
+
+		expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+		expect(click).toHaveBeenCalledOnce();
+		expect(revokeObjectURL).toHaveBeenCalledWith("blob:execution-logs");
+		click.mockRestore();
+		createObjectURL.mockRestore();
+		revokeObjectURL.mockRestore();
+	});
+});
+
+it("keeps the reader's position during streaming and resumes following explicitly", async () => {
+	const initial = [log("INFO", "earlier message")];
+	const { user, rerender } = renderWithProviders(
+		<ExecutionLogsPanel logs={initial} status="Running" />,
+	);
+	const region = screen.getByRole("region", {
+		name: "Execution log messages",
+	});
+	Object.defineProperties(region, {
+		scrollHeight: { configurable: true, value: 1000 },
+		clientHeight: { configurable: true, value: 200 },
+	});
+	region.scrollTop = 100;
+	fireEvent.scroll(region);
+	expect(screen.getByText("Following paused")).toBeInTheDocument();
+	rerender(
+		<ExecutionLogsPanel
+			logs={[...initial, log("INFO", "new message")]}
+			status="Running"
+		/>,
+	);
+	expect(region.scrollTop).toBe(100);
+	await user.click(screen.getByRole("button", { name: "Jump to latest" }));
+	expect(region.scrollTop).toBe(1000);
+	expect(screen.queryByText("Following paused")).not.toBeInTheDocument();
+});
+
+it("retains logs during a connection interruption and clears the notice on recovery", () => {
+	const logs = [log("INFO", "Last received message")];
+	const { rerender } = renderWithProviders(
+		<ExecutionLogsPanel logs={logs} status="Running" isConnected={false} />,
+	);
+	expect(screen.getByRole("status")).toHaveTextContent(
+		"New log messages may be delayed",
+	);
+	expect(screen.getByText("Last received message")).toBeVisible();
+	rerender(<ExecutionLogsPanel logs={logs} status="Running" isConnected />);
+	expect(
+		screen.queryByText(/connection unavailable/i),
+	).not.toBeInTheDocument();
+	expect(screen.getByText("Live", { exact: true })).toBeVisible();
+	rerender(
+		<ExecutionLogsPanel logs={logs} status="Success" isConnected={false} />,
+	);
+	expect(
+		screen.queryByText(/connection unavailable/i),
+	).not.toBeInTheDocument();
+	expect(screen.getByText("Last received message")).toBeVisible();
 });

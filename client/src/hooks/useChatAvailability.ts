@@ -4,7 +4,8 @@ import { getChatModelProfiles } from "@/services/chatModels";
 import { useUserPermissions } from "@/hooks/useUserPermissions";
 
 export function useChatAvailability() {
-	const { isPlatformAdmin, isLoading: permissionsLoading } = useUserPermissions();
+	const { isPlatformAdmin, isLoading: permissionsLoading } =
+		useUserPermissions();
 	const profilesQuery = useQuery({
 		queryKey: ["chat", "model-profiles"],
 		queryFn: getChatModelProfiles,
@@ -17,5 +18,7 @@ export function useChatAvailability() {
 		isPlatformAdmin,
 		isLoading: permissionsLoading || profilesQuery.isLoading,
 		error: profilesQuery.error,
+		isFetching: profilesQuery.isFetching,
+		refetch: profilesQuery.refetch,
 	};
 }

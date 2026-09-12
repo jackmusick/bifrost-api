@@ -1,3 +1,4 @@
+import { JsonValuePreview } from "@/components/execution/JsonValuePreview";
 import { cn } from "@/lib/utils";
 
 export interface ContextViewerProps {
@@ -43,30 +44,40 @@ export function ContextViewer({
 	};
 
 	return (
-		<div className={cn("space-y-2", className)}>
-			<div
-				className="bg-slate-950 text-slate-100 rounded-md p-4 font-mono text-xs overflow-auto"
-				style={{ maxHeight }}
-			>
-				{!hasAnyContext && fieldNames.length === 0 ? (
-					<div className="text-slate-400 italic">
-						No context available yet. Context will be populated when
-						the form loads with a launch workflow or receives query
-						parameters.
-					</div>
-				) : (
-					<pre className="whitespace-pre-wrap">
-						{JSON.stringify(enhancedContext, null, 2)}
-					</pre>
-				)}
-			</div>
-			<p className="text-xs text-muted-foreground">
+		<div className={cn("min-w-0 space-y-2", className)}>
+			{!hasAnyContext && fieldNames.length === 0 ? (
+				<p className="rounded border bg-muted/40 p-4 text-sm text-muted-foreground">
+					No context available yet. Context will be populated when the
+					form loads with a launch workflow or receives query
+					parameters.
+				</p>
+			) : (
+				<JsonValuePreview
+					value={enhancedContext}
+					maxHeight={maxHeight}
+					ariaLabel="Form context"
+				/>
+			)}
+
+			<p className="text-sm leading-5 text-muted-foreground">
 				Available context objects you can use in visibility expressions.
 				Write standard JavaScript:{" "}
-				<code className="px-1 py-0.5 bg-muted rounded">&&</code>,{" "}
-				<code className="px-1 py-0.5 bg-muted rounded">||</code>,{" "}
-				<code className="px-1 py-0.5 bg-muted rounded">===</code>,{" "}
-				<code className="px-1 py-0.5 bg-muted rounded">!==</code>, etc.
+				<code className="px-1 py-0.5 bg-muted rounded-[var(--bf-radius-control)]">
+					&&
+				</code>
+				,{" "}
+				<code className="px-1 py-0.5 bg-muted rounded-[var(--bf-radius-control)]">
+					||
+				</code>
+				,{" "}
+				<code className="px-1 py-0.5 bg-muted rounded-[var(--bf-radius-control)]">
+					===
+				</code>
+				,{" "}
+				<code className="px-1 py-0.5 bg-muted rounded-[var(--bf-radius-control)]">
+					!==
+				</code>
+				, etc.
 			</p>
 		</div>
 	);

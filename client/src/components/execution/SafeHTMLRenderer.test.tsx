@@ -27,15 +27,15 @@ describe("SafeHTMLRenderer — rendering", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html="<p><strong>Hello</strong> world</p>" />,
 		);
-		expect(container.querySelector("strong")?.textContent).toBe("Hello");
-		expect(container.textContent).toContain("world");
+		expect(frameDocument(container).querySelector("strong")?.textContent).toBe("Hello");
+		expect(frameDocument(container).body.textContent).toContain("world");
 	});
 
 	it("strips forbidden inline event handlers (onmouseover)", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html='<p onmouseover="alert(1)">hover me</p>' />,
 		);
-		const p = container.querySelector("p");
+		const p = frameDocument(container).querySelector("p");
 		expect(p).not.toBeNull();
 		expect(p?.getAttribute("onmouseover")).toBeNull();
 		expect(p?.textContent).toBe("hover me");
@@ -46,7 +46,7 @@ describe("SafeHTMLRenderer — rendering", () => {
 		const { container } = renderWithProviders(
 			<SafeHTMLRenderer html={html} />,
 		);
-		expect(container.querySelector("h1")?.textContent).toBe("Hi");
+		expect(frameDocument(container).querySelector("h1")?.textContent).toBe("Hi");
 	});
 });
 
@@ -55,10 +55,7 @@ describe("SafeHTMLRenderer — open in new window", () => {
 
 	beforeEach(() => {
 		openSpy = vi.spyOn(window, "open").mockReturnValue({
-			document: {
-				write: vi.fn(),
-				close: vi.fn(),
-			},
+			document: document.implementation.createHTMLDocument(""),
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		} as any);
 	});
@@ -74,4 +71,28 @@ describe("SafeHTMLRenderer — open in new window", () => {
 		await user.click(screen.getByRole("button", { name: /open/i }));
 		expect(openSpy).toHaveBeenCalledWith("", "_blank");
 	});
+});
+
+
+it("explains blocked popups and retains the inline result", async () => {
+	const open = vi.spyOn(window, "open").mockReturnValue(null);
+	try {
+		const { user } = renderWithProviders(<SafeHTMLRenderer html="<p>Retained result</p>" title="Workflow result" />);
+		await user.click(screen.getByRole("button", { name: "Open full result" }));
+		expect(screen.getByRole("alert")).toHaveTextContent("new window was blocked");
+		expect(screen.getByTitle("Workflow result")).toHaveAttribute("srcdoc", expect.stringContaining("Retained result"));
+	} finally { open.mockRestore(); }
+});
+
+
+function frameDocument(container: HTMLElement) {
+	const frame = container.querySelector("iframe");
+	expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+	return new DOMParser().parseFromString(frame?.srcdoc ?? "", "text/html");
+}
+
+it("keeps report CSS out of the application document", () => {
+	const { container } = renderWithProviders(<SafeHTMLRenderer html="<style>body{display:none}</style><p>Report</p>" />);
+	expect(container.querySelector("style")).toBeNull();
+	expect(frameDocument(container).querySelector("style")?.textContent).toBeTruthy();
 });

@@ -86,10 +86,10 @@ export function DocumentQueryPanel({
 
 			switch (condition.operator) {
 				case "is_null":
-					value = { is_null: condition.value === "true" };
+					value = { is_null: (condition.value || "true") === "true" };
 					break;
 				case "has_key":
-					value = { has_key: condition.value === "true" };
+					value = { has_key: (condition.value || "true") === "true" };
 					break;
 				case "in":
 					value = {
@@ -121,10 +121,10 @@ export function DocumentQueryPanel({
 	};
 
 	return (
-		<Card>
+		<Card className="rounded-[var(--bf-radius-surface)] border bg-card">
 			<CardHeader className="py-3">
-				<div className="flex items-center justify-between">
-					<CardTitle className="text-sm font-medium flex items-center gap-2">
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+					<CardTitle className="flex items-center gap-2 text-sm font-medium">
 						<Search className="h-4 w-4" />
 						Query Filters
 						{hasActiveFilters && (
@@ -133,12 +133,13 @@ export function DocumentQueryPanel({
 							</Badge>
 						)}
 					</CardTitle>
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-2">
 						{hasActiveFilters && (
 							<Button
 								variant="ghost"
 								size="sm"
 								onClick={handleClear}
+								className="min-h-11"
 							>
 								<X className="h-4 w-4 mr-1" />
 								Clear
@@ -148,6 +149,7 @@ export function DocumentQueryPanel({
 							variant="outline"
 							size="sm"
 							onClick={addCondition}
+							className="min-h-11"
 						>
 							<Plus className="h-4 w-4 mr-1" />
 							Add Filter
@@ -162,89 +164,95 @@ export function DocumentQueryPanel({
 						{conditions.map((condition) => (
 							<div
 								key={condition.id}
-								className="flex items-center gap-2"
+								className="rounded-[var(--bf-radius-control)] border border-border/70 bg-background p-3"
 							>
-								<Input
-									placeholder="Field name (e.g., status)"
-									value={condition.field}
-									onChange={(e) =>
-										updateCondition(condition.id, {
-											field: e.target.value,
-										})
-									}
-									className="flex-1"
-								/>
-								<Select
-									value={condition.operator}
-									onValueChange={(value: QueryOperator) =>
-										updateCondition(condition.id, {
-											operator: value,
-										})
-									}
-								>
-									<SelectTrigger className="w-[180px]">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{OPERATORS.map((op) => (
-											<SelectItem
-												key={op.value}
-												value={op.value}
-											>
-												{op.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								{condition.operator === "is_null" ||
-								condition.operator === "has_key" ? (
-									<Select
-										value={condition.value || "true"}
-										onValueChange={(value) =>
+								<div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)_auto] md:items-center">
+									<Input
+										aria-label="Field name"
+										placeholder="Field name (e.g., status)"
+										value={condition.field}
+										onChange={(e) =>
 											updateCondition(condition.id, {
-												value,
+												field: e.target.value,
+											})
+										}
+										className="min-h-11 min-w-0"
+									/>
+									<Select
+										value={condition.operator}
+										onValueChange={(value: QueryOperator) =>
+											updateCondition(condition.id, {
+												operator: value,
 											})
 										}
 									>
-										<SelectTrigger className="flex-1">
+										<SelectTrigger aria-label="Filter operator" className="h-11 min-h-11 w-full min-w-0 rounded-[var(--bf-radius-control)]">
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="true">
-												true
-											</SelectItem>
-											<SelectItem value="false">
-												false
-											</SelectItem>
+											{OPERATORS.map((op) => (
+												<SelectItem
+													key={op.value}
+													value={op.value}
+												>
+													{op.label}
+												</SelectItem>
+											))}
 										</SelectContent>
 									</Select>
-								) : (
-									<Input
-										placeholder="Value"
-										value={condition.value}
-										onChange={(e) =>
-											updateCondition(condition.id, {
-												value: e.target.value,
-											})
+									{condition.operator === "is_null" ||
+									condition.operator === "has_key" ? (
+										<Select
+											value={condition.value || "true"}
+											onValueChange={(value) =>
+												updateCondition(condition.id, {
+													value,
+												})
+											}
+										>
+											<SelectTrigger aria-label="Filter value" className="h-11 min-h-11 w-full min-w-0 rounded-[var(--bf-radius-control)]">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="true">
+													true
+												</SelectItem>
+												<SelectItem value="false">
+													false
+												</SelectItem>
+											</SelectContent>
+										</Select>
+									) : (
+										<Input
+											aria-label="Filter value"
+											placeholder="Value"
+											value={condition.value}
+											onChange={(e) =>
+												updateCondition(condition.id, {
+													value: e.target.value,
+												})
+											}
+											className="min-h-11 min-w-0"
+										/>
+									)}
+									<Button
+										variant="ghost"
+										size="icon"
+										className="h-11 w-11 shrink-0"
+										aria-label="Remove filter"
+										onClick={() =>
+											removeCondition(condition.id)
 										}
-										className="flex-1"
-									/>
-								)}
-								<Button
-									variant="ghost"
-									size="icon"
-									onClick={() =>
-										removeCondition(condition.id)
-									}
-								>
-									<Trash2 className="h-4 w-4" />
-								</Button>
+									>
+										<Trash2 className="h-4 w-4" />
+									</Button>
+								</div>
 							</div>
 						))}
 
 						{conditions.length > 0 && (
 							<div className="flex justify-end pt-2">
-								<Button onClick={handleApply}>
+								<Button onClick={handleApply} className="min-h-11">
 									<Search className="h-4 w-4 mr-2" />
 									Apply Filters
 								</Button>

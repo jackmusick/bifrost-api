@@ -325,12 +325,24 @@ _SPREAD_SKIPS = {"React", "LucideIcons"}
 # Keep this in sync with the "React" block at the top of
 # bifrost/platform_names.py. If a new React API is added there, add it here
 # too — or move it out of the React block if it has its own runtime entry.
-_REACT_NAMESPACE_NAMES: frozenset[str] = frozenset({
-    "React", "Fragment", "Suspense", "lazy", "memo", "forwardRef",
-    "useState", "useEffect", "useCallback", "useMemo", "useRef",
-    "useContext", "useReducer", "useLayoutEffect", "useId",
-    "useTransition", "useDeferredValue", "useImperativeHandle",
-})
+# Derive the public React surface instead of maintaining another partial list.
+# The previous hardcoded skip list let createContext/createElement drift silently.
+_react_exports = re.search(
+    r'export\s*\{([^}]+)\}\s*from\s*["\']react["\']',
+    (_CLIENT_SRC / "lib" / "bifrost-runtime.ts").read_text(encoding="utf-8"),
+)
+assert _react_exports, "Public React export block not found"
+_REACT_NAMESPACE_NAMES = frozenset(
+    name.strip().split(" as ")[-1]
+    for name in _react_exports.group(1).split(",")
+    if name.strip()
+)
+
+
+def test_public_react_exports_are_classified_as_platform_names() -> None:
+    assert {"createContext", "createElement", "useContext"} <= _REACT_NAMESPACE_NAMES
+    assert _REACT_NAMESPACE_NAMES <= PLATFORM_EXPORT_NAMES
+
 
 
 # Names that PLATFORM_EXPORT_NAMES lists but are intentionally provided via

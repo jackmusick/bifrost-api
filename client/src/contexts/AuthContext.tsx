@@ -24,6 +24,7 @@ import {
 	isEmbedSession,
 } from "@/lib/auth-token";
 import { clearPreferredSsoRedirectAttempt } from "@/services/auth";
+import { refreshAccessToken } from "@/lib/api-client";
 
 // Consume the fragment before AuthProvider performs its initial auth check.
 // api-client does the same defensively before requests; this keeps auth state
@@ -172,20 +173,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 	// Uses HttpOnly cookie for refresh token (browser sends it automatically)
 	const refreshTokenInternal = useCallback(async (): Promise<boolean> => {
 		try {
-			// POST to refresh endpoint - browser sends refresh_token cookie automatically
-			const res = await fetch("/api/auth/refresh", {
-				method: "POST",
-				credentials: "same-origin",
-			});
-
-			if (!res.ok) return false;
-
-			const data = await res.json();
-			if (data.access_token) {
-				// Store access token in localStorage for expiry checking
-				localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
-
-				const payload = parseJwt(data.access_token);
+			// Share the API/SDK refresh lock: rotating the same refresh cookie twice
+			// during bootstrap can invalidate an otherwise valid browser session.
+			if (!(await refreshAccessToken())) return false;
+			const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+			if (accessToken) {
+				const payload = parseJwt(accessToken);
 				if (payload) {
 					const extractedUser = extractUser(payload);
 					setUser(extractedUser);

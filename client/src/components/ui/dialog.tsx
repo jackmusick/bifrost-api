@@ -39,7 +39,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/30 duration-100 supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-black/30 duration-[var(--bf-motion-disclosure)] [animation-duration:var(--bf-motion-disclosure)] motion-reduce:animate-none! motion-reduce:transition-none supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -67,9 +67,10 @@ function DialogContent({
           // `sm:max-w-*` default — same rule as sheet.tsx. The viewport
           // gutter lives on `w-[calc(100%-2rem)]` (the `w-` group) rather
           // than a `max-w-*` so a consumer max-w override keeps it.
-          // `max-h-[90vh] overflow-y-auto` is the default internal scroll;
+          // `max-h-[90dvh] overflow-y-auto` is the default internal scroll;
           // consumers that bring their own max-h / overflow win via merge.
-          "fixed top-1/2 left-1/2 z-50 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-[min(var(--radius-4xl),24px)] bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-100 outline-none dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[90dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-6 overflow-y-auto rounded-[var(--bf-radius-feature)] border border-border/70 bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-[var(--bf-motion-disclosure)] [animation-duration:var(--bf-motion-disclosure)] motion-reduce:animate-none! motion-reduce:transition-none outline-none dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          showCloseButton && "[&_[data-slot=dialog-header]]:pr-10",
           className
         )}
         {...props}
@@ -78,12 +79,11 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
-              variant="ghost"
-              className="absolute top-4 right-4 bg-secondary"
+              variant="outline"
+              className="absolute top-3 right-3 h-11 w-11 lg:h-8 lg:w-8"
               size="icon-sm"
             >
-              <XIcon
-              />
+              <XIcon />
               <span className="sr-only">Close</span>
             </Button>
           </DialogPrimitive.Close>
@@ -97,7 +97,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-1.5", className)}
+      className={cn("flex min-w-0 flex-col gap-1.5 [overflow-wrap:anywhere]", className)}
       {...props}
     />
   )
@@ -137,10 +137,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn(
-        "text-base leading-none font-medium",
-        className
-      )}
+      className={cn("text-base leading-snug font-medium [overflow-wrap:anywhere]", className)}
       {...props}
     />
   )
@@ -153,10 +150,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn(
-        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className
-      )}
+      className={cn("text-sm [overflow-wrap:anywhere] text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground", className)}
       {...props}
     />
   )

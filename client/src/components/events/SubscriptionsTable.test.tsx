@@ -32,11 +32,11 @@ vi.mock("@/services/events", async () => {
 });
 
 vi.mock("./CreateSubscriptionDialog", () => ({
-	CreateSubscriptionDialog: () => <div data-marker="create-sub" />,
+	CreateSubscriptionDialog: () => <div data-testid="create-sub-dialog" />,
 }));
 
 vi.mock("./EditSubscriptionDialog", () => ({
-	EditSubscriptionDialog: () => <div data-marker="edit-sub" />,
+	EditSubscriptionDialog: () => <div data-testid="edit-sub-dialog" />,
 }));
 
 import { SubscriptionsTable } from "./SubscriptionsTable";
@@ -90,8 +90,14 @@ describe("SubscriptionsTable — populated", () => {
 		});
 		renderWithProviders(<SubscriptionsTable sourceId="src-1" />);
 
-		expect(screen.getByText("Onboard")).toBeInTheDocument();
-		expect(screen.getByText("90%")).toBeInTheDocument();
+		expect(screen.getAllByText("Onboard")[0]).toBeInTheDocument();
+		expect(screen.getAllByText("90%")[0]).toBeInTheDocument();
+		expect(
+			screen.getAllByRole("button", { name: /edit subscription for onboard/i })[0],
+		).toHaveClass("min-h-11");
+		expect(
+			screen.getAllByRole("button", { name: /onboard actions/i })[0],
+		).toHaveClass("size-11");
 	});
 
 	it("toggles the active switch and dispatches the update", async () => {
@@ -104,10 +110,56 @@ describe("SubscriptionsTable — populated", () => {
 			<SubscriptionsTable sourceId="src-1" />,
 		);
 
-		await user.click(screen.getByRole("switch"));
+		await user.click(screen.getAllByRole("switch")[0]!);
 
 		await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
 		expect(mockUpdate.mock.calls[0]![0].body).toEqual({ is_active: false });
+	});
+
+	it("opens the edit dialog from the resource name button", async () => {
+		useSubsMock.mockReturnValue({
+			data: { items: [makeSub()] },
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SubscriptionsTable sourceId="src-1" />,
+		);
+
+		await user.click(
+			screen.getAllByRole("button", {
+				name: /edit subscription for onboard/i,
+			})[0]!,
+		);
+
+		expect(screen.getByTestId("edit-sub-dialog")).toBeInTheDocument();
+	});
+
+	it("opens edit and delete from the shared actions menu", async () => {
+		useSubsMock.mockReturnValue({
+			data: { items: [makeSub()] },
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SubscriptionsTable sourceId="src-1" />,
+		);
+
+		await user.click(
+			screen.getAllByRole("button", { name: /onboard actions/i })[0]!,
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+
+		expect(screen.getByTestId("edit-sub-dialog")).toBeInTheDocument();
+
+		await user.click(
+			screen.getAllByRole("button", { name: /onboard actions/i })[0]!,
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+		expect(
+			screen.getByRole("heading", { name: /delete subscription/i }),
+		).toBeInTheDocument();
 	});
 
 	it("asks for delete confirmation before deleting", async () => {
@@ -121,8 +173,9 @@ describe("SubscriptionsTable — populated", () => {
 		);
 
 		await user.click(
-			screen.getByRole("button", { name: /delete subscription/i }),
+			screen.getAllByRole("button", { name: /onboard actions/i })[0]!,
 		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 
 		// Alert dialog shows before dispatch
 		expect(
@@ -137,5 +190,83 @@ describe("SubscriptionsTable — populated", () => {
 			source_id: "src-1",
 			subscription_id: "sub-1",
 		});
+	});
+
+	it("keeps the delete dialog open after a failed delete and retries", async () => {
+		mockDelete.mockRejectedValueOnce(new Error("boom"));
+		useSubsMock.mockReturnValue({
+			data: { items: [makeSub()] },
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(
+			<SubscriptionsTable sourceId="src-1" />,
+		);
+
+		await user.click(
+			screen.getAllByRole("button", { name: /onboard actions/i })[0]!,
+		);
+		await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+		await user.click(screen.getByRole("button", { name: /^delete$/i }));
+
+		expect(
+			await screen.findByRole("alert"),
+		).toHaveTextContent(/could not delete this subscription/i);
+		expect(
+			screen.getByRole("button", { name: /retry delete/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: /delete subscription/i }),
+		).toBeInTheDocument();
+
+		mockDelete.mockResolvedValueOnce(undefined);
+		await user.click(screen.getByRole("button", { name: /retry delete/i }));
+
+		await waitFor(() => expect(mockDelete).toHaveBeenCalledTimes(2));
+		expect(
+			screen.queryByRole("heading", { name: /delete subscription/i }),
+		).not.toBeInTheDocument();
+	});
+});
+
+describe("SubscriptionsTable — read error", () => {
+	it("shows retry UI when the initial read fails", async () => {
+		const refetch = vi.fn();
+		useSubsMock.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch,
+		});
+
+		const { user } = renderWithProviders(
+			<SubscriptionsTable sourceId="src-1" />,
+		);
+
+		expect(
+			screen.getByRole("alert"),
+		).toHaveTextContent(/could not load subscriptions/i);
+		await user.click(
+			screen.getByRole("button", { name: /retry subscriptions/i }),
+		);
+		expect(refetch).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps cached subscriptions visible when refresh fails", () => {
+		useSubsMock.mockReturnValue({
+			data: { items: [makeSub()] },
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch: vi.fn(),
+		});
+
+		renderWithProviders(<SubscriptionsTable sourceId="src-1" />);
+
+		expect(screen.getAllByText("Onboard")[0]).toBeInTheDocument();
+		expect(
+			screen.getByRole("alert"),
+		).toHaveTextContent(/previously loaded subscriptions are still shown/i);
 	});
 });

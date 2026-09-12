@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -89,7 +90,7 @@ export function WorkflowParametersForm({
 		// If parameter has options (e.g., from Literal types), render as dropdown
 		if (param.options && param.options.length > 0) {
 			return (
-				<div className="space-y-2">
+				<div className="min-w-0 space-y-2">
 					<Label htmlFor={param.name ?? "select"}>
 						{displayName}
 						{param.required && (
@@ -103,7 +104,7 @@ export function WorkflowParametersForm({
 						}
 						disabled={isExecuting}
 					>
-						<SelectTrigger id={param.name ?? "select"}>
+						<SelectTrigger className="w-full" id={param.name ?? "select"}>
 							<SelectValue
 								placeholder={
 									param.default_value != null
@@ -135,8 +136,8 @@ export function WorkflowParametersForm({
 		switch (param.type) {
 			case "bool":
 				return (
-					<div className="flex flex-row items-center justify-between rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5">
-						<div className="space-y-0.5">
+					<div className="flex min-h-14 items-center justify-between gap-4 rounded-[var(--bf-radius-surface)] border border-border bg-muted/50 p-3">
+						<div className="min-w-0 space-y-0.5 [overflow-wrap:anywhere]">
 							<Label
 								htmlFor={param.name ?? "checkbox"}
 								className="font-medium"
@@ -168,7 +169,7 @@ export function WorkflowParametersForm({
 			case "int":
 			case "float":
 				return (
-					<div className="space-y-2">
+					<div className="min-w-0 space-y-2">
 						<Label htmlFor={param.name ?? "number"}>
 							{displayName}
 							{param.required && (
@@ -209,7 +210,7 @@ export function WorkflowParametersForm({
 			case "json":
 			case "dict":
 				return (
-					<div className="space-y-2">
+					<div className="min-w-0 space-y-2">
 						<Label htmlFor={param.name ?? "json"}>
 							{displayName}{" "}
 							<span className="text-muted-foreground text-xs">
@@ -219,9 +220,9 @@ export function WorkflowParametersForm({
 								<span className="text-destructive ml-1">*</span>
 							)}
 						</Label>
-						<textarea
+						<Textarea
 							id={param.name ?? "json"}
-							className="flex min-h-[80px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+							className="min-h-28 font-mono"
 							value={
 								typeof value === "string"
 									? value
@@ -258,7 +259,7 @@ export function WorkflowParametersForm({
 
 			case "list":
 				return (
-					<div className="space-y-2">
+					<div className="min-w-0 space-y-2">
 						<Label htmlFor={param.name ?? "list"}>
 							{displayName}{" "}
 							<span className="text-muted-foreground text-xs">
@@ -268,9 +269,9 @@ export function WorkflowParametersForm({
 								<span className="text-destructive ml-1">*</span>
 							)}
 						</Label>
-						<textarea
+						<Textarea
 							id={param.name ?? "list"}
-							className="flex min-h-[80px] w-full rounded-2xl border border-transparent bg-input/50 px-2.5 py-2 text-sm transition-[color,box-shadow] duration-200 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 font-mono"
+							className="min-h-28 font-mono"
 							value={
 								typeof value === "string"
 									? value
@@ -304,7 +305,7 @@ export function WorkflowParametersForm({
 			default:
 				// string, email
 				return (
-					<div className="space-y-2">
+					<div className="min-w-0 space-y-2">
 						<Label htmlFor={param.name ?? "text"}>
 							{displayName}
 							{param.required && (
@@ -353,7 +354,7 @@ export function WorkflowParametersForm({
 						onClick={() => onExecute({})}
 					>
 						{isExecuting ? (
-							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 						) : (
 							<Play className="mr-2 h-4 w-4" />
 						)}
@@ -381,7 +382,7 @@ export function WorkflowParametersForm({
 					disabled={isExecuting}
 				>
 					{isExecuting ? (
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 					) : (
 						<Play className="mr-2 h-4 w-4" />
 					)}

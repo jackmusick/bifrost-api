@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
+import { IntegrationReadError } from "@/components/integrations/IntegrationReadError";
+import { failedMappings } from "@/components/integrations/mapping-save";
+import { IntegrationPageHeader } from "@/components/integrations/IntegrationPageHeader";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import {
-	XCircle,
-	Loader2,
-	Pencil,
-	Code,
-	Zap,
-} from "lucide-react";
+import { XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+	PageScrollArea,
+	PageWorkspace,
+} from "@/components/layout/PageWorkspace";
 import {
 	Card,
 	CardContent,
@@ -17,22 +18,12 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { IntegrationDeleteDialog } from "@/components/integrations/IntegrationDeleteDialog";
 import { toast } from "sonner";
 import {
 	useIntegration,
 	useUpdateMapping,
 	useDeleteMapping,
-	useUpdateIntegration,
 	useUpdateIntegrationConfig,
 	useTestIntegration,
 	useBatchUpsertMappings,
@@ -58,7 +49,11 @@ import { useIntegrationEntities } from "@/hooks/useIntegrationEntities";
 import { useAutoMatch } from "@/hooks/useAutoMatch";
 import { GenerateSDKDialog } from "@/components/integrations/GenerateSDKDialog";
 import { IntegrationOverview } from "@/components/integrations/IntegrationOverview";
-import { IntegrationMappingsTab, type OrgWithMapping } from "@/components/integrations/IntegrationMappingsTab";
+import {
+	IntegrationMappingsTab,
+	type OrgWithMapping,
+	type PendingMappingAction,
+} from "@/components/integrations/IntegrationMappingsTab";
 import { IntegrationTestPanel } from "@/components/integrations/IntegrationTestPanel";
 import { IntegrationDefaultsDialog } from "@/components/integrations/IntegrationDefaultsDialog";
 
@@ -77,6 +72,7 @@ export function IntegrationDetail() {
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [configDialogOpen, setConfigDialogOpen] = useState(false);
 	const [defaultsDialogOpen, setDefaultsDialogOpen] = useState(false);
+	const [defaultsError, setDefaultsError] = useState<string | null>(null);
 	const [defaultsFormValues, setDefaultsFormValues] = useState<
 		Record<string, unknown>
 	>({});
@@ -100,18 +96,22 @@ export function IntegrationDetail() {
 	const {
 		data: integration,
 		isLoading: isLoadingIntegration,
+		isError: isIntegrationError,
+		isFetching: isFetchingIntegration,
 		refetch: refetchIntegration,
 	} = useIntegration(integrationId || "");
 
 	// Fetch organizations
-	const { data: orgsData, isLoading: isLoadingOrgs } = $api.useQuery(
-		"get",
-		"/api/organizations",
-	);
+	const {
+		data: orgsData,
+		isLoading: isLoadingOrgs,
+		isError: isOrgsError,
+		isFetching: isFetchingOrgs,
+		refetch: refetchOrgs,
+	} = $api.useQuery("get", "/api/organizations");
 
 	const updateMutation = useUpdateMapping();
 	const deleteMutation = useDeleteMapping();
-	const updateIntegrationMutation = useUpdateIntegration();
 	const updateConfigMutation = useUpdateIntegrationConfig();
 	const authorizeMutation = useAuthorizeOAuthConnection();
 	const refreshMutation = useRefreshOAuthToken();
@@ -122,9 +122,24 @@ export function IntegrationDetail() {
 	const authorizeMappingMutation = useAuthorizeMapping();
 	const disconnectMappingMutation = useDisconnectMapping();
 	const refreshMappingMutation = useRefreshMapping();
-	const [refreshingMappingId, setRefreshingMappingId] = useState<
-		string | null
-	>(null);
+	const [pendingMappingAction, setPendingMappingActionState] =
+		useState<PendingMappingAction | null>(null);
+	const pendingMappingActionRef = useRef<PendingMappingAction | null>(null);
+
+	const setPendingMappingAction = (next: PendingMappingAction | null) => {
+		pendingMappingActionRef.current = next;
+		setPendingMappingActionState(next);
+	};
+
+	const clearPendingMappingAction = (expected: PendingMappingAction) => {
+		const current = pendingMappingActionRef.current;
+		if (
+			current?.orgId === expected.orgId &&
+			current.action === expected.action
+		) {
+			setPendingMappingAction(null);
+		}
+	};
 
 	// Memoize to stabilize references for the useEffect that combines them
 	const organizations = useMemo(
@@ -137,8 +152,13 @@ export function IntegrationDetail() {
 	);
 
 	// Fetch entities from data provider
-	const { data: entities = [], isLoading: isLoadingEntities, isError: isEntitiesError } =
-		useIntegrationEntities(integration?.list_entities_data_provider_id);
+	const {
+		data: entities = [],
+		isLoading: isLoadingEntities,
+		isError: isEntitiesError,
+		isFetching: isFetchingEntities,
+		refetch: refetchEntities,
+	} = useIntegrationEntities(integration?.list_entities_data_provider_id);
 
 	// Auto-match hook
 	const {
@@ -192,7 +212,8 @@ export function IntegrationDetail() {
 
 			const formData: MappingFormData = existingMapping
 				? {
-						organization_id: existingMapping.organization_id ?? org.id,
+						organization_id:
+							existingMapping.organization_id ?? org.id,
 						entity_id: existingMapping.entity_id,
 						entity_name: existingMapping.entity_name || "",
 						oauth_token_id:
@@ -213,12 +234,7 @@ export function IntegrationDetail() {
 				formData,
 			};
 		});
-	}, [
-		organizations,
-		mappings,
-		isLoadingOrgs,
-		isLoadingIntegration,
-	]);
+	}, [organizations, mappings, isLoadingOrgs, isLoadingIntegration]);
 
 	// Listen for OAuth success messages from popup window
 	useEffect(() => {
@@ -259,19 +275,49 @@ export function IntegrationDetail() {
 		};
 	}, [refetchIntegration, queryClient, integrationId]);
 
+	const [mappingSaveError, setMappingSaveError] = useState<string | null>(
+		null,
+	);
+	const [failedMappingBatch, setFailedMappingBatch] = useState<Array<{
+		organization_id: string;
+		entity_id: string;
+		entity_name?: string;
+	}> | null>(null);
+	const mappingSaveActive = useRef(false);
 	const saveMappings = async (
-		mappingsToSave: Array<{ organization_id: string; entity_id: string; entity_name?: string }>,
+		mappingsToSave: Array<{
+			organization_id: string;
+			entity_id: string;
+			entity_name?: string;
+		}>,
 	) => {
-		const result = await batchMutation.mutateAsync({
-			params: { path: { integration_id: integrationId! } },
-			body: { mappings: mappingsToSave },
-		});
-		const total = result.created + result.updated;
-		const errorCount = result.errors?.length ?? 0;
-		if (errorCount === 0) {
-			toast.success(`Saved ${total} mapping(s)`);
-		} else {
-			toast.warning(`Saved ${total} mapping(s), ${errorCount} failed`);
+		if (mappingSaveActive.current) return;
+		mappingSaveActive.current = true;
+		setMappingSaveError(null);
+		setFailedMappingBatch(null);
+		try {
+			const result = await batchMutation.mutateAsync({
+				params: { path: { integration_id: integrationId! } },
+				body: { mappings: mappingsToSave },
+			});
+			const total = result.created + result.updated;
+			if (result.errors?.length) {
+				setMappingSaveError(
+					`Saved ${total} mapping(s), but ${result.errors.length} failed. Review your mappings and retry the failed items.`,
+				);
+				setFailedMappingBatch(
+					failedMappings(mappingsToSave, result.errors),
+				);
+			} else {
+				toast.success(`Saved ${total} mapping(s)`);
+			}
+		} catch {
+			setMappingSaveError(
+				"Unable to save mappings. Your attempted values are available to retry.",
+			);
+			setFailedMappingBatch(mappingsToSave);
+		} finally {
+			mappingSaveActive.current = false;
 		}
 	};
 
@@ -281,7 +327,13 @@ export function IntegrationDetail() {
 		entityName?: string,
 	) => {
 		try {
-			await saveMappings([{ organization_id: orgId, entity_id: entityId, entity_name: entityName }]);
+			await saveMappings([
+				{
+					organization_id: orgId,
+					entity_id: entityId,
+					entity_name: entityName,
+				},
+			]);
 		} catch {
 			toast.error("Failed to save mapping");
 		}
@@ -293,35 +345,43 @@ export function IntegrationDetail() {
 
 	const handleConnectMapping = async (org: OrgWithMapping) => {
 		if (!integrationId) return;
+		if (pendingMappingActionRef.current) return;
+		const pendingAction: PendingMappingAction = {
+			orgId: org.id,
+			action: "connect",
+		};
+		setPendingMappingAction(pendingAction);
 		// Use the same redirect_uri shape as the integration-level Connect so the
 		// shared OAuthCallback page (route /oauth/callback/:integrationId) handles
 		// both flows. The state token carries mapping_id for the per-mapping path.
 		const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
 
-		// If there's no mapping row yet, create an empty one so the OAuth
-		// callback has something to link the token to. entity_id will be
-		// auto-populated from the callback when the provider has entity_id_source
-		// configured.
-		let mappingId = org.mapping?.id;
-		if (!mappingId) {
-			try {
-				const created = await createMappingMutation.mutateAsync({
-					params: { path: { integration_id: integrationId } },
-					body: {
-						organization_id: org.id,
-						entity_id: org.formData.entity_id ?? "",
-						entity_name: org.formData.entity_name ?? "",
-					},
-				});
-				mappingId = created.id;
-			} catch {
-				toast.error("Failed to create mapping for OAuth connection");
-				return;
+		try {
+			// If there's no mapping row yet, create an empty one so the OAuth
+			// callback has something to link the token to. entity_id will be
+			// auto-populated from the callback when the provider has entity_id_source
+			// configured.
+			let mappingId = org.mapping?.id;
+			if (!mappingId) {
+				try {
+					const created = await createMappingMutation.mutateAsync({
+						params: { path: { integration_id: integrationId } },
+						body: {
+							organization_id: org.id,
+							entity_id: org.formData.entity_id ?? "",
+							entity_name: org.formData.entity_name ?? "",
+						},
+					});
+					mappingId = created.id;
+				} catch {
+					toast.error(
+						"Failed to create mapping for OAuth connection",
+					);
+					return;
+				}
 			}
-		}
 
-		authorizeMappingMutation.mutate(
-			{
+			const response = await authorizeMappingMutation.mutateAsync({
 				params: {
 					path: {
 						integration_id: integrationId,
@@ -329,106 +389,97 @@ export function IntegrationDetail() {
 					},
 				},
 				body: { redirect_uri: redirectUri },
-			},
-			{
-				onSuccess: (response) => {
-					// Match the integration-level Connect: open in a centered popup
-					// so the user stays on the integration page and the existing
-					// postMessage(oauth_success) listener refreshes state on close.
-					const width = 600;
-					const height = 700;
-					const left =
-						window.screenX + (window.outerWidth - width) / 2;
-					const top =
-						window.screenY + (window.outerHeight - height) / 2;
-					window.open(
-						response.authorization_url,
-						"oauth_popup",
-						`width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
-					);
-				},
-				onError: () => {
-					toast.error("Failed to start OAuth connection");
-				},
-			},
-		);
+			});
+
+			// Match the integration-level Connect: open in a centered popup so the
+			// user stays on the integration page and the existing
+			// postMessage(oauth_success) listener refreshes state on close.
+			const width = 600;
+			const height = 700;
+			const left = window.screenX + (window.outerWidth - width) / 2;
+			const top = window.screenY + (window.outerHeight - height) / 2;
+			window.open(
+				response.authorization_url,
+				"oauth_popup",
+				`width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
+			);
+		} catch {
+			toast.error("Failed to start OAuth connection");
+		} finally {
+			clearPendingMappingAction(pendingAction);
+		}
 	};
 
-	const handleDisconnectMapping = (mappingId: string) => {
+	const handleDisconnectMapping = async (org: OrgWithMapping) => {
 		if (!integrationId) return;
-		disconnectMappingMutation.mutate(
-			{
+		if (pendingMappingActionRef.current) return;
+		const mappingId = org.mapping?.id;
+		if (!mappingId) return;
+		const pendingAction: PendingMappingAction = {
+			orgId: org.id,
+			action: "disconnect",
+		};
+		setPendingMappingAction(pendingAction);
+		try {
+			await disconnectMappingMutation.mutateAsync({
 				params: {
 					path: {
 						integration_id: integrationId,
 						mapping_id: mappingId,
 					},
 				},
-			},
-			{
-				onSuccess: () => {
-					toast.success("OAuth connection disconnected");
-				},
-				onError: () => {
-					toast.error("Failed to disconnect OAuth connection");
-				},
-			},
-		);
+			});
+			toast.success("OAuth connection disconnected");
+		} catch {
+			toast.error("Failed to disconnect OAuth connection");
+		} finally {
+			clearPendingMappingAction(pendingAction);
+		}
 	};
 
-	const handleRefreshMapping = (mappingId: string) => {
+	const handleRefreshMapping = async (org: OrgWithMapping) => {
 		if (!integrationId) return;
-		setRefreshingMappingId(mappingId);
-		refreshMappingMutation.mutate(
-			{
+		if (pendingMappingActionRef.current) return;
+		const mappingId = org.mapping?.id;
+		if (!mappingId) return;
+		const pendingAction: PendingMappingAction = {
+			orgId: org.id,
+			action: "refresh",
+		};
+		setPendingMappingAction(pendingAction);
+		try {
+			await refreshMappingMutation.mutateAsync({
 				params: {
 					path: {
 						integration_id: integrationId,
 						mapping_id: mappingId,
 					},
 				},
-			},
-			{
-				onSuccess: () => {
-					toast.success("Token refreshed");
-				},
-				onError: (err: unknown) => {
-					const msg =
-						(err as { detail?: string } | undefined)?.detail ??
-						"Failed to refresh token";
-					toast.error(msg);
-				},
-				onSettled: () => {
-					setRefreshingMappingId(null);
-				},
-			},
-		);
+			});
+			toast.success("Token refreshed");
+		} catch (err) {
+			const msg =
+				(err as { detail?: string } | undefined)?.detail ??
+				"Failed to refresh token";
+			toast.error(msg);
+		} finally {
+			clearPendingMappingAction(pendingAction);
+		}
 	};
 
 	const handleDeleteMappingConfirm = async () => {
 		const org = deleteMappingConfirm;
-		if (!integrationId || !org?.mapping) {
-			setDeleteMappingConfirm(null);
-			return;
-		}
-
-		setDeleteMappingConfirm(null);
-
-		try {
-			await deleteMutation.mutateAsync({
-				params: {
-					path: {
-						integration_id: integrationId,
-						mapping_id: org.mapping.id,
-					},
+		if (!integrationId || !org?.mapping)
+			throw new Error("Mapping unavailable");
+		await deleteMutation.mutateAsync({
+			params: {
+				path: {
+					integration_id: integrationId,
+					mapping_id: org.mapping.id,
 				},
-			});
-			toast.success(`Mapping deleted for ${org.name}`);
-			// Cache invalidation in useDeleteMapping handles refetch
-		} catch (error) {
-			console.error("Failed to delete mapping:", error);
-			toast.error(`Failed to delete mapping for ${org.name}`);
-		}
+			},
+		});
+		toast.success(`Mapping deleted for ${org.name}`);
 	};
 
 	// Handle main integration OAuth connect
@@ -437,29 +488,12 @@ export function IntegrationDetail() {
 
 		const redirectUri = `${window.location.origin}/oauth/callback/${integrationId}`;
 
-		authorizeMutation.mutate(
-			{
-				params: {
-					path: { connection_name: integrationId },
-					query: { redirect_uri: redirectUri },
-				},
+		authorizeMutation.mutate({
+			params: {
+				path: { connection_name: integrationId },
+				query: { redirect_uri: redirectUri },
 			},
-			{
-				onSuccess: (response) => {
-					const width = 600;
-					const height = 700;
-					const left =
-						window.screenX + (window.outerWidth - width) / 2;
-					const top =
-						window.screenY + (window.outerHeight - height) / 2;
-					window.open(
-						response.authorization_url,
-						"oauth_popup",
-						`width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
-					);
-				},
-			},
-		);
+		});
 	};
 
 	// Handle main integration OAuth refresh
@@ -471,7 +505,6 @@ export function IntegrationDetail() {
 				params: { path: { connection_name: integrationId } },
 			});
 			refetchIntegration();
-			toast.success("Token refreshed successfully");
 		} catch {
 			// Error is already handled by the mutation's onError
 		}
@@ -479,17 +512,10 @@ export function IntegrationDetail() {
 
 	// Handle OAuth config deletion
 	const handleDeleteOAuthConfig = async () => {
-		if (!integrationId) return;
-
-		try {
-			await deleteOAuthMutation.mutateAsync({
-				params: { path: { connection_name: integrationId } },
-			});
-			setDeleteOAuthDialogOpen(false);
-			// The mutation's onSuccess already handles cache invalidation and toast
-		} catch {
-			// Error is already handled by the mutation's onError
-		}
+		if (!integrationId) throw new Error("Integration unavailable");
+		await deleteOAuthMutation.mutateAsync({
+			params: { path: { connection_name: integrationId } },
+		});
 	};
 
 	const handleOpenConfigDialog = (orgId: string) => {
@@ -509,39 +535,29 @@ export function IntegrationDetail() {
 			throw new Error("No mapping exists");
 		}
 
-		try {
-			await updateMutation.mutateAsync({
-				params: {
-					path: {
-						integration_id: integrationId,
-						mapping_id: selectedOrgForConfig.mapping.id,
-					},
+		await updateMutation.mutateAsync({
+			params: {
+				path: {
+					integration_id: integrationId,
+					mapping_id: selectedOrgForConfig.mapping.id,
 				},
-				body: {
-					entity_id: selectedOrgForConfig.formData.entity_id,
-					entity_name:
-						selectedOrgForConfig.formData.entity_name || undefined,
-					oauth_token_id:
-						selectedOrgForConfig.formData.oauth_token_id ||
-						undefined,
-					config: Object.keys(config).length > 0 ? config : undefined,
-				},
-			});
-			toast.success(
-				`Configuration saved for ${selectedOrgForConfig.name}`,
-			);
-			// Cache invalidation in useUpdateMapping handles refetch
-		} catch (error) {
-			console.error("Failed to save config:", error);
-			toast.error(
-				`Failed to save configuration for ${selectedOrgForConfig.name}`,
-			);
-			throw error; // Re-throw so dialog knows save failed
-		}
+			},
+			body: {
+				entity_id: selectedOrgForConfig.formData.entity_id,
+				entity_name:
+					selectedOrgForConfig.formData.entity_name || undefined,
+				oauth_token_id:
+					selectedOrgForConfig.formData.oauth_token_id || undefined,
+				config: Object.keys(config).length > 0 ? config : undefined,
+			},
+		});
+		toast.success(`Configuration saved for ${selectedOrgForConfig.name}`);
+		// Cache invalidation in useUpdateMapping handles refetch
 	};
 
 	// Configuration Defaults Dialog handlers
 	const handleOpenDefaultsDialog = () => {
+		setDefaultsError(null);
 		if (!integration?.config_schema) return;
 		// Initialize form with current default values from config_defaults
 		const currentDefaults: Record<string, unknown> = {};
@@ -554,7 +570,13 @@ export function IntegrationDetail() {
 	};
 
 	const handleSaveDefaults = async () => {
-		if (!integrationId || !integration?.config_schema) return;
+		if (
+			!integrationId ||
+			!integration?.config_schema ||
+			updateConfigMutation.isPending
+		)
+			return;
+		setDefaultsError(null);
 
 		// Validate form values before save
 		const validationErrors: string[] = [];
@@ -569,8 +591,12 @@ export function IntegrationDetail() {
 			// Validate int fields
 			if (field.type === "int") {
 				const numValue =
-					typeof value === "string" ? parseInt(value) : value;
-				if (isNaN(numValue as number)) {
+					typeof value === "string" ? Number(value) : value;
+				if (
+					!Number.isSafeInteger(numValue) ||
+					(typeof value === "string" &&
+						!/^[+-]?\d+$/.test(value.trim()))
+				) {
 					validationErrors.push(
 						`${field.key} must be a valid integer`,
 					);
@@ -592,7 +618,7 @@ export function IntegrationDetail() {
 		}
 
 		if (validationErrors.length > 0) {
-			toast.error(validationErrors.join(", "));
+			setDefaultsError(validationErrors.join(", "));
 			return;
 		}
 
@@ -602,7 +628,12 @@ export function IntegrationDetail() {
 			for (const [key, value] of Object.entries(defaultsFormValues)) {
 				// Only include non-empty values
 				if (value !== "" && value !== null && value !== undefined) {
-					config[key] = value;
+					config[key] =
+						integration.config_schema.find(
+							(field) => field.key === key,
+						)?.type === "int"
+							? Number(value)
+							: value;
 				}
 			}
 
@@ -613,9 +644,10 @@ export function IntegrationDetail() {
 
 			toast.success("Configuration defaults updated");
 			setDefaultsDialogOpen(false);
-		} catch (error) {
-			console.error("Failed to update defaults:", error);
-			toast.error("Failed to update configuration defaults");
+		} catch {
+			setDefaultsError(
+				"Unable to save configuration defaults. Your values are retained; try saving again.",
+			);
 		}
 	};
 
@@ -623,11 +655,13 @@ export function IntegrationDetail() {
 		const suggestion = acceptSuggestion(orgId);
 		if (suggestion) {
 			try {
-				await saveMappings([{
-					organization_id: orgId,
-					entity_id: suggestion.entityId,
-					entity_name: suggestion.entityName,
-				}]);
+				await saveMappings([
+					{
+						organization_id: orgId,
+						entity_id: suggestion.entityId,
+						entity_name: suggestion.entityName,
+					},
+				]);
 			} catch {
 				toast.error("Failed to save mapping");
 			}
@@ -662,14 +696,12 @@ export function IntegrationDetail() {
 				body: { organization_id: testOrgId, endpoint: testEndpoint },
 			});
 			setTestResult(result);
-			if (result.success) {
-				toast.success(result.message);
-			} else {
-				toast.error(result.message);
-			}
-		} catch (error) {
-			console.error("Test connection failed:", error);
-			toast.error("Failed to test connection");
+		} catch {
+			setTestResult({
+				success: false,
+				message:
+					"Unable to test the connection. Check the endpoint and try again.",
+			});
 		}
 	};
 
@@ -685,9 +717,43 @@ export function IntegrationDetail() {
 
 	if (isLoading) {
 		return (
-			<div className="space-y-6">
-				<Skeleton className="h-12 w-64" />
+			<div
+				role="status"
+				aria-label="Loading integration"
+				className="space-y-6"
+			>
+				<Skeleton className="h-12 w-64 max-w-full" />
 				<Skeleton className="h-64 w-full" />
+			</div>
+		);
+	}
+
+	if ((isIntegrationError && !integration) || (isOrgsError && !orgsData)) {
+		return (
+			<div className="space-y-4">
+				{isIntegrationError && !integration && (
+					<IntegrationReadError
+						resource="integration"
+						cached={false}
+						pending={isFetchingIntegration}
+						onRetry={() => {
+							void refetchIntegration();
+						}}
+					/>
+				)}
+				{isOrgsError && !orgsData && (
+					<IntegrationReadError
+						resource="organizations"
+						cached={false}
+						pending={isFetchingOrgs}
+						onRetry={() => {
+							void refetchOrgs();
+						}}
+					/>
+				)}
+				<Button asChild variant="outline" className="min-h-11">
+					<Link to="/integrations">Back to Integrations</Link>
+				</Button>
 			</div>
 		);
 	}
@@ -699,149 +765,201 @@ export function IntegrationDetail() {
 				<h3 className="mt-4 text-lg font-semibold">
 					Integration not found
 				</h3>
-				<Link to="/integrations">
-					<Button variant="outline" className="mt-4">
-						Back to Integrations
-					</Button>
-				</Link>
+				<Button asChild variant="outline" className="mt-4 min-h-11">
+					<Link to="/integrations">Back to Integrations</Link>
+				</Button>
 			</div>
 		);
 	}
 
 	return (
-		<div className="space-y-6">
-			{/* Header */}
-			<div>
-				<div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-					<Link
-						to="/integrations"
-						className="hover:text-foreground transition-colors"
-					>
-						Integrations
-					</Link>
-					<span>/</span>
-					<span>{integration.name}</span>
-				</div>
-				<div className="flex items-center justify-between">
-					<div>
-						<h1 className="text-4xl font-extrabold tracking-tight">
-							{integration.name}
-						</h1>
-						<p className="mt-2 text-muted-foreground">
-							{(
-								integration as typeof integration & {
-									description?: string;
-								}
-							).description ||
-								"Configure OAuth, data providers, and organization mappings"}
-						</p>
-					</div>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={handleOpenTestDialog}
-							title="Test integration connection"
-						>
-							<Zap className="h-4 w-4 mr-2" />
-							Test Connection
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setGenerateSDKDialogOpen(true)}
-							title="Generate SDK from OpenAPI spec"
-						>
-							<Code className="h-4 w-4 mr-2" />
-							Generate SDK
-						</Button>
-						<Button
-							variant="outline"
-							size="icon"
-							onClick={() => setEditDialogOpen(true)}
-							title="Edit integration"
-						>
-							<Pencil className="h-4 w-4" />
-						</Button>
-					</div>
-				</div>
-			</div>
-
-			{/* Config Defaults & OAuth Status */}
-			<IntegrationOverview
-				integration={integration}
-				oauthConfig={oauthConfig}
-				isOAuthConnected={isOAuthConnected}
-				isOAuthExpired={isOAuthExpired}
-				isOAuthExpiringSoon={isOAuthExpiringSoon}
-				canUseAuthCodeFlow={canUseAuthCodeFlow}
-				onOpenDefaultsDialog={handleOpenDefaultsDialog}
-				onOAuthConnect={handleIntegrationOAuthConnect}
-				onOAuthRefresh={handleIntegrationOAuthRefresh}
-				onEditOAuthConfig={() => setEditingOAuthConfig(true)}
-				onDeleteOAuthConfig={() => setDeleteOAuthDialogOpen(true)}
-				onCreateOAuthConfig={() => setOAuthConfigDialogOpen(true)}
-				isAuthorizePending={authorizeMutation.isPending}
-				isRefreshPending={refreshMutation.isPending}
+		<PageWorkspace>
+			<IntegrationPageHeader
+				name={integration.name}
+				description={
+					(
+						integration as typeof integration & {
+							description?: string;
+						}
+					).description
+				}
+				onTest={handleOpenTestDialog}
+				onGenerateSDK={() => setGenerateSDKDialogOpen(true)}
+				onEdit={() => setEditDialogOpen(true)}
 			/>
-
-			{/* Tabs for Mappings and Config Overrides */}
-			<Tabs defaultValue="mappings" className="space-y-4">
-				<TabsList>
-					<TabsTrigger value="mappings">Mappings</TabsTrigger>
-					<TabsTrigger value="config-overrides">
-						Config Overrides
-					</TabsTrigger>
-				</TabsList>
-
-				<TabsContent value="mappings">
-					<IntegrationMappingsTab
-						orgsWithMappings={orgsWithMappings}
-						entities={entities}
-						isLoadingEntities={isLoadingEntities}
-						isEntitiesError={isEntitiesError}
-						hasDataProvider={!!integration.list_entities_data_provider_id}
-						hasOAuth={!!integration.has_oauth_config}
-						configSchema={integration?.config_schema || []}
-						configDefaults={integration?.config_defaults}
-						autoMatchSuggestions={autoMatchSuggestions}
-						matchStats={matchStats}
-						isMatching={isMatching}
-						isDeletePending={deleteMutation.isPending}
-						onRunAutoMatch={runAutoMatch}
-						onAcceptAllSuggestions={handleAcceptAllSuggestions}
-						onClearSuggestions={clearSuggestions}
-						onAcceptSuggestion={handleAcceptSuggestion}
-						onRejectSuggestion={rejectSuggestion}
-						onUpdateOrgMapping={handleEntitySelect}
-						onOpenConfigDialog={handleOpenConfigDialog}
-						onDeleteMapping={handleDeleteMappingClick}
-						onConnectMapping={handleConnectMapping}
-						onDisconnectMapping={handleDisconnectMapping}
-						onRefreshMapping={handleRefreshMapping}
-						refreshingMappingId={refreshingMappingId}
+			<PageScrollArea className="space-y-6 lg:flex lg:flex-col lg:gap-6 lg:space-y-0">
+				{isIntegrationError && (
+					<IntegrationReadError
+						resource="integration"
+						cached
+						pending={isFetchingIntegration}
+						onRetry={() => {
+							void refetchIntegration();
+						}}
 					/>
-				</TabsContent>
+				)}
+				{isOrgsError && (
+					<IntegrationReadError
+						resource="organizations"
+						cached
+						pending={isFetchingOrgs}
+						onRetry={() => {
+							void refetchOrgs();
+						}}
+					/>
+				)}
+				{/* Config Defaults & OAuth Status */}
+				<IntegrationOverview
+					integration={integration}
+					oauthConfig={oauthConfig}
+					isOAuthConnected={isOAuthConnected}
+					isOAuthExpired={isOAuthExpired}
+					isOAuthExpiringSoon={isOAuthExpiringSoon}
+					canUseAuthCodeFlow={canUseAuthCodeFlow}
+					onOpenDefaultsDialog={handleOpenDefaultsDialog}
+					onOAuthConnect={handleIntegrationOAuthConnect}
+					onOAuthRefresh={handleIntegrationOAuthRefresh}
+					onEditOAuthConfig={() => setEditingOAuthConfig(true)}
+					onDeleteOAuthConfig={() => setDeleteOAuthDialogOpen(true)}
+					onCreateOAuthConfig={() => setOAuthConfigDialogOpen(true)}
+					isAuthorizePending={authorizeMutation.isPending}
+					isRefreshPending={refreshMutation.isPending}
+				/>
 
-				<TabsContent value="config-overrides">
-					<Card>
-						<CardHeader>
-							<CardTitle>Configuration Overrides</CardTitle>
-							<CardDescription>
-								Manage organization-specific configuration
-								overrides
-							</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<ConfigOverridesTab
-								orgsWithMappings={orgsWithMappings}
-								configSchema={integration?.config_schema || []}
-								integrationId={integrationId || ""}
-							/>
-						</CardContent>
-					</Card>
-				</TabsContent>
-			</Tabs>
+				{/* Tabs for Mappings and Config Overrides */}
+				<Tabs
+					defaultValue="mappings"
+					className="flex min-h-0 flex-col gap-4 lg:min-h-96 lg:flex-1"
+				>
+					<TabsList
+						aria-label="Integration views"
+						className="grid grid-cols-2 w-full group-data-horizontal/tabs:h-auto sm:w-fit"
+					>
+						<TabsTrigger
+							className="h-auto min-h-11 whitespace-normal"
+							value="mappings"
+						>
+							Mappings
+						</TabsTrigger>
+						<TabsTrigger
+							className="h-auto min-h-11 whitespace-normal"
+							value="config-overrides"
+						>
+							Config Overrides
+						</TabsTrigger>
+					</TabsList>
+
+					<TabsContent
+						value="mappings"
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						<div className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+							{mappingSaveError && (
+								<div
+									role="alert"
+									className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center rounded-[var(--bf-radius-control)] border border-destructive/20 bg-destructive/10 p-4 text-sm"
+								>
+									<p className="min-w-0 flex-1">
+										{mappingSaveError}
+									</p>
+									{failedMappingBatch && (
+										<Button
+											type="button"
+											variant="outline"
+											className="min-h-11"
+											disabled={batchMutation.isPending}
+											onClick={() => {
+												void saveMappings(
+													failedMappingBatch,
+												);
+											}}
+										>
+											Retry mapping save
+										</Button>
+									)}
+								</div>
+							)}
+							<fieldset
+								disabled={batchMutation.isPending}
+								className="min-w-0 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+							>
+								{batchMutation.isPending && (
+									<p
+										role="status"
+										className="mb-3 text-sm text-muted-foreground"
+									>
+										Saving mappings…
+									</p>
+								)}
+								<IntegrationMappingsTab
+									orgsWithMappings={orgsWithMappings}
+									entities={entities}
+									isLoadingEntities={isLoadingEntities}
+									isEntitiesError={isEntitiesError}
+									isFetchingEntities={isFetchingEntities}
+									onRetryEntities={() => {
+										void refetchEntities();
+									}}
+									hasDataProvider={
+										!!integration.list_entities_data_provider_id
+									}
+									hasOAuth={!!integration.has_oauth_config}
+									configSchema={
+										integration?.config_schema || []
+									}
+									configDefaults={
+										integration?.config_defaults
+									}
+									autoMatchSuggestions={autoMatchSuggestions}
+									matchStats={matchStats}
+									isMatching={isMatching}
+									isDeletePending={deleteMutation.isPending}
+									onRunAutoMatch={runAutoMatch}
+									onAcceptAllSuggestions={
+										handleAcceptAllSuggestions
+									}
+									onClearSuggestions={clearSuggestions}
+									onAcceptSuggestion={handleAcceptSuggestion}
+									onRejectSuggestion={rejectSuggestion}
+									onUpdateOrgMapping={handleEntitySelect}
+									onOpenConfigDialog={handleOpenConfigDialog}
+									onDeleteMapping={handleDeleteMappingClick}
+									onConnectMapping={handleConnectMapping}
+									onDisconnectMapping={
+										handleDisconnectMapping
+									}
+									onRefreshMapping={handleRefreshMapping}
+									pendingMappingAction={pendingMappingAction}
+								/>
+							</fieldset>
+						</div>
+					</TabsContent>
+
+					<TabsContent
+						value="config-overrides"
+						className="flex min-h-0 flex-1 flex-col"
+					>
+						<Card>
+							<CardHeader>
+								<CardTitle>Configuration Overrides</CardTitle>
+								<CardDescription>
+									Manage organization-specific configuration
+									overrides
+								</CardDescription>
+							</CardHeader>
+							<CardContent>
+								<ConfigOverridesTab
+									orgsWithMappings={orgsWithMappings}
+									configSchema={
+										integration?.config_schema || []
+									}
+									integrationId={integrationId || ""}
+								/>
+							</CardContent>
+						</Card>
+					</TabsContent>
+				</Tabs>
+			</PageScrollArea>
 
 			{/* OAuth Configuration Dialog (Create) */}
 			{integrationId && (
@@ -885,87 +1003,38 @@ export function IntegrationDetail() {
 
 			{/* Configuration Defaults Dialog */}
 			<IntegrationDefaultsDialog
+				error={defaultsError}
 				open={defaultsDialogOpen}
 				onOpenChange={setDefaultsDialogOpen}
 				configSchema={integration?.config_schema || []}
 				formValues={defaultsFormValues}
 				onFormValuesChange={setDefaultsFormValues}
 				onSave={handleSaveDefaults}
-				isSaving={updateIntegrationMutation.isPending}
+				isSaving={updateConfigMutation.isPending}
 			/>
 
-			{/* Delete Mapping Confirmation Dialog */}
-			<AlertDialog
+			<IntegrationDeleteDialog
 				open={deleteMappingConfirm !== null}
-				onOpenChange={(open) => !open && setDeleteMappingConfirm(null)}
+				onOpenChange={(open) => {
+					if (!open) setDeleteMappingConfirm(null);
+				}}
+				title="Delete Mapping"
+				onConfirm={handleDeleteMappingConfirm}
 			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Mapping</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to delete the mapping for{" "}
-							<span className="font-semibold">
-								{deleteMappingConfirm?.name}
-							</span>
-							? This will remove the organization's integration
-							configuration and cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDeleteMappingConfirm}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Delete
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-
-			{/* Delete OAuth Configuration Confirmation Dialog */}
-			<AlertDialog
+				Delete the mapping for{" "}
+				<strong>{deleteMappingConfirm?.name}</strong>? This removes the
+				organization's integration configuration and cannot be undone.
+			</IntegrationDeleteDialog>
+			<IntegrationDeleteDialog
 				open={deleteOAuthDialogOpen}
 				onOpenChange={setDeleteOAuthDialogOpen}
+				title="Delete OAuth Configuration"
+				onConfirm={handleDeleteOAuthConfig}
 			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>
-							Delete OAuth Configuration
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to delete the OAuth
-							configuration for{" "}
-							<span className="font-semibold">
-								{integration?.name}
-							</span>
-							? This will remove the OAuth connection and any
-							stored tokens. This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel
-							disabled={deleteOAuthMutation.isPending}
-						>
-							Cancel
-						</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleDeleteOAuthConfig}
-							disabled={deleteOAuthMutation.isPending}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							{deleteOAuthMutation.isPending ? (
-								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-									Deleting...
-								</>
-							) : (
-								"Delete"
-							)}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+				Delete the OAuth configuration for{" "}
+				<strong>{integration?.name}</strong>? This removes the OAuth
+				connection and stored tokens and cannot be undone.
+			</IntegrationDeleteDialog>
 
 			{/* Generate SDK Dialog */}
 			{integrationId && (
@@ -991,6 +1060,6 @@ export function IntegrationDetail() {
 				onTest={handleTestConnection}
 				isTestPending={testMutation.isPending}
 			/>
-		</div>
+		</PageWorkspace>
 	);
 }

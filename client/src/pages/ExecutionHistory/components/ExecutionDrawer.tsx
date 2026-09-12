@@ -1,13 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-	Sheet,
-	SheetContent,
-	SheetHeader,
-	SheetTitle,
+	Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Copy } from "lucide-react";
-import { toast } from "sonner";
+import { ExternalLink, Copy, X } from "lucide-react";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ExecutionDetails } from "@/pages/ExecutionDetails";
 
 interface ExecutionDrawerProps {
@@ -17,78 +14,41 @@ interface ExecutionDrawerProps {
 	onExecutionChange?: (newExecutionId: string) => void;
 }
 
-export function ExecutionDrawer({
-	executionId,
-	open,
-	onOpenChange,
-	onExecutionChange,
-}: ExecutionDrawerProps) {
-	const [actionsContainer, setActionsContainer] =
-		useState<HTMLDivElement | null>(null);
+export function ExecutionDrawer({ executionId, open, onOpenChange, onExecutionChange }: ExecutionDrawerProps) {
+	const [actionsContainer, setActionsContainer] = useState<HTMLDivElement | null>(null);
+	const [copyState, setCopyState] = useState<"idle" | "pending" | "success" | "error">("idle");
+	const copyBusy = useRef(false);
+	const [previousId, setPreviousId] = useState(executionId);
+	if (previousId !== executionId) {
+		setPreviousId(executionId);
+		setCopyState("idle");
+	}
 
-	const handleOpenInNewTab = () => {
-		if (executionId) {
-			window.open(`/history/${executionId}`, "_blank");
-		}
-	};
+	async function handleCopy() {
+		if (!executionId || copyBusy.current) return;
+		copyBusy.current = true;
+		setCopyState("pending");
+		const copied = await copyToClipboard(executionId);
+		setCopyState(copied ? "success" : "error");
+		copyBusy.current = false;
+	}
 
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
-			<SheetContent
-				side="right"
-				className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto p-0"
-			>
-				{/* Chrome band: base `background` step (near-black in dark), matching
-				    DataTable header/footer. px-4 lines up with the p-4 content below —
-				    SheetHeader's default p-6 is stripped so nothing double-indents. */}
-				<div className="sticky top-0 bg-background z-10 px-4 py-2 border-b border-border/50">
-					<SheetHeader className="p-0">
-						<div className="flex items-center justify-between">
-							<SheetTitle className="text-sm font-medium text-muted-foreground">
-								Execution Details
-							</SheetTitle>
-							<div className="flex items-center gap-1">
-								<div
-									ref={setActionsContainer}
-									className="flex items-center gap-1"
-								/>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-7 w-7"
-									onClick={() => {
-										if (executionId) {
-											navigator.clipboard.writeText(executionId);
-											toast.success("Execution ID copied");
-										}
-									}}
-									disabled={!executionId}
-									title="Copy execution ID"
-								>
-									<Copy className="h-3.5 w-3.5" />
-								</Button>
-								<Button
-									variant="ghost"
-									size="icon"
-									className="h-7 w-7"
-									onClick={handleOpenInNewTab}
-									disabled={!executionId}
-								>
-									<ExternalLink className="h-3.5 w-3.5" />
-								</Button>
-							</div>
-						</div>
+			<SheetContent side="right" showCloseButton={false} className="w-full overflow-y-auto p-0 sm:max-w-xl md:max-w-2xl">
+				<div className="sticky top-0 z-10 space-y-3 border-b border-border bg-background px-4 py-3">
+					<SheetHeader className="flex-row items-center justify-between gap-2 p-0">
+						<SheetTitle className="text-sm font-medium">Execution details</SheetTitle>
+						<SheetClose asChild><Button variant="ghost" size="icon-lg" aria-label="Close execution details"><X className="h-4 w-4" /></Button></SheetClose>
 					</SheetHeader>
+					<div role="group" aria-label="Execution actions" className="flex min-h-11 flex-wrap items-center justify-end gap-2">
+						<div ref={setActionsContainer} className="flex min-h-11 flex-1 flex-wrap items-center justify-end gap-2 empty:hidden" />
+						<Button variant="ghost" size="icon-lg" onClick={() => void handleCopy()} disabled={!executionId || copyState === "pending"} aria-label="Copy execution ID" title="Copy execution ID"><Copy className="h-4 w-4" /></Button>
+						{executionId && <Button variant="ghost" size="icon-lg" asChild><a href={`/history/${executionId}`} target="_blank" rel="noopener noreferrer" aria-label="Open execution in new tab" title="Open execution in new tab"><ExternalLink className="h-4 w-4" /></a></Button>}
+					</div>
+					{copyState !== "idle" && <p role="status" className="text-xs text-muted-foreground">{copyState === "pending" ? "Copying execution ID…" : copyState === "success" ? "Execution ID copied" : "Couldn't copy the execution ID. Try again."}</p>}
 				</div>
-
-				{executionId && (
-					<ExecutionDetails
-						executionId={executionId}
-						embedded
-						actionsContainer={actionsContainer}
-						onExecutionChange={onExecutionChange}
-					/>
-				)}
+				{executionId && <ExecutionDetails executionId={executionId} embedded actionsContainer={actionsContainer} onExecutionChange={onExecutionChange} />}
 			</SheetContent>
 		</Sheet>
 	);

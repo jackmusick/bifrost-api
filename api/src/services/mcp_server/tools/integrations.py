@@ -157,6 +157,7 @@ async def get_integration(context: Any, integration_ref: str) -> ToolResult:
 async def create_integration(
     context: Any,
     name: str,
+    description: str | None = None,
     config_schema: list[dict[str, Any]] | None = None,
     entity_id: str | None = None,
     entity_id_name: str | None = None,
@@ -172,6 +173,7 @@ async def create_integration(
 
     fields: dict[str, Any] = {
         "name": name,
+        "description": description,
         "config_schema": config_schema,
         "entity_id": entity_id,
         "entity_id_name": entity_id_name,
@@ -201,6 +203,7 @@ async def update_integration(
     context: Any,
     integration_ref: str,
     name: str | None = None,
+    description: str | None = None,
     list_entities_data_provider: str | None = None,
     config_schema: list[dict[str, Any]] | None = None,
     entity_id: str | None = None,
@@ -231,6 +234,7 @@ async def update_integration(
 
     fields: dict[str, Any] = {
         "name": name,
+        "description": description,
         "list_entities_data_provider_id": list_entities_data_provider,
         "config_schema": config_schema,
         "entity_id": entity_id,

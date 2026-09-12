@@ -449,7 +449,7 @@ describe("ChatWindow — messages render & send", () => {
 			"test-id",
 		);
 		expect(storeSelectors.setActiveAgent).toHaveBeenCalledWith(null);
-		expect(mockNavigate).toHaveBeenCalledWith("/chat/test-id");
+		expect(mockNavigate).toHaveBeenCalledWith("/chat/test-id", { state: { preserveChatDraft: true } });
 		expect(streamRef.sendMessage).toHaveBeenCalledWith(
 			"hello from draft",
 			"test-id",
@@ -499,6 +499,6 @@ describe("ChatWindow — messages render & send", () => {
 		expect(streamRef.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(
 			storeSelectors.setActiveConversation.mock.invocationCallOrder[0],
 		);
-		expect(mockNavigate).toHaveBeenCalledWith("/chat/new-conversation");
+		expect(mockNavigate).toHaveBeenCalledWith("/chat/new-conversation", { state: { preserveChatDraft: true } });
 	});
 });

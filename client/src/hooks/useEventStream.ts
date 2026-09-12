@@ -25,6 +25,20 @@ export function useEventStream(
 		(update: EventSourceUpdate) => {
 			if (!sourceId) return;
 
+			if (update.type === "event_created") {
+				// Refresh counts alongside the newly received event.
+				void queryClient.invalidateQueries({
+					queryKey: [
+						"get",
+						"/api/events/sources/{source_id}",
+						{ params: { path: { source_id: sourceId } } },
+					],
+				});
+				void queryClient.invalidateQueries({
+					queryKey: ["get", "/api/events/sources"],
+				});
+			}
+
 			// Invalidate events queries to trigger refetch
 			// Using partial key match so it works regardless of filter params
 			if (
@@ -63,11 +77,22 @@ export function useEventStream(
 		}
 
 		const channel = `event-source:${sourceId}`;
+		let active = true;
+		const unsubscribeStatus = webSocketService.onConnectionStatusChange(
+			(connected) => {
+				if (active) setIsConnected(connected);
+			},
+		);
 
 		// Connect to WebSocket with the event source channel
-		webSocketService.connect([channel]).then(() => {
-			setIsConnected(true);
-		});
+		void webSocketService
+			.connect([channel])
+			.then(() => {
+				if (active) setIsConnected(webSocketService.isConnected());
+			})
+			.catch(() => {
+				if (active) setIsConnected(false);
+			});
 
 		// Subscribe to updates
 		const unsubscribe = webSocketService.onEventSourceUpdate(
@@ -76,9 +101,11 @@ export function useEventStream(
 		);
 
 		return () => {
+			active = false;
+			unsubscribeStatus();
 			unsubscribe();
 			// Unsubscribe from channel
-			webSocketService.unsubscribe(channel);
+			void webSocketService.unsubscribe(channel).catch(() => {});
 			setIsConnected(false);
 		};
 	}, [sourceId, enabled, handleUpdate]);

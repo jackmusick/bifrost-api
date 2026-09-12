@@ -27,6 +27,7 @@ export function FormPreview({
 			case "textarea":
 				return (
 					<Textarea
+						id={`preview-${field.name}`}
 						placeholder={field.placeholder ?? undefined}
 						defaultValue={field.default_value as string}
 						disabled
@@ -34,20 +35,34 @@ export function FormPreview({
 				);
 			case "checkbox":
 				return (
-					<div className="flex items-center space-x-2">
+					<div className="flex items-start gap-2">
 						<input
 							type="checkbox"
-							id={field.name}
+							id={`preview-${field.name}`}
 							defaultChecked={field.default_value as boolean}
 							disabled
-							className="h-4 w-4"
+							className="mt-0.5 h-4 w-4 shrink-0"
 						/>
-						<Label htmlFor={field.name}>{field.label}</Label>
+						<Label
+							htmlFor={`preview-${field.name}`}
+							className="cursor-pointer leading-5"
+						>
+							<span>{field.label}</span>
+							{field.required && (
+								<span
+									aria-hidden="true"
+									className="text-destructive ml-1"
+								>
+									*
+								</span>
+							)}
+						</Label>
 					</div>
 				);
 			case "select":
 				return (
 					<select
+						id={`preview-${field.name}`}
 						className="flex h-8 w-full rounded-2xl border border-transparent bg-input/50 px-2.5 text-sm transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
 						disabled
 					>
@@ -59,6 +74,7 @@ export function FormPreview({
 			default:
 				return (
 					<Input
+						id={`preview-${field.name}`}
 						type={
 							field.type === "email"
 								? "email"
@@ -89,7 +105,9 @@ export function FormPreview({
 							{fields.map((field, index) => (
 								<div key={index} className="space-y-2">
 									{field.type !== "checkbox" && (
-										<Label>
+										<Label
+											htmlFor={`preview-${field.name}`}
+										>
 											{field.label}
 											{field.required && (
 												<span className="text-destructive ml-1">

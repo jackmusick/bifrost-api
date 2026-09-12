@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface Props {
+	busy?: boolean;
 	exporting: boolean;
 	/** Whether this install is currently inactive (status === "inactive"). */
 	isInactive: boolean;
@@ -38,6 +39,7 @@ interface Props {
  */
 export function SolutionActionsMenu({
 	exporting,
+	busy = false,
 	isInactive,
 	onCapture,
 	onExport,
@@ -50,7 +52,7 @@ export function SolutionActionsMenu({
 			<DropdownMenuTrigger asChild>
 				<Button
 					variant="outline"
-					size="icon"
+					size="icon-lg"
 					aria-label="More solution actions"
 					data-testid="solution-actions"
 				>
@@ -59,8 +61,9 @@ export function SolutionActionsMenu({
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto">
 				<DropdownMenuItem
+					disabled={busy}
 					onClick={onCapture}
-					className="whitespace-nowrap"
+					className="min-h-11 whitespace-normal"
 					data-testid="capture-solution"
 				>
 					<HardDriveUpload className="mr-2 h-4 w-4" />
@@ -68,20 +71,24 @@ export function SolutionActionsMenu({
 				</DropdownMenuItem>
 				<DropdownMenuItem
 					onClick={onExport}
-					disabled={exporting}
-					className="whitespace-nowrap"
+					disabled={exporting || busy}
+					className="min-h-11 whitespace-normal"
 					data-testid="export-solution"
 				>
 					{exporting ? (
-						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+						<Loader2
+							aria-hidden="true"
+							className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
+						/>
 					) : (
 						<Download className="mr-2 h-4 w-4" />
 					)}
 					Export Solution
 				</DropdownMenuItem>
 				<DropdownMenuItem
+					disabled={busy}
 					onClick={onEdit}
-					className="whitespace-nowrap"
+					className="min-h-11 whitespace-normal"
 					data-testid="edit-solution"
 				>
 					<Pencil className="mr-2 h-4 w-4" />
@@ -90,8 +97,9 @@ export function SolutionActionsMenu({
 				<DropdownMenuSeparator />
 				{!isInactive && (
 					<DropdownMenuItem
+						disabled={busy}
 						onClick={onUninstall}
-						className="whitespace-nowrap"
+						className="min-h-11 whitespace-normal"
 						data-testid="uninstall-solution"
 					>
 						<PowerOff className="mr-2 h-4 w-4" />
@@ -99,8 +107,10 @@ export function SolutionActionsMenu({
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem
+					disabled={busy}
 					onClick={onHardDelete}
-					className="whitespace-nowrap text-destructive focus:text-destructive"
+					variant="destructive"
+					className="min-h-11 whitespace-normal"
 					data-testid="hard-delete-solution"
 				>
 					<Trash2 className="mr-2 h-4 w-4" />

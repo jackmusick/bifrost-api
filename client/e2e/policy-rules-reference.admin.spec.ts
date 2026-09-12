@@ -24,14 +24,56 @@
  */
 
 import { test, expect } from "./fixtures/api-fixture";
+import type { Page } from "@playwright/test";
+import type { AuthedApi } from "./fixtures/api-fixture";
+import { routeMonacoAssets } from "./fixtures/monaco-assets";
 
 const UNIQUE = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 const FILE_RULE_NAME = `e2e-file-ref-rule-${UNIQUE}`;
 const TABLE_RULE_NAME = `e2e-table-ref-rule-${UNIQUE}`;
 const SHARE_NAME = `e2e-ref-share-${UNIQUE}`.replace(/[^a-z0-9-]/g, "-");
 const TABLE_NAME = `e2e_ref_table_${UNIQUE}`.replace(/[^a-z0-9_]/g, "_");
+let tableId: string | undefined;
+
+async function expectCleanupStatus(
+	api: AuthedApi,
+	label: string,
+	cleanup: () => Promise<Awaited<ReturnType<AuthedApi["delete"]>>>,
+) {
+	const response = await cleanup();
+	expect(
+		[200, 204, 404],
+		`${label}: ${response.status()} ${await response.text()}`,
+	).toContain(response.status());
+}
+
+async function policyEditorText(page: Page, modelPath: string) {
+	return page.evaluate((targetPath) => {
+		const monaco = (
+			window as typeof window & {
+				monaco?: {
+					editor?: {
+						getModels?: () => Array<{
+							uri: { path: string };
+							getValue: () => string;
+						}>;
+					};
+				};
+			}
+		).monaco;
+		const model = monaco?.editor
+			?.getModels?.()
+			.find((item) => item.uri.path.endsWith(targetPath));
+		if (!model) throw new Error(`${targetPath} Monaco model not found`);
+		return model.getValue();
+	}, modelPath);
+}
 
 test.describe("Policy rule reference mode", () => {
+	test.beforeEach(async ({ page }) => {
+		await routeMonacoAssets(page.context());
+	});
+
 	test.beforeAll(async ({ api }) => {
 		// Create a named file policy rule.
 		const fileRuleRes = await api.post("/api/policy-rules", {
@@ -63,28 +105,36 @@ test.describe("Policy rule reference mode", () => {
 	});
 
 	test.afterAll(async ({ api }) => {
-		// Best-effort cleanup — failures don't fail the suite.
-		await api.delete(`/api/policy-rules/file/${FILE_RULE_NAME}`).catch(() => {});
-		await api.delete(`/api/policy-rules/table/${TABLE_RULE_NAME}`).catch(() => {});
+		await expectCleanupStatus(
+			api,
+			`delete share policy ${SHARE_NAME}`,
+			() =>
+				api.delete("/api/files/policies/", {
+					params: { location: SHARE_NAME },
+				}),
+		);
+		if (tableId) {
+			await expectCleanupStatus(
+				api,
+				`delete table fixture ${tableId}`,
+				() => api.delete(`/api/tables/${tableId}`),
+			);
+		}
+		await expectCleanupStatus(
+			api,
+			`delete file rule ${FILE_RULE_NAME}`,
+			() => api.delete(`/api/policy-rules/file/${FILE_RULE_NAME}`),
+		);
+		await expectCleanupStatus(
+			api,
+			`delete table rule ${TABLE_RULE_NAME}`,
+			() => api.delete(`/api/policy-rules/table/${TABLE_RULE_NAME}`),
+		);
 	});
 
 	test("Files policy editor shows the rule in Insert reference dropdown", async ({
 		page,
-		api,
 	}) => {
-		// Create a share so we have something to edit.
-		const shareRes = await api.post("/api/files/policies/", {
-			params: { location: "workspace", scope: "global" },
-			data: {
-				policies: {
-					policies: [],
-				},
-			},
-		});
-		// The share creation may 404 if the path endpoint differs — fall back
-		// to driving via the UI.
-		void shareRes;
-
 		// Navigate to the Files explorer.
 		await page.goto("/files");
 		await expect(
@@ -96,16 +146,13 @@ test.describe("Policy rule reference mode", () => {
 		await page.getByLabel(/share name/i).fill(SHARE_NAME);
 		await page.getByRole("button", { name: /create share/i }).click();
 
-		// Select the share and open the policy editor.
+		// Select the share and open the root policy editor.
 		await expect(
 			page.getByText(SHARE_NAME, { exact: false }).first(),
 		).toBeVisible({ timeout: 10000 });
-		await page.getByText(SHARE_NAME, { exact: false }).first().click();
-
-		// Open the policy editor from the detail pane.
+		await page.getByRole("tab", { name: "Policies" }).click();
 		await page
-			.getByRole("button", { name: /manage policy|edit policy|policy/i })
-			.first()
+			.getByRole("button", { name: `Edit policy for ${SHARE_NAME}/` })
 			.click();
 
 		// Wait for the editor dialog.
@@ -122,6 +169,10 @@ test.describe("Policy rule reference mode", () => {
 		await expect(
 			page.getByRole("option", { name: FILE_RULE_NAME }),
 		).toBeVisible({ timeout: 5000 });
+		await page.getByRole("option", { name: FILE_RULE_NAME }).click();
+		await expect
+			.poll(() => policyEditorText(page, "file-policies.yaml"))
+			.toContain(FILE_RULE_NAME);
 	});
 
 	test("Tables policy editor shows the rule in Insert reference dropdown", async ({
@@ -135,8 +186,11 @@ test.describe("Policy rule reference mode", () => {
 				schema: { properties: {}, additionalProperties: true },
 			},
 		});
-		expect(tableRes.ok(), `create table: ${await tableRes.text()}`).toBe(true);
+		expect(tableRes.ok(), `create table: ${await tableRes.text()}`).toBe(
+			true,
+		);
 		const tableData = (await tableRes.json()) as { id: string };
+		tableId = tableData.id;
 
 		// Navigate to Tables and open the table edit dialog.
 		await page.goto("/tables");
@@ -144,9 +198,13 @@ test.describe("Policy rule reference mode", () => {
 			page.getByRole("heading", { name: /tables/i }).first(),
 		).toBeVisible({ timeout: 15000 });
 
-		const tableRow = page.getByRole("row").filter({ hasText: TABLE_NAME });
-		await expect(tableRow).toBeVisible({ timeout: 10000 });
-		await tableRow.getByRole("button", { name: /edit table/i }).click();
+		await expect(page.getByText(TABLE_NAME)).toBeVisible({
+			timeout: 10000,
+		});
+		await page
+			.getByRole("button", { name: `${TABLE_NAME} actions` })
+			.click();
+		await page.getByRole("menuitem", { name: "Edit" }).click();
 		const tableDialog = page.getByRole("dialog", { name: /edit table/i });
 		await expect(tableDialog).toBeVisible({ timeout: 10000 });
 
@@ -157,10 +215,17 @@ test.describe("Policy rule reference mode", () => {
 		await expect(
 			page.getByRole("option", { name: TABLE_RULE_NAME }),
 		).toBeVisible({ timeout: 5000 });
+		await page.getByRole("option", { name: TABLE_RULE_NAME }).click();
+		await expect
+			.poll(() => policyEditorText(page, "policies.json"))
+			.toContain(TABLE_RULE_NAME);
 
 		// Cleanup.
-		await api
-			.delete(`/api/tables/${tableData.id}`)
-			.catch(() => {});
+		const tableCleanup = await api.delete(`/api/tables/${tableData.id}`);
+		expect(
+			[200, 204, 404],
+			`delete table fixture ${tableData.id}: ${tableCleanup.status()} ${await tableCleanup.text()}`,
+		).toContain(tableCleanup.status());
+		tableId = undefined;
 	});
 });

@@ -56,22 +56,18 @@ const DataTable = React.forwardRef<
 		<div
 			ref={ref}
 			className={cn(
-				"overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 dark:ring-foreground/10",
-				"flex flex-col min-h-0 max-h-full",
+				"overflow-hidden rounded-[var(--bf-radius-surface)] border border-border bg-card",
+				"flex flex-col min-w-0 min-h-0 max-h-full",
 				className,
 			)}
 			{...props}
 		>
 			<div className="overflow-auto flex-1 min-h-0">
-				<table className="w-full text-sm">
-					{rest}
-				</table>
+				<table className="w-full text-sm">{rest}</table>
 			</div>
 			{footer.length > 0 && (
 				<div className="flex-shrink-0 border-t">
-					<table className="w-full text-sm">
-						{footer}
-					</table>
+					<table className="w-full text-sm">{footer}</table>
 				</div>
 			)}
 		</div>
@@ -86,10 +82,8 @@ const DataTableHeader = React.forwardRef<
 	<thead
 		ref={ref}
 		className={cn(
-			// Chrome band: base `background` (near-black in dark, white in light)
-			// against the lighter `card` body — see "the elevation ladder" in
-			// docs/research/ui-history-diagnosis.md.
-			"sticky top-0 z-10 bg-background [&_tr]:border-b",
+			// Keep the sticky header on an opaque, subdued surface.
+			"sticky top-0 z-10 bg-muted [&_tr]:border-b",
 			className,
 		)}
 		{...props}
@@ -116,8 +110,8 @@ const DataTableFooter = React.forwardRef<
 	<tfoot
 		ref={ref}
 		className={cn(
-			// Chrome band — same `background` step as DataTableHeader.
-			"bg-background font-medium [&>tr]:last:border-b-0",
+			// Same subdued surface as DataTableHeader.
+			"bg-muted font-medium [&>tr]:last:border-b-0",
 			className,
 		)}
 		{...props}
@@ -132,10 +126,30 @@ interface DataTableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 	href?: string;
 }
 
+// A row supplements its native controls; it must not intercept their actions.
+function isRowAction(event: React.MouseEvent<HTMLTableRowElement>) {
+	if (event.defaultPrevented) return false;
+	const target = event.target;
+	if (
+		target instanceof Element &&
+		target.closest(
+			'a, button, input, select, textarea, label, [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="combobox"], [contenteditable="true"]',
+		)
+	)
+		return false;
+	const selection = window.getSelection();
+	return !(
+		selection &&
+		!selection.isCollapsed &&
+		selection.anchorNode &&
+		event.currentTarget.contains(selection.anchorNode)
+	);
+}
+
 const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 	({ className, clickable, href, onClick, ...props }, ref) => {
 		const handleClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
-			if (e.button === 1) return;
+			if (e.button === 1 || !isRowAction(e)) return;
 			if (href && (e.metaKey || e.ctrlKey)) {
 				e.preventDefault();
 				window.open(href, "_blank");
@@ -145,7 +159,7 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 		};
 
 		const handleMouseUp = (e: React.MouseEvent<HTMLTableRowElement>) => {
-			if (href && e.button === 1) {
+			if (href && e.button === 1 && isRowAction(e)) {
 				e.preventDefault();
 				window.open(href, "_blank");
 				return;
@@ -157,13 +171,13 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 			<tr
 				ref={ref}
 				className={cn(
-					"border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+					"border-b border-border/60 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
 					(clickable || href) && "cursor-pointer",
 					className,
 				)}
+				{...props}
 				onClick={handleClick}
 				onMouseUp={handleMouseUp}
-				{...props}
 			/>
 		);
 	},

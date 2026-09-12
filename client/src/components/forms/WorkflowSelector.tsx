@@ -8,13 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import {
-	AlertTriangle,
-	ChevronsUpDown,
-	Globe,
-	Loader2,
-	X,
-} from "lucide-react";
+import { AlertTriangle, ChevronsUpDown, Globe, Loader2 } from "lucide-react";
 import {
 	Select,
 	SelectContent,
@@ -157,6 +151,8 @@ export function WorkflowSelector({
 		data: workflows,
 		isLoading,
 		error,
+		refetch,
+		isFetching,
 	} = $api.useQuery("get", "/api/workflows", {
 		params: {
 			query: {
@@ -197,7 +193,9 @@ export function WorkflowSelector({
 			const roleIdSet = new Set(roleIds);
 
 			// Find entity roles that are NOT in the workflow's roles
-			const missingRoleIds = entityRoleIds.filter((id) => !roleIdSet.has(id));
+			const missingRoleIds = entityRoleIds.filter(
+				(id) => !roleIdSet.has(id),
+			);
 			const missingRoleNames = missingRoleIds.map(
 				(id) => entityRoleNames[id] || id.slice(0, 8),
 			);
@@ -237,7 +235,8 @@ export function WorkflowSelector({
 	const selectedWorkflow = useMemo(() => {
 		if (!value || !sortedWorkflows) return null;
 		return (
-			sortedWorkflows.find((w) => w.id === value || w.name === value) ?? null
+			sortedWorkflows.find((w) => w.id === value || w.name === value) ??
+			null
 		);
 	}, [value, sortedWorkflows]);
 
@@ -245,37 +244,48 @@ export function WorkflowSelector({
 		return (
 			<div
 				className={cn(
-					"flex items-center gap-2 h-10 px-3 rounded-md bg-muted/50 ring-1 ring-foreground/5",
+					"flex min-h-11 min-w-0 items-center gap-2 px-3 py-2 rounded-[var(--bf-radius-control)] border bg-muted/30",
 					className,
 				)}
 			>
-				<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+				<Loader2 className="h-4 w-4 motion-safe:animate-spin text-muted-foreground" />
 				<span className="text-sm text-muted-foreground">
-					{isLoading ? "Loading workflows..." : "Loading role info..."}
+					{isLoading
+						? "Loading workflows..."
+						: "Loading role info..."}
 				</span>
 			</div>
 		);
 	}
 
-	if (error) {
+	if (error && !workflows) {
 		return (
 			<div
 				className={cn(
-					"flex items-center h-10 px-3 rounded-md bg-destructive/10 ring-1 ring-destructive/50",
+					"min-w-0 space-y-3 rounded-[var(--bf-radius-control)] border p-3",
 					className,
 				)}
 			>
-				<span className="text-sm text-destructive">
+				<span role="alert" className="block text-sm text-destructive">
 					Failed to load workflows
 				</span>
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11"
+					disabled={isFetching || disabled}
+					onClick={() => void refetch()}
+				>
+					Retry workflows
+				</Button>
 			</div>
 		);
 	}
 
 	// Render workflow item content (shared between Select and Combobox)
 	const renderWorkflowItem = (workflow: WorkflowWithRoleStatus) => (
-		<div className="flex flex-col gap-0.5">
-			<div className="flex items-center gap-2">
+		<div className="min-w-0 flex flex-1 flex-col gap-1 [overflow-wrap:anywhere]">
+			<div className="flex min-w-0 flex-wrap items-center gap-2">
 				<span>{workflow.name}</span>
 				{showOrgBadge && !workflow.organization_id && (
 					<Badge
@@ -290,7 +300,7 @@ export function WorkflowSelector({
 				{showRoleBadges && workflow.hasMismatch && (
 					<Badge
 						variant="outline"
-						className="text-xs px-1.5 py-0 h-5 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700"
+						className="text-xs px-1.5 py-0 h-5 text-[var(--bf-warning)] border-transparent bg-[var(--bf-warning-soft)]"
 					>
 						<AlertTriangle className="h-3 w-3 mr-1" />
 						Missing roles
@@ -298,7 +308,7 @@ export function WorkflowSelector({
 				)}
 			</div>
 			{workflow.description && (
-				<span className="text-xs text-muted-foreground truncate max-w-[250px]">
+				<span className="text-sm leading-6 text-muted-foreground">
 					{workflow.description}
 				</span>
 			)}
@@ -307,84 +317,117 @@ export function WorkflowSelector({
 				workflow.hasMismatch &&
 				workflow.missingRoleNames &&
 				workflow.missingRoleNames.length > 0 && (
-					<span className="text-xs text-amber-600 dark:text-amber-400">
+					<span className="text-xs text-[var(--bf-warning)]">
 						Missing: {workflow.missingRoleNames.join(", ")}
 					</span>
 				)}
 		</div>
 	);
 
+	const readWarning = error ? (
+		<div
+			role="alert"
+			className="mb-2 min-w-0 space-y-2 text-sm text-destructive"
+		>
+			Could not refresh workflows. Showing the last loaded list.
+			<Button
+				type="button"
+				variant="outline"
+				className="min-h-11"
+				disabled={isFetching || disabled}
+				onClick={() => void refetch()}
+			>
+				Retry workflows
+			</Button>
+		</div>
+	) : null;
 	// Combobox variant with search
 	if (variant === "combobox") {
 		return (
-			<ComboboxWorkflowSelector
-				value={value}
-				onChange={onChange}
-				placeholder={placeholder}
-				allowClear={allowClear}
-				className={className}
-				disabled={disabled}
-				workflows={sortedWorkflows}
-				selectedWorkflow={selectedWorkflow}
-				renderItem={renderWorkflowItem}
-				showOrgBadge={showOrgBadge}
-			/>
+			<>
+				{readWarning}
+				<ComboboxWorkflowSelector
+					value={value}
+					onChange={onChange}
+					placeholder={placeholder}
+					allowClear={allowClear}
+					className={className}
+					disabled={disabled}
+					workflows={sortedWorkflows}
+					selectedWorkflow={selectedWorkflow}
+					renderItem={renderWorkflowItem}
+					showOrgBadge={showOrgBadge}
+				/>
+			</>
 		);
 	}
 
 	// Select variant (default)
 	return (
-		<Select
-			value={value ?? ""}
-			onValueChange={(val) =>
-				onChange(val === "__clear__" ? undefined : val)
-			}
-			disabled={disabled}
-		>
-			<SelectTrigger className={className}>
-				<SelectValue placeholder={placeholder}>
-					{selectedWorkflow ? (
-						<div className="flex items-center gap-2">
-							<span>{selectedWorkflow.name}</span>
-							{showOrgBadge && !selectedWorkflow.organization_id && (
-								<Badge
-									variant="outline"
-									className="text-xs px-1 py-0 h-4"
-								>
-									<Globe className="h-3 w-3" />
-								</Badge>
-							)}
-							{selectedWorkflow.hasMismatch && (
-								<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-							)}
+		<>
+			{readWarning}
+			<Select
+				value={value ?? ""}
+				onValueChange={(val) =>
+					onChange(val === "__clear__" ? undefined : val)
+				}
+				disabled={disabled}
+			>
+				<SelectTrigger
+					className={cn(
+						"min-h-11 data-[size=default]:h-auto [&_[data-slot=select-value]]:line-clamp-none [&_[data-slot=select-value]]:whitespace-normal [&_[data-slot=select-value]]:[overflow-wrap:anywhere]",
+						className,
+					)}
+				>
+					<SelectValue placeholder={placeholder}>
+						{selectedWorkflow ? (
+							<div className="flex min-w-0 flex-wrap items-center gap-2">
+								<span>{selectedWorkflow.name}</span>
+								{showOrgBadge &&
+									!selectedWorkflow.organization_id && (
+										<Badge
+											variant="outline"
+											className="text-xs px-1 py-0 h-4"
+										>
+											<Globe className="h-3 w-3" />
+										</Badge>
+									)}
+								{selectedWorkflow.hasMismatch && (
+									<AlertTriangle className="h-3.5 w-3.5 text-[var(--bf-warning)]" />
+								)}
+							</div>
+						) : (
+							value || placeholder
+						)}
+					</SelectValue>
+				</SelectTrigger>
+				<SelectContent>
+					{allowClear && value && (
+						<SelectItem
+							value="__clear__"
+							className="min-h-11 text-muted-foreground italic"
+						>
+							Clear selection
+						</SelectItem>
+					)}
+					{sortedWorkflows.length === 0 ? (
+						<div className="px-2 py-4 text-center text-sm text-muted-foreground">
+							No workflows available
 						</div>
 					) : (
-						placeholder
+						sortedWorkflows.map((workflow) => (
+							<SelectItem
+								className="min-h-11"
+								key={workflow.id}
+								value={workflow.id}
+							>
+								{renderWorkflowItem(workflow)}
+							</SelectItem>
+						))
 					)}
-				</SelectValue>
-			</SelectTrigger>
-			<SelectContent>
-				{allowClear && value && (
-					<SelectItem
-						value="__clear__"
-						className="text-muted-foreground italic"
-					>
-						Clear selection
-					</SelectItem>
-				)}
-				{sortedWorkflows.length === 0 ? (
-					<div className="px-2 py-4 text-center text-sm text-muted-foreground">
-						No workflows available
-					</div>
-				) : (
-					sortedWorkflows.map((workflow) => (
-						<SelectItem key={workflow.id} value={workflow.id}>
-							{renderWorkflowItem(workflow)}
-						</SelectItem>
-					))
-				)}
-			</SelectContent>
-		</Select>
+				</SelectContent>
+			</Select>
+		</>
 	);
 }
 
@@ -415,24 +458,27 @@ function ComboboxWorkflowSelector({
 	showOrgBadge: boolean;
 }) {
 	const [open, setOpen] = useState(false);
+	if (disabled && open) setOpen(false);
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button
+					type="button"
 					variant="outline"
 					role="combobox"
+					aria-label={placeholder}
 					aria-expanded={open}
 					disabled={disabled}
 					className={cn(
-						"w-full justify-between font-normal",
+						"min-h-11 h-auto w-full min-w-0 justify-between whitespace-normal text-left font-normal",
 						!value && "text-muted-foreground",
-						className
+						className,
 					)}
 				>
 					{selectedWorkflow ? (
-						<div className="flex items-center gap-2 truncate">
-							<span className="truncate">
+						<div className="flex min-w-0 flex-wrap items-center gap-2">
+							<span className="min-w-0 [overflow-wrap:anywhere]">
 								{selectedWorkflow.name}
 							</span>
 							{showOrgBadge &&
@@ -445,36 +491,47 @@ function ComboboxWorkflowSelector({
 									</Badge>
 								)}
 							{selectedWorkflow.hasMismatch && (
-								<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+								<AlertTriangle className="h-3.5 w-3.5 text-[var(--bf-warning)]" />
 							)}
 						</div>
 					) : (
-						placeholder
+						value || placeholder
 					)}
 					<div className="flex items-center gap-1 ml-2 shrink-0">
-						{allowClear && value && (
-							<X
-								className="h-4 w-4 opacity-50 hover:opacity-100"
-								onClick={(e) => {
-									e.stopPropagation();
-									onChange(undefined);
-								}}
-							/>
-						)}
 						<ChevronsUpDown className="h-4 w-4 opacity-50" />
 					</div>
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[400px] p-0" align="start">
+			<PopoverContent variant="picker" className="p-0" align="start">
 				<Command>
-					<CommandInput placeholder="Search workflows..." />
+					<CommandInput
+						placeholder="Search workflows..."
+						aria-label="Search workflows"
+					/>
 					<CommandList>
 						<CommandEmpty>No workflows found.</CommandEmpty>
 						<CommandGroup>
+							{allowClear && value && (
+								<CommandItem
+									value="__clear__"
+									className="min-h-11 lg:min-h-11"
+									onSelect={() => {
+										onChange(undefined);
+										setOpen(false);
+									}}
+								>
+									Clear selection
+								</CommandItem>
+							)}
 							{workflows.map((workflow) => (
 								<CommandItem
 									key={workflow.id}
-									value={`${workflow.name} ${workflow.description ?? ""}`}
+									value={workflow.id}
+									keywords={[
+										workflow.name ?? "",
+										workflow.description ?? "",
+									]}
+									className="min-h-11 lg:min-h-11"
 									data-checked={value === workflow.id}
 									onSelect={() => {
 										onChange(workflow.id);

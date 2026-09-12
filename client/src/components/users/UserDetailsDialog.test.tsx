@@ -62,6 +62,9 @@ describe("UserDetailsDialog", () => {
 		expect(
 			screen.getByText(/alice@example.com/i),
 		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /close dialog/i }),
+		).toBeInTheDocument();
 	});
 
 	it("shows Platform Admin badge + full access card for superusers", () => {
@@ -91,6 +94,10 @@ describe("UserDetailsDialog", () => {
 		);
 
 		expect(screen.getByText(/^active$/i)).toBeInTheDocument();
+		expect(screen.getByText(/^active$/i)).toHaveAttribute(
+			"data-variant",
+			"outline",
+		);
 	});
 
 	it("shows Inactive badge when user is inactive", () => {
@@ -132,5 +139,56 @@ describe("UserDetailsDialog", () => {
 		expect(
 			screen.getByText(/no roles assigned to this user/i),
 		).toBeInTheDocument();
+	});
+
+	it("shows a distinct error state when roles fail to load", async () => {
+		const retry = vi.fn();
+		mockUserRoles.mockReturnValue({
+			error: new Error("Roles API down"),
+			refetch: retry,
+			isLoading: false,
+		});
+
+		const { user } = renderWithProviders(
+			<UserDetailsDialog
+				user={makeUser()}
+				open={true}
+				onClose={vi.fn()}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("alert", { name: /unable to load roles/i }),
+		).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry" }));
+		expect(retry).toHaveBeenCalledOnce();
+		expect(screen.getByText(/roles api down/i)).toBeInTheDocument();
+		expect(
+			screen.queryByText(/no roles assigned to this user/i),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows a distinct error state when forms fail to load", async () => {
+		mockUserForms.mockReturnValue({
+			error: new Error("Forms API down"),
+			isLoading: false,
+		});
+
+		const { user } = renderWithProviders(
+			<UserDetailsDialog
+				user={makeUser()}
+				open={true}
+				onClose={vi.fn()}
+			/>,
+		);
+
+		await user.click(screen.getByRole("tab", { name: /form access/i }));
+		expect(
+			screen.getByRole("alert", { name: /unable to load form access/i }),
+		).toBeInTheDocument();
+		expect(screen.getByText(/forms api down/i)).toBeInTheDocument();
+		expect(
+			screen.queryByText(/no forms accessible to this user/i),
+		).not.toBeInTheDocument();
 	});
 });

@@ -7,8 +7,9 @@
  */
 
 import { Bot, Check, Copy } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { components } from "@/lib/v1";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -70,8 +71,8 @@ function preprocessMentions(content: string): string {
  */
 function MentionBadge({ name }: { name: string }) {
 	return (
-		<span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/25 font-medium text-sm">
-			<Bot className="h-3 w-3 shrink-0" />
+		<span className="inline-flex min-h-11 items-center gap-1 rounded-[var(--bf-radius-control)] bg-black/25 px-2 py-1 font-medium text-sm leading-6">
+			<Bot className="h-4 w-4 shrink-0" />
 			{name}
 		</span>
 	);
@@ -114,6 +115,15 @@ function SafeChatLink({
 
 function MessageActions({ message }: { message: MessagePublic }) {
 	const [copied, setCopied] = useState(false);
+	const [copyError, setCopyError] = useState(false);
+	const [copying, setCopying] = useState(false);
+	const active = useRef(true);
+	const copyingRef = useRef(false);
+	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	useEffect(() => {
+		active.current = true;
+		return () => { active.current = false; if (timer.current) clearTimeout(timer.current); };
+	}, []);
 	const createdAt = message.created_at ? new Date(message.created_at) : null;
 	const timestamp =
 		createdAt && !Number.isNaN(createdAt.valueOf())
@@ -123,22 +133,33 @@ function MessageActions({ message }: { message: MessagePublic }) {
 				})
 			: null;
 	return (
-		<div className="flex min-h-11 items-center gap-2 text-[11px] text-muted-foreground opacity-100 transition-opacity sm:min-h-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+		<div className="flex min-h-11 flex-wrap items-center gap-2 text-sm leading-6 text-muted-foreground opacity-100 transition-opacity motion-reduce:transition-none sm:min-h-0 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
 			{timestamp && <time dateTime={message.created_at ?? undefined}>{timestamp}</time>}
 			{message.content && (
 				<button
 					type="button"
-					className="flex size-11 items-center justify-center rounded hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-6"
+					className="flex size-11 items-center justify-center rounded-[var(--bf-radius-control)] hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:size-6"
 					onClick={async () => {
-						await navigator.clipboard.writeText(message.content ?? "");
-						setCopied(true);
-						window.setTimeout(() => setCopied(false), 1500);
+						if (copyingRef.current) return;
+						copyingRef.current = true;
+						setCopying(true);
+						setCopyError(false);
+						const success = await copyToClipboard(message.content ?? "");
+						copyingRef.current = false;
+						if (!active.current) return;
+						setCopying(false);
+						setCopied(success);
+						setCopyError(!success);
+						if (timer.current) clearTimeout(timer.current);
+						if (success) timer.current = setTimeout(() => setCopied(false), 1500);
 					}}
+					disabled={copying}
 					aria-label={copied ? "Copied message" : "Copy message"}
 				>
 					{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
 				</button>
 			)}
+			{copyError && <span role="alert" className="text-xs text-[var(--bf-danger)]">Couldn’t copy. Select the message text or try again.</span>}
 		</div>
 	);
 }
@@ -158,7 +179,7 @@ function ChatMessageView({
 	if (isUser) {
 		return (
 			<div className="group flex flex-col items-end justify-end py-2 px-4">
-				<div className="max-w-[80%] bg-primary text-primary-foreground rounded-2xl px-4 py-2.5 overflow-x-auto break-words">
+				<div className="max-w-full overflow-x-auto break-words rounded-[var(--bf-radius-feature)] bg-primary px-4 py-3 text-primary-foreground sm:max-w-[80%]">
 					<ChatAttachmentList
 						conversationId={message.conversation_id}
 						attachments={message.attachments ?? []}
@@ -185,7 +206,7 @@ function ChatMessageView({
 												style={oneDark}
 												language={match?.[1] || "text"}
 												PreTag="div"
-												className="rounded-md !my-2"
+												className="rounded-[var(--bf-radius-control)] !my-2"
 											>
 												{content}
 											</SyntaxHighlighter>
@@ -240,12 +261,14 @@ function ChatMessageView({
 	// Assistant message - full markdown rendering
 	return (
 		<div
-			className="py-3 px-4 group"
+			className="group px-4 py-3"
+			role="article"
+			aria-label="Assistant message"
 			aria-busy={isStreaming || undefined}
 		>
 			<div className="max-w-4xl">
 				{/* Markdown Content */}
-				<div className="prose prose-slate dark:prose-invert max-w-none prose-p:my-2 prose-p:leading-7 prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent">
+				<div className="prose prose-slate dark:prose-invert max-w-none break-words prose-p:my-2 prose-p:leading-7 prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent">
 					<ReactMarkdown
 						remarkPlugins={[remarkGfm]}
 						rehypePlugins={[rehypeRaw]}
@@ -266,7 +289,7 @@ function ChatMessageView({
 								if (isCodeBlock) {
 									if (isStreaming) {
 										return (
-											<pre className="my-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-slate-100">
+											<pre className="my-2 overflow-x-auto rounded-[var(--bf-radius-control)] bg-slate-950 p-3 text-slate-100">
 												<code>{content}</code>
 											</pre>
 										);
@@ -276,7 +299,7 @@ function ChatMessageView({
 											style={oneDark}
 											language={match?.[1] || "text"}
 											PreTag="div"
-											className="rounded-md !my-2"
+											className="rounded-[var(--bf-radius-control)] !my-2"
 										>
 											{content}
 										</SyntaxHighlighter>
@@ -349,18 +372,18 @@ function ChatMessageView({
 							// Tables
 							table: ({ children }) => (
 								<div className="my-2 overflow-x-auto">
-									<table className="min-w-full border-collapse border border-border">
+									<table className="w-full border-collapse border border-border">
 										{children}
 									</table>
 								</div>
 							),
 							th: ({ children }) => (
-								<th className="border border-border px-3 py-2 bg-muted font-semibold text-left">
+								<th className="min-w-24 border border-border px-3 py-2 bg-muted font-semibold text-left align-top [overflow-wrap:anywhere]">
 									{children}
 								</th>
 							),
 							td: ({ children }) => (
-								<td className="border border-border px-3 py-2">
+								<td className="min-w-24 border border-border px-3 py-2 align-top [overflow-wrap:anywhere]">
 									{children}
 								</td>
 							),
@@ -375,7 +398,7 @@ function ChatMessageView({
 				<div className="mt-2 flex items-center gap-3">
 					<MessageActions message={message} />
 				{(message.token_count_input != null && message.token_count_input > 0 || message.token_count_output != null && message.token_count_output > 0) && (
-					<div className="flex gap-3 text-xs text-muted-foreground opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+					<div className="flex flex-wrap gap-3 text-sm leading-6 text-muted-foreground opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
 						{!!message.token_count_input && (
 							<span>In: {message.token_count_input}</span>
 						)}

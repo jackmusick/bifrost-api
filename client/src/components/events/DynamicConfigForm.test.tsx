@@ -110,7 +110,7 @@ describe("DynamicConfigForm — string field", () => {
 });
 
 describe("DynamicConfigForm — boolean field", () => {
-	it("renders a checkbox and emits booleans", async () => {
+	it("renders a switch and emits booleans", async () => {
 		const { user, onChange } = renderForm({
 			type: "object",
 			properties: {
@@ -118,7 +118,7 @@ describe("DynamicConfigForm — boolean field", () => {
 			},
 		});
 
-		await user.click(screen.getByRole("checkbox", { name: /enabled/i }));
+		await user.click(screen.getByRole("switch", { name: /enabled/i }));
 
 		expect(onChange).toHaveBeenLastCalledWith({ enabled: true });
 	});
@@ -228,8 +228,7 @@ describe("DynamicConfigForm — dynamic values", () => {
 			data: undefined,
 			isLoading: false,
 			error: {
-				detail:
-					"Integration 'Microsoft' is not mapped to the selected organization",
+				detail: "Integration 'Microsoft' is not mapped to the selected organization",
 			} as unknown as Error,
 			refetch: vi.fn(),
 			isFetching: false,
@@ -255,4 +254,184 @@ describe("DynamicConfigForm — dynamic values", () => {
 			/Integration 'Microsoft' is not mapped to the selected organization/i,
 		);
 	});
+});
+
+describe("DynamicConfigForm — field associations", () => {
+	it("focuses the matching field when two mounted forms share a schema", async () => {
+		const schema: ConfigSchema = {
+			type: "object",
+			properties: { label: { type: "string", title: "Name" } },
+		};
+		const firstChange = vi.fn();
+		const secondChange = vi.fn();
+		const { user } = renderWithProviders(
+			<div>
+				<DynamicConfigForm
+					adapterName="test-adapter"
+					configSchema={schema}
+					config={{}}
+					onChange={firstChange}
+				/>
+				<DynamicConfigForm
+					adapterName="test-adapter"
+					configSchema={schema}
+					config={{}}
+					onChange={secondChange}
+				/>
+			</div>,
+		);
+		await user.click(screen.getAllByText("Name")[1]!);
+		expect(screen.getAllByRole("textbox")[1]).toHaveFocus();
+		await user.keyboard("B");
+		expect(secondChange).toHaveBeenLastCalledWith({ label: "B" });
+		expect(firstChange).not.toHaveBeenCalled();
+	});
+	it("keeps zero visible in a plain text configuration field", () => {
+		renderForm(
+			{
+				type: "object",
+				properties: { label: { type: "string", title: "Name" } },
+			},
+			{ label: 0 },
+		);
+		expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("0");
+	});
+});
+
+const dependencySchema: ConfigSchema = {
+	type: "object",
+	properties: {
+		parent: { type: "string", title: "Parent" },
+		child: {
+			type: "string",
+			title: "Child",
+			"x-dynamic-values": {
+				operation: "children",
+				value_path: "id",
+				label_path: "name",
+				depends_on: ["parent"],
+			},
+		},
+		grandchild: {
+			type: "string",
+			title: "Grandchild",
+			"x-dynamic-values": {
+				operation: "grandchildren",
+				value_path: "id",
+				label_path: "name",
+				depends_on: ["child"],
+			},
+		},
+	},
+};
+
+describe("DynamicConfigForm — dependent values", () => {
+	it("clears all descendants when a parent changes to another non-empty value", () => {
+		const { onChange } = renderForm(dependencySchema, {
+			parent: "old",
+			child: "child-old",
+			grandchild: "grandchild-old",
+			unrelated: false,
+		});
+		fireEvent.change(screen.getByRole("textbox", { name: "Parent" }), {
+			target: { value: "new" },
+		});
+		expect(onChange).toHaveBeenLastCalledWith({
+			parent: "new",
+			unrelated: false,
+		});
+	});
+	it("clears all descendants when a parent is removed", () => {
+		const { onChange } = renderForm(dependencySchema, {
+			parent: "old",
+			child: "child-old",
+			grandchild: "grandchild-old",
+		});
+		fireEvent.change(screen.getByRole("textbox", { name: "Parent" }), {
+			target: { value: "" },
+		});
+		expect(onChange).toHaveBeenLastCalledWith({});
+	});
+	it("removes orphaned descendants from incoming configuration", () => {
+		const { onChange } = renderForm(dependencySchema, {
+			child: "orphan",
+			grandchild: "orphan-child",
+			unrelated: 0,
+		});
+		expect(onChange).toHaveBeenLastCalledWith({ unrelated: 0 });
+	});
+	it("lets users explicitly deselect a default array value", async () => {
+		const { user, onChange } = renderForm({
+			type: "object",
+			properties: {
+				changes: {
+					type: "array",
+					title: "Changes",
+					default: ["created"],
+					items: { type: "string", enum: ["created", "updated"] },
+				},
+			},
+		});
+		await user.click(screen.getByRole("button", { name: "created" }));
+		expect(onChange).toHaveBeenLastCalledWith({ changes: [] });
+	});
+});
+
+describe("DynamicConfigForm — option context", () => {
+	it.each(["organizationId", "integrationId"] as const)(
+		"clears tenant-dependent selections when %s changes",
+		(contextField) => {
+			const schema: ConfigSchema = {
+				type: "object",
+				properties: {
+					user: {
+						type: "string",
+						"x-dynamic-values": {
+							operation: "users",
+							value_path: "id",
+							label_path: "label",
+							depends_on: [],
+						},
+					},
+					resource: {
+						type: "string",
+						"x-dynamic-values": {
+							operation: "resources",
+							value_path: "id",
+							label_path: "label",
+							depends_on: ["user"],
+						},
+					},
+					changes: {
+						type: "array",
+						items: { type: "string", enum: ["created"] },
+					},
+				},
+			};
+			const onChange = vi.fn();
+			const props = {
+				adapterName: "graph",
+				integrationId: "integration-1",
+				organizationId: "org-1",
+				configSchema: schema,
+				config: {
+					user: "user-old",
+					resource: "resource-old",
+					changes: ["created"],
+				},
+				onChange,
+			};
+			const { rerender } = renderWithProviders(
+				<DynamicConfigForm {...props} />,
+			);
+			expect(onChange).not.toHaveBeenCalled();
+			rerender(
+				<DynamicConfigForm
+					{...props}
+					{...{ [contextField]: "new-context" }}
+				/>,
+			);
+			expect(onChange).toHaveBeenLastCalledWith({ changes: ["created"] });
+		},
+	);
 });

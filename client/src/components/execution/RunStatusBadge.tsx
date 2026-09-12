@@ -6,13 +6,7 @@
  * details page so all three agree on what success and failure look like.
  */
 
-import {
-	AlertTriangle,
-	CheckCircle2,
-	Clock,
-	Loader2,
-	XCircle,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { parseBackendDate } from "@/lib/utils";
 
@@ -38,27 +32,60 @@ export function RunStatusBadge({
 	availableMemoryMb,
 	requiredMemoryMb,
 }: RunStatusBadgeProps) {
+	const activityIndicator = (
+		<span
+			data-testid="run-status-activity-indicator"
+			aria-hidden="true"
+			className="h-2 w-2 shrink-0 rounded-full motion-safe:animate-pulse motion-reduce:animate-none"
+			style={{ backgroundImage: "var(--bf-activity-gradient)" }}
+		/>
+	);
+
+	const activeInfoStyle = {
+		borderColor: "var(--bf-info)",
+		backgroundColor: "var(--bf-info-soft)",
+		color: "var(--bf-info)",
+	};
+	const activeWarningStyle = {
+		borderColor: "var(--bf-warning)",
+		backgroundColor: "var(--bf-warning-soft)",
+		color: "var(--bf-warning)",
+	};
+	const activeDangerStyle = {
+		borderColor: "var(--bf-danger)",
+		backgroundColor: "var(--bf-danger-soft)",
+		color: "var(--bf-danger)",
+	};
+
 	switch (status) {
 		case "Success":
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal text-muted-foreground"
+					className="min-w-24 gap-1 font-normal text-[color:var(--bf-success)]"
 				>
-					<CheckCircle2 className="h-3 w-3 text-green-500" />
+					<CheckCircle2 className="h-3 w-3 text-[color:var(--bf-success)]" />
 					Completed
 				</Badge>
 			);
 		case "Failed":
 			return (
-				<Badge variant="destructive" className="gap-1">
+				<Badge
+					variant="outline"
+					className="min-w-24 gap-1 font-normal"
+					style={activeDangerStyle}
+				>
 					<XCircle className="h-3 w-3" />
 					Failed
 				</Badge>
 			);
 		case "Timeout":
 			return (
-				<Badge variant="destructive" className="gap-1">
+				<Badge
+					variant="outline"
+					className="min-w-24 gap-1 font-normal"
+					style={activeDangerStyle}
+				>
 					<Clock className="h-3 w-3" />
 					Timed out
 				</Badge>
@@ -67,7 +94,8 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 border-yellow-600/50 font-normal text-yellow-600 dark:text-yellow-500"
+					className="min-w-24 gap-1 font-normal"
+					style={activeWarningStyle}
 				>
 					<AlertTriangle className="h-3 w-3" />
 					Completed with errors
@@ -75,8 +103,15 @@ export function RunStatusBadge({
 			);
 		case "Running":
 			return (
-				<Badge variant="secondary" className="gap-1">
-					<Loader2 className="h-3 w-3 animate-spin" />
+				<Badge
+					variant="outline"
+					className="bf-running-border relative min-w-24 gap-1 overflow-visible font-normal text-foreground"
+				>
+					<span
+						data-testid="run-status-activity-indicator"
+						aria-hidden="true"
+						className="bf-running-orbit"
+					/>
 					Running
 				</Badge>
 			);
@@ -85,9 +120,10 @@ export function RunStatusBadge({
 				return (
 					<Badge
 						variant="outline"
-						className="gap-1 font-normal text-muted-foreground"
+						className="min-w-24 gap-1 font-normal"
+						style={activeInfoStyle}
 					>
-						<Clock className="h-3 w-3" />
+						{activityIndicator}
 						Queued — position {queuePosition}
 					</Badge>
 				);
@@ -96,9 +132,10 @@ export function RunStatusBadge({
 				return (
 					<Badge
 						variant="outline"
-						className="gap-1 border-orange-500/50 font-normal text-orange-600 dark:text-orange-400"
+						className="min-w-24 gap-1 font-normal"
+						style={activeWarningStyle}
 					>
-						<Loader2 className="h-3 w-3 animate-spin" />
+						{activityIndicator}
 						Heavy load ({availableMemoryMb ?? "?"}MB /{" "}
 						{requiredMemoryMb ?? "?"}MB)
 					</Badge>
@@ -107,9 +144,10 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal text-muted-foreground"
+					className="min-w-24 gap-1 font-normal"
+					style={activeInfoStyle}
 				>
-					<Clock className="h-3 w-3" />
+					{activityIndicator}
 					Pending
 				</Badge>
 			);
@@ -127,7 +165,8 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 border-sky-500/50 font-normal text-sky-700 dark:text-sky-300"
+					className="min-w-24 gap-1 font-normal"
+					style={activeInfoStyle}
 					{...(title ? { title } : {})}
 				>
 					<Clock className="h-3 w-3" />
@@ -139,9 +178,10 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 border-orange-500/50 font-normal text-orange-600 dark:text-orange-400"
+					className="min-w-24 gap-1 font-normal"
+					style={activeWarningStyle}
 				>
-					<Loader2 className="h-3 w-3 animate-spin" />
+					{activityIndicator}
 					Cancelling
 				</Badge>
 			);
@@ -149,7 +189,7 @@ export function RunStatusBadge({
 			return (
 				<Badge
 					variant="outline"
-					className="gap-1 font-normal text-muted-foreground"
+					className="min-w-24 gap-1 font-normal text-muted-foreground"
 				>
 					<XCircle className="h-3 w-3" />
 					Cancelled
@@ -157,7 +197,7 @@ export function RunStatusBadge({
 			);
 		default:
 			return (
-				<Badge variant="outline" className="font-normal">
+				<Badge variant="outline" className="min-w-24 font-normal">
 					{status}
 				</Badge>
 			);

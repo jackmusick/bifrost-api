@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
  * Sidebar with icon navigation for Files, Search, Run, Packages, and Source Control panels
  */
 export function Sidebar() {
-	const { sidebarPanel, setSidebarPanel } = useEditorStore();
+	const sidebarPanel = useEditorStore((state) => state.sidebarPanel);
+	const setSidebarPanel = useEditorStore((state) => state.setSidebarPanel);
 
 	const panels: Array<{
 		id: SidebarPanel;
@@ -21,7 +22,11 @@ export function Sidebar() {
 	];
 
 	return (
-		<div className="flex h-full w-12 flex-col border-r bg-muted/30">
+		<div
+			role="group"
+			aria-label="Editor tools"
+			className="flex h-full w-12 shrink-0 flex-col overflow-y-auto border-r bg-muted/30"
+		>
 			{panels.map((panel) => {
 				const Icon = panel.icon;
 				const isActive = sidebarPanel === panel.id;
@@ -29,17 +34,19 @@ export function Sidebar() {
 				return (
 					<button
 						key={panel.id}
+						type="button"
+						aria-pressed={isActive}
 						onClick={() => setSidebarPanel(panel.id)}
 						className={cn(
-							"flex h-12 w-full items-center justify-center transition-colors",
+							"flex h-12 w-full shrink-0 items-center justify-center border-r-2 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
 							isActive
-								? "bg-muted/50 border-r-2 border-primary"
-								: "text-muted-foreground hover:bg-muted/40",
+								? "bg-muted/50 border-primary"
+								: "border-transparent text-muted-foreground hover:bg-muted/40",
 						)}
 						title={panel.label}
 						aria-label={panel.label}
 					>
-						<Icon className="h-5 w-5" />
+						<Icon aria-hidden="true" className="h-5 w-5" />
 					</button>
 				);
 			})}

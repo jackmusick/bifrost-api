@@ -7,6 +7,9 @@ describe("UserStatusBadge", () => {
 	it("renders Active for active status", () => {
 		render(<UserStatusBadge status="active" />);
 		expect(screen.getByText(/^active$/i)).toBeInTheDocument();
+		expect(screen.getByText(/^active$/i)).toHaveClass(
+			"border-[var(--bf-success)]/20",
+		);
 	});
 
 	it("renders Pending invite for pending status", () => {
@@ -17,6 +20,7 @@ describe("UserStatusBadge", () => {
 	it("renders Invite expired for expired status", () => {
 		render(<UserStatusBadge status="expired" />);
 		expect(screen.getByText(/invite expired/i)).toBeInTheDocument();
+		expect(screen.getByText(/invite expired/i)).toHaveClass("border-[var(--bf-danger)]/20");
 	});
 
 	it("renders Not invited for never_invited status", () => {
@@ -24,8 +28,8 @@ describe("UserStatusBadge", () => {
 		expect(screen.getByText(/not invited/i)).toBeInTheDocument();
 	});
 
-	it("falls back to Active for an unknown status string", () => {
+	it("does not claim active access for an unknown status", () => {
 		render(<UserStatusBadge status="something-new" />);
-		expect(screen.getByText(/^active$/i)).toBeInTheDocument();
+		expect(screen.getByText("Unknown status")).toBeInTheDocument();
 	});
 });

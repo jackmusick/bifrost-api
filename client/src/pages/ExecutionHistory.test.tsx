@@ -14,6 +14,11 @@ import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
 // Mocks
 // -----------------------------------------------------------------------------
 
+const mockIsDesktop = vi.fn(() => true);
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useIsDesktop: () => mockIsDesktop(),
+}));
+
 const mockUseExecutions = vi.fn();
 const mockCancelExecution = vi.fn();
 vi.mock("@/hooks/useExecutions", () => ({
@@ -32,7 +37,11 @@ vi.mock("@/hooks/useOrganizations", () => ({
 vi.mock("@/stores/scopeStore", () => ({
 	useScopeStore: (
 		selector: (s: {
-			scope: { type: string; orgId: string | null; orgName: string | null };
+			scope: {
+				type: string;
+				orgId: string | null;
+				orgName: string | null;
+			};
 			isGlobalScope: boolean;
 		}) => unknown,
 	) =>
@@ -72,7 +81,37 @@ vi.mock("sonner", () => ({
 
 // Stub heavy children so they don't explode without their own data deps.
 vi.mock("@/pages/ExecutionHistory/components/ExecutionDrawer", () => ({
-	ExecutionDrawer: () => null,
+	ExecutionDrawer: ({
+		executionId,
+		open,
+	}: {
+		executionId: string | null;
+		open: boolean;
+	}) =>
+		open ? (
+			<div role="dialog" aria-label="Execution details">
+				{executionId}
+			</div>
+		) : null,
+}));
+
+vi.mock("@/pages/ExecutionHistory/components/ExecutionPreviewPanel", () => ({
+	ExecutionPreviewPanel: ({
+		executionId,
+		onClose,
+	}: {
+		executionId: string | null;
+		onClose: () => void;
+	}) =>
+		executionId ? (
+			<aside
+				aria-label="Execution preview"
+				data-testid="execution-preview"
+			>
+				<p>{executionId}</p>
+				<button onClick={onClose}>Close execution preview</button>
+			</aside>
+		) : null,
 }));
 
 vi.mock("@/pages/ExecutionHistory/components/LogsView", () => ({
@@ -146,6 +185,7 @@ const mockRefetch = vi.fn();
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	mockIsDesktop.mockReturnValue(true);
 	mockAuth.mockReturnValue({
 		isPlatformAdmin: false,
 		user: { id: "user-1", email: "u@example.com" },
@@ -238,6 +278,7 @@ describe("ExecutionHistory — ?status= round-trip", () => {
 				status: "Failed,Timeout,Stuck,CompletedWithErrors",
 			}),
 			undefined,
+			{ preservePageData: true },
 		);
 		// The dashboard's "4 failed" link promise lands on exactly 4 rows.
 		expect(screen.getAllByTestId("execution-row")).toHaveLength(4);
@@ -258,6 +299,7 @@ describe("ExecutionHistory — ?status= round-trip", () => {
 			undefined,
 			expect.objectContaining({ status: "Running" }),
 			undefined,
+			{ preservePageData: true },
 		);
 
 		// No rows match → filtered empty state; clearing filters must also
@@ -286,6 +328,7 @@ describe("ExecutionHistory — workflow filter visibility", () => {
 			undefined,
 			expect.not.objectContaining({ workflow_id: "workflow-1" }),
 			undefined,
+			{ preservePageData: true },
 		);
 	});
 
@@ -335,7 +378,9 @@ describe("ExecutionHistory — cancel row action", () => {
 		const { user } = await renderPage();
 
 		// The Cancel row button is identified by its title attribute.
-		const cancelBtn = await screen.findByTitle(/Cancel scheduled execution/i);
+		const cancelBtn = await screen.findByTitle(
+			/Cancel scheduled execution/i,
+		);
 		await user.click(cancelBtn);
 
 		// Confirm dialog appears.
@@ -377,7 +422,9 @@ describe("ExecutionHistory — cancel row action", () => {
 
 		const { user } = await renderPage();
 
-		const cancelBtn = await screen.findByTitle(/Cancel scheduled execution/i);
+		const cancelBtn = await screen.findByTitle(
+			/Cancel scheduled execution/i,
+		);
 		await user.click(cancelBtn);
 
 		const dialog = await screen.findByRole("alertdialog");
@@ -396,7 +443,9 @@ describe("ExecutionHistory — summary rollup", () => {
 		mockUseExecutions.mockReturnValue({
 			data: {
 				executions: [
-					makeRow({ execution_id: "31111111-1111-1111-1111-111111111111" }),
+					makeRow({
+						execution_id: "31111111-1111-1111-1111-111111111111",
+					}),
 					makeRow({
 						execution_id: "32222222-2222-2222-2222-222222222222",
 						status: "Failed",
@@ -438,12 +487,9 @@ describe("ExecutionHistory — feed rendering", () => {
 
 		await renderPage();
 
-		expect(
-			screen.getByRole("region", { name: "History" }),
-		).toHaveClass(
+		expect(screen.getByRole("region", { name: "History" })).toHaveClass(
 			"mx-auto",
-			"h-full",
-			"min-h-0",
+			"min-h-full",
 			"w-full",
 			"max-w-7xl",
 			"pb-1",
@@ -465,7 +511,12 @@ describe("ExecutionHistory — feed rendering", () => {
 		).toHaveClass("hidden", "lg:table-cell");
 		expect(
 			screen.getByRole("columnheader", { name: "Duration" }),
-		).toHaveClass("hidden", "xl:table-cell");
+		).toHaveClass("w-px", "whitespace-nowrap", "text-right");
+		expect(
+			screen.queryByRole("complementary", {
+				name: "Execution preview",
+			}),
+		).not.toBeInTheDocument();
 		expect(screen.getByRole("tablist").parentElement).toHaveClass(
 			"no-scrollbar",
 			"overflow-x-auto",
@@ -524,9 +575,68 @@ describe("ExecutionHistory — feed rendering", () => {
 
 		await renderPage();
 
+		expect(screen.getByText("Graph API returned 403")).toBeInTheDocument();
+	});
+
+	it("opens the desktop preview from row and workflow-name clicks while keeping the full-page link href", async () => {
+		mockAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			user: { id: "admin-1", email: "admin@example.com" },
+		});
+		mockUseExecutions.mockReturnValue({
+			data: { executions: [makeRow()], continuation_token: null },
+			isFetching: false,
+			isError: false,
+			refetch: mockRefetch,
+		});
+
+		const { user } = await renderPage();
+
+		const row = screen.getByTestId("execution-row");
+		expect(row).toHaveAttribute(
+			"data-execution-id",
+			"11111111-1111-1111-1111-111111111111",
+		);
 		expect(
-			screen.getByText("Graph API returned 403"),
-		).toBeInTheDocument();
+			screen.getByRole("link", { name: "test-workflow" }),
+		).toHaveAttribute(
+			"href",
+			"/history/11111111-1111-1111-1111-111111111111",
+		);
+
+		await user.click(row);
+		expect(screen.getByTestId("execution-preview")).toHaveTextContent(
+			"11111111-1111-1111-1111-111111111111",
+		);
+		expect(
+			screen.queryByRole("columnheader", { name: "Organization" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("columnheader", { name: "Run by" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("columnheader", { name: "Started" }),
+		).toHaveClass("hidden", "2xl:table-cell");
+		expect(screen.getByTestId("execution-workflow-cell")).toHaveClass(
+			"min-w-64",
+			"py-2",
+		);
+		expect(screen.getByTestId("location-probe")).toHaveTextContent(/^\/$/);
+		expect(row).toHaveAttribute("data-state", "selected");
+
+		await user.click(
+			screen.getByRole("button", { name: "Close execution preview" }),
+		);
+		expect(
+			screen.queryByTestId("execution-preview"),
+		).not.toBeInTheDocument();
+		expect(row).not.toHaveAttribute("data-state");
+
+		await user.click(screen.getByRole("link", { name: "test-workflow" }));
+		expect(screen.getByTestId("execution-preview")).toHaveTextContent(
+			"11111111-1111-1111-1111-111111111111",
+		);
+		expect(screen.getByTestId("location-probe")).toHaveTextContent(/^\/$/);
 	});
 });
 
@@ -590,4 +700,114 @@ describe("ExecutionHistory — list states", () => {
 
 		expect(screen.getByTestId("history-loading")).toBeInTheDocument();
 	});
+
+	it("keeps retained execution rows and pagination controls mounted during a page fetch", async () => {
+		mockUseExecutions.mockReturnValue({
+			data: {
+				executions: [makeRow()],
+				continuation_token: "next",
+			},
+			isFetching: true,
+			isError: false,
+			refetch: mockRefetch,
+		});
+
+		await renderPage();
+
+		expect(
+			screen.getByRole("table").closest("[aria-busy]"),
+		).toHaveAttribute("aria-busy", "true");
+		expect(screen.getByTestId("execution-row")).toBeInTheDocument();
+		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+		expect(mockUseExecutions).toHaveBeenLastCalledWith(
+			undefined,
+			expect.any(Object),
+			undefined,
+			{ preservePageData: true },
+		);
+	});
+});
+
+describe("mobile execution records", () => {
+	it("shows full metadata and retains scheduled cancellation without a table", async () => {
+		mockIsDesktop.mockReturnValue(false);
+		mockUseExecutions.mockReturnValue({
+			data: {
+				executions: [
+					makeRow({
+						status: "Scheduled",
+						started_at: null,
+						completed_at: null,
+						scheduled_at: "2026-09-08T10:00:00Z",
+					}),
+				],
+				continuation_token: "next",
+			},
+			isFetching: false,
+			isError: false,
+			refetch: mockRefetch,
+		});
+		const { user } = await renderPage();
+		expect(screen.queryByRole("table")).not.toBeInTheDocument();
+		const record = screen.getByTestId("execution-record");
+		expect(within(record).getByText("Run by")).toBeInTheDocument();
+		expect(within(record).getByText("Test User")).toBeInTheDocument();
+		expect(
+			within(record).getByRole("link", { name: "test-workflow" }),
+		).toHaveAttribute(
+			"href",
+			"/history/11111111-1111-1111-1111-111111111111",
+		);
+		expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+		await user.click(
+			within(record).getByRole("button", {
+				name: "Preview execution test-workflow",
+			}),
+		);
+		expect(
+			screen.getByRole("dialog", { name: "Execution details" }),
+		).toHaveTextContent("11111111-1111-1111-1111-111111111111");
+		await user.click(
+			within(record).getByRole("button", {
+				name: "Cancel scheduled execution",
+			}),
+		);
+		expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+		expect(mockCancelExecution).not.toHaveBeenCalled();
+	});
+});
+
+it("keeps mobile filters discoverable and exposes every status without a scrolling tab strip", async () => {
+	mockIsDesktop.mockReturnValue(false);
+	const { user } = await renderPage();
+	const toggle = screen.getByRole("button", { name: "Show filters" });
+	expect(toggle).toHaveAttribute("aria-expanded", "false");
+	await user.click(toggle);
+	expect(
+		screen.getByRole("button", { name: "Hide filters" }),
+	).toHaveAttribute("aria-expanded", "true");
+	await user.click(screen.getByRole("combobox", { name: "Run status" }));
+	await user.click(screen.getByRole("option", { name: "Scheduled" }));
+	expect(screen.getByTestId("location-probe")).toHaveTextContent(
+		"status=Scheduled",
+	);
+	expect(
+		screen.queryByRole("tab", { name: "Scheduled" }),
+	).not.toBeInTheDocument();
+});
+
+it("keeps platform cleanup unavailable to organization users", async () => {
+	mockAuth.mockReturnValue({
+		isPlatformAdmin: false,
+		user: { id: "org-user" },
+	});
+	await renderPage();
+	expect(
+		screen.queryByRole("button", { name: "Cleanup stuck executions" }),
+	).not.toBeInTheDocument();
+	expect(mockApiGet).not.toHaveBeenCalledWith(
+		"/api/executions/cleanup/stuck",
+	);
 });

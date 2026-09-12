@@ -2,9 +2,9 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { Switch } from "@/components/ui/switch";
 
 export interface Schedule {
 	/** ISO-8601 UTC string, set when the user picks an absolute time. */
@@ -123,8 +123,8 @@ export function ScheduleControls({
 
 	return (
 		<div className="flex flex-col gap-3">
-			<Label className="flex items-center gap-2">
-				<Checkbox
+			<Label className="flex min-h-11 items-center gap-2">
+				<Switch
 					checked={checked}
 					onCheckedChange={handleCheckedChange}
 					disabled={disabled}
@@ -134,7 +134,7 @@ export function ScheduleControls({
 			</Label>
 
 			{checked && (
-				<div className="flex flex-col gap-3 pl-6">
+				<div className="flex min-w-0 flex-col gap-3 border-l border-border pl-3 sm:pl-6">
 					<div className="flex flex-wrap gap-2">
 						{QUICK_PICKS.map((pick) => {
 							const active = pick.isActive(value, now);
@@ -143,6 +143,7 @@ export function ScheduleControls({
 									key={pick.label}
 									type="button"
 									size="sm"
+									className="min-h-11 sm:min-h-8"
 									variant={active ? "default" : "outline"}
 									aria-pressed={active}
 									disabled={disabled}

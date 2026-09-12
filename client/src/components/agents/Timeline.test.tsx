@@ -1,8 +1,21 @@
+import { waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
 
 import type { components } from "@/lib/v1";
 import { renderWithProviders, screen } from "@/test-utils";
+
+vi.mock("@/hooks/useExecutions", () => ({
+	useExecution: (id: string | undefined) => ({
+		data:
+			id === "execution-428950"
+				? {
+						workflow_name: "Ticket details",
+						result: { ticket_id: 428950 },
+					}
+				: undefined,
+	}),
+}));
 
 const mockUseAgentRun = vi.hoisted(() => vi.fn());
 
@@ -97,7 +110,115 @@ function childReference(overrides: Partial<AgentRunChild> = {}): AgentRunChild {
 	};
 }
 
+function grandchildRun(
+	overrides: Partial<AgentRunDetail> = {},
+): AgentRunDetail {
+	return {
+		...childRun({
+			id: "grandchild-1",
+			agent_id: "agent-grandchild",
+			agent_name: "Asset Resolver",
+			asked: "Confirm the managed asset",
+			did: "Matched the requester to ELIJAH-LT.",
+			answered: "The asset is ELIJAH-LT.",
+			steps: [
+				step(
+					"tool_result",
+					{
+						tool_name: "rmm_resolve_asset",
+						result: { device: "ELIJAH-LT", matched: true },
+					},
+					1,
+				),
+			],
+			child_run_ids: [],
+			child_runs: [],
+		}),
+		...overrides,
+	};
+}
+
+function grandchildReference(
+	overrides: Partial<AgentRunChild> = {},
+): AgentRunChild {
+	return {
+		...childReference({
+			id: "grandchild-1",
+			agent_id: "agent-grandchild",
+			agent_name: "Asset Resolver",
+			asked: "Confirm the managed asset",
+			did: "Matched the requester to ELIJAH-LT.",
+			answered: "The asset is ELIJAH-LT.",
+		}),
+		...overrides,
+	};
+}
+
 describe("Timeline activity view", () => {
+	it("attaches selected details to the activity workspace on desktop", async () => {
+		const onInspectionChange = vi.fn();
+		const { user } = renderWithProviders(
+			<Timeline
+				inspector="inline"
+				joinedRows
+				onInspectionChange={onInspectionChange}
+				steps={[
+					step(
+						"tool_result",
+						{
+							tool_name: "customer_summary",
+							execution_id: "execution-428950",
+							result: {},
+						},
+						1,
+					),
+				]}
+			/>,
+		);
+		await user.click(
+			screen.getByRole("button", { name: /Ticket details/ }),
+		);
+		await waitFor(() =>
+			expect(onInspectionChange).toHaveBeenLastCalledWith(true),
+		);
+		expect(
+			screen.getByRole("complementary", { name: "Call inspector" }),
+		).toBeInTheDocument();
+		const selectedRow = document.querySelector(
+			'[data-activity-id="step-1"] > div',
+		);
+		expect(selectedRow).toHaveClass("rounded-none");
+		expect(
+			screen.getByRole("button", {
+				name: /Ticket details/,
+				pressed: true,
+			}),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("heading", { name: "Ticket details" }),
+		).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Close call details" }),
+		);
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Call inspector" }),
+			).not.toBeInTheDocument(),
+		);
+		await waitFor(() =>
+			expect(onInspectionChange).toHaveBeenLastCalledWith(false),
+		);
+		const trigger = screen.getByRole("button", { name: /Ticket details/ });
+		await user.click(trigger);
+		await user.keyboard("{Escape}");
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Call inspector" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(trigger).toHaveFocus();
+	});
 	beforeEach(() => {
 		mockUseAgentRun.mockReturnValue({
 			data: undefined,
@@ -157,8 +278,8 @@ describe("Timeline activity view", () => {
 		expect(screen.queryByText(/\{"ticket_id"/i)).not.toBeInTheDocument();
 	});
 
-	it("highlights a referenced action and links its workflow execution", () => {
-		const { container } = renderWithProviders(
+	it("highlights a referenced action and links its workflow execution", async () => {
+		const { user, container } = renderWithProviders(
 			<Timeline
 				steps={[
 					step(
@@ -186,25 +307,51 @@ describe("Timeline activity view", () => {
 		expect(
 			container.querySelector('[data-activity-id="step-1"]'),
 		).toHaveAttribute("data-highlighted", "true");
+		await user.click(
+			screen.getByRole("button", { name: /Ticket details/ }),
+		);
 		expect(
-			screen.getByRole("link", { name: /execution/i }),
+			screen.getByRole("link", { name: /view execution/i }),
 		).toHaveAttribute("href", "/history/execution-428950");
 	});
 
-	it("keeps the final answer as a readable activity event", () => {
-		renderWithProviders(
+	it("keeps the final answer as a readable activity event", async () => {
+		const { user } = renderWithProviders(
 			<Timeline
 				steps={[
 					step(
 						"llm_response",
-						{ content: "Triage complete.", tool_calls: [] },
+						{
+							content:
+								"## Triage complete\n\nThe **device** is online.\n\n| Check | Result |\n| --- | --- |\n| Reachable | Yes |",
+							tool_calls: [],
+						},
 						1,
 					),
 				]}
 			/>,
 		);
 		expect(screen.getByText("Final response")).toBeInTheDocument();
-		expect(screen.getByText("Triage complete.")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("heading", { name: "Triage complete" }),
+		).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Final response" }),
+		);
+		expect(
+			screen.getByRole("heading", { name: "Triage complete" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("cell", { name: "Reachable" }),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("No task summary recorded."),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Final response" }),
+		).toHaveFocus();
 	});
 
 	it("loads and expands delegated work inline", async () => {
@@ -252,29 +399,23 @@ describe("Timeline activity view", () => {
 			name: /show details for troubleshooting specialist/i,
 		});
 		expect(disclosure).toHaveAccessibleDescription("Completed");
-		expect(disclosure).toContainElement(
-			screen.getByText("Troubleshooting Specialist"),
-		);
-		expect(disclosure).toContainElement(
-			screen.getByText("Collect endpoint evidence"),
-		);
-		expect(
-			screen.getByRole("link", {
-				name: /open troubleshooting specialist run/i,
+		await user.click(
+			screen.getByRole("button", {
+				name: /troubleshooting specialist collect endpoint evidence/i,
 			}),
-		).toHaveAttribute("href", "/agents/agent-child/runs/child-1");
-		await user.click(screen.getByText("Collect endpoint evidence"));
+		);
+		expect(screen.getByRole("link", { name: /view run/i })).toHaveAttribute(
+			"href",
+			"/agents/agent-child/runs/child-1",
+		);
+		await user.click(disclosure);
 		const expandedDisclosure = screen.getByRole("button", {
 			name: /hide details for troubleshooting specialist/i,
 		});
 		expect(expandedDisclosure).toHaveAttribute("aria-expanded", "true");
-		expect(expandedDisclosure).toHaveAttribute(
-			"aria-controls",
-			expect.stringContaining("details"),
+		expect(screen.getByRole("tabpanel")).toHaveTextContent(
+			"Checked the device and found low disk space.",
 		);
-		expect(
-			screen.getByText("Checked the device and found low disk space."),
-		).toBeInTheDocument();
 		expect(
 			screen.getByText("Looked up device details"),
 		).toBeInTheDocument();
@@ -305,10 +446,11 @@ describe("Timeline activity view", () => {
 		);
 
 		await user.click(
-			screen.getByRole("link", {
-				name: /open troubleshooting specialist run/i,
+			screen.getByRole("button", {
+				name: /troubleshooting specialist collect endpoint evidence/i,
 			}),
 		);
+		await user.click(screen.getByRole("link", { name: /view run/i }));
 		expect(screen.getByTestId("navigation-state")).toHaveTextContent(
 			JSON.stringify({
 				agentRunOrigin: {
@@ -352,7 +494,10 @@ describe("Timeline activity view", () => {
 		];
 		const timeline = (expanded: ReadonlySet<string>, restore?: string) => (
 			<Timeline
-				steps={steps}
+				steps={[
+					...steps,
+					step("llm_response", { content: "Run finished" }, 3),
+				]}
 				childRunIds={["child-1"]}
 				childRuns={[childReference()]}
 				expandedDelegationIds={expanded}
@@ -378,12 +523,213 @@ describe("Timeline activity view", () => {
 			}),
 		).toHaveAttribute("aria-expanded", "true");
 		expect(
-			screen.getByText("Checked the device and found low disk space."),
+			screen.getByText("Looked up device details"),
 		).toBeInTheDocument();
 		expect(scrollIntoView).toHaveBeenCalledWith({
 			behavior: "auto",
 			block: "center",
 		});
+		expect(
+			screen.getByRole("region", { name: "Selected call details" }),
+		).toHaveTextContent("Troubleshooting Specialist");
+		expect(screen.getByRole("tabpanel")).toHaveTextContent(
+			"Checked the device and found low disk space.",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Final response" }),
+		);
+		expect(
+			screen.getByRole("region", { name: "Selected call details" }),
+		).toHaveTextContent("Final response");
+		expect(
+			screen.getByRole("region", { name: "Selected call details" }),
+		).not.toHaveTextContent("Troubleshooting Specialist");
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		await user.click(screen.getByRole("button", { name: "Collapse all" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+
+	it("expands recursively and selects grandchild activity without replacing the main summary", async () => {
+		mockUseAgentRun.mockImplementation((runId: string | undefined) => ({
+			data:
+				runId === "child-1"
+					? childRun({
+							child_run_ids: ["grandchild-1"],
+							child_runs: [grandchildReference()],
+						})
+					: runId === "grandchild-1"
+						? grandchildRun()
+						: undefined,
+			isLoading: false,
+			isError: false,
+		}));
+		const { user } = renderWithProviders(
+			<Timeline
+				steps={[
+					step(
+						"tool_call",
+						{
+							tool_name: "delegate_to_troubleshooting_agent",
+							arguments: { task: "Collect endpoint evidence" },
+						},
+						1,
+					),
+					step(
+						"tool_result",
+						{
+							tool_name: "delegate_to_troubleshooting_agent",
+							result: "Evidence collected",
+							child_run_id: "child-1",
+						},
+						2,
+					),
+				]}
+				childRunIds={["child-1"]}
+				childRuns={[childReference()]}
+			/>,
+		);
+
+		await user.click(screen.getByRole("button", { name: "Expand all" }));
+		expect(
+			screen.getByRole("button", {
+				name: /hide details for troubleshooting specialist/i,
+			}),
+		).toHaveAttribute("aria-expanded", "true");
+		expect(
+			screen.getByRole("button", {
+				name: /hide details for asset resolver/i,
+			}),
+		).toHaveAttribute("aria-expanded", "true");
+
+		await user.click(
+			screen.getByRole("button", {
+				name: /asset resolver confirm the managed asset/i,
+			}),
+		);
+		const selectedDetails = screen.getByRole("region", {
+			name: "Selected call details",
+		});
+		expect(selectedDetails).toHaveTextContent("Asset Resolver");
+		expect(selectedDetails).toHaveTextContent(
+			"Matched the requester to ELIJAH-LT.",
+		);
+		expect(
+			screen.getByRole("button", {
+				name: /troubleshooting specialist collect endpoint evidence/i,
+			}),
+		).toBeInTheDocument();
+	});
+
+	it("lets users collapse individual branches after expanding all", async () => {
+		mockUseAgentRun.mockImplementation((id: string | undefined) => ({
+			data: id === "child-1" ? childRun() : undefined,
+			isLoading: false,
+			isError: false,
+		}));
+		const { user } = renderWithProviders(
+			<Timeline
+				steps={[]}
+				childRuns={[childReference()]}
+				childRunIds={["child-1"]}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: "Expand all" }));
+		await user.click(
+			screen.getByRole("button", {
+				name: /hide details for troubleshooting specialist/i,
+			}),
+		);
+		expect(
+			screen.getByRole("button", {
+				name: /show details for troubleshooting specialist/i,
+			}),
+		).toHaveAttribute("aria-expanded", "false");
+		await user.click(screen.getByRole("button", { name: "Collapse all" }));
+		await user.click(
+			screen.getByRole("button", {
+				name: /show details for troubleshooting specialist/i,
+			}),
+		);
+		expect(
+			screen.getByRole("button", {
+				name: /hide details for troubleshooting specialist/i,
+			}),
+		).toHaveAttribute("aria-expanded", "true");
+	});
+
+	it("refreshes a selected nested workflow output while its source run streams", async () => {
+		let source = childRun({ status: "running" });
+		mockUseAgentRun.mockImplementation((id: string | undefined) => ({
+			data: id === "child-1" ? source : undefined,
+			isLoading: false,
+			isError: false,
+		}));
+		const props = {
+			steps: [],
+			childRuns: [childReference()],
+			childRunIds: ["child-1"],
+		};
+		const { user, rerender } = renderWithProviders(<Timeline {...props} />);
+		await user.click(screen.getByRole("button", { name: "Expand all" }));
+		await user.click(
+			screen.getByRole("button", { name: /looked up device details/i }),
+		);
+		await user.click(screen.getByRole("tab", { name: "Result" }));
+		expect(screen.getByRole("tabpanel")).toHaveTextContent("online");
+		source = childRun({
+			steps: [
+				source.steps![0],
+				step(
+					"tool_result",
+					{
+						tool_name: "ninja_get_device_details",
+						result: { device: "ELIJAH-LT", status: "resolved" },
+					},
+					2,
+				),
+			],
+		});
+		rerender(<Timeline {...props} />);
+		expect(screen.getByRole("tabpanel")).toHaveTextContent("resolved");
+	});
+
+	it("updates selected root activity when streamed results arrive", async () => {
+		const call = step(
+			"tool_call",
+			{
+				tool_name: "ai_ticketing_get_ticket_details",
+				arguments: { ticket_id: 428950 },
+			},
+			1,
+		);
+		const firstResult = step(
+			"tool_result",
+			{
+				tool_name: "ai_ticketing_get_ticket_details",
+				result: { ticket_id: 428950, status: "open" },
+			},
+			2,
+		);
+		const updatedResult = step(
+			"tool_result",
+			{
+				tool_name: "ai_ticketing_get_ticket_details",
+				result: { ticket_id: 428950, status: "resolved" },
+			},
+			2,
+		);
+		const { user, rerender } = renderWithProviders(
+			<Timeline steps={[call, firstResult]} />,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /looked up ticket details/i }),
+		);
+		await user.click(screen.getByRole("tab", { name: "Result" }));
+		expect(screen.getByRole("tabpanel")).toHaveTextContent("open");
+
+		rerender(<Timeline steps={[call, updatedResult]} />);
+		expect(screen.getByRole("tabpanel")).toHaveTextContent("resolved");
 	});
 
 	it("keeps delegated status copy accurate and resilient to long content", () => {
@@ -420,10 +766,7 @@ describe("Timeline activity view", () => {
 			/>,
 		);
 
-		expect(screen.getByText(agentName)).toHaveClass(
-			"min-w-0",
-			"break-words",
-		);
+		expect(screen.getByText(agentName)).toHaveClass("break-words");
 		const status = screen.getByLabelText(
 			"Delegated run status: Cancelling",
 		);
@@ -542,14 +885,13 @@ describe("Timeline activity view", () => {
 			screen.queryByText(/called ai_ticketing/i),
 		).not.toBeInTheDocument();
 
-		await user.click(screen.getByText("Details", { exact: true }));
-		expect(
-			screen.getByText("ai_ticketing_get_ticket_details", {
-				exact: true,
-			}),
-		).toBeInTheDocument();
-		expect(screen.getAllByText("ticket_id:")).toHaveLength(2);
-		expect(screen.getByText("Steps 2–3")).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: /looked up ticket details/i }),
+		);
+		await user.click(screen.getByRole("tab", { name: "Input" }));
+		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
+		await user.click(screen.getByRole("tab", { name: "Result" }));
+		expect(screen.getByText("status:")).toBeInTheDocument();
 	});
 });
 

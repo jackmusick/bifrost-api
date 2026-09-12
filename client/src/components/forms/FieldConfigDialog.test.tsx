@@ -69,17 +69,20 @@ vi.mock("@/services/dataProviders", () => ({
 }));
 
 import { FieldConfigDialog } from "./FieldConfigDialog";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 function renderDialog(overrides: Record<string, unknown> = {}) {
 	const onClose = vi.fn();
 	const onSave = vi.fn();
 	const utils = renderWithProviders(
-		<FieldConfigDialog
-			open={true}
-			onClose={onClose}
-			onSave={onSave}
-			{...overrides}
-		/>,
+		<ThemeProvider>
+			<FieldConfigDialog
+				open={true}
+				onClose={onClose}
+				onSave={onSave}
+				{...overrides}
+			/>
+		</ThemeProvider>,
 	);
 	return { ...utils, onClose, onSave };
 }
@@ -176,9 +179,7 @@ describe("FieldConfigDialog — save flow", () => {
 		await user.click(screen.getByRole("button", { name: /add field/i }));
 
 		expect(onSave).not.toHaveBeenCalled();
-		expect(
-			screen.getByText(/bad expression/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/bad expression/i)).toBeInTheDocument();
 	});
 });
 
@@ -203,7 +204,9 @@ describe("FieldConfigDialog — conditional rendering", () => {
 		await user.click(typeTrigger);
 		await user.click(await screen.findByText(/file upload/i));
 
-		expect(screen.getByLabelText(/allowed file types/i)).toBeInTheDocument();
+		expect(
+			screen.getByLabelText(/allowed file types/i),
+		).toBeInTheDocument();
 		expect(screen.getByLabelText(/max file size/i)).toBeInTheDocument();
 	});
 
@@ -235,4 +238,15 @@ describe("FieldConfigDialog — conditional rendering", () => {
 			type: "multi_select",
 		});
 	});
+});
+
+
+it("saves query parameter opt-in from the settings switch", async () => {
+	const { user, onSave } = renderDialog();
+	await user.type(screen.getByLabelText(/field name/i), "customer");
+	const toggle = screen.getByRole("switch", { name: /allow as query parameter/i });
+	expect(toggle).not.toBeChecked();
+	await user.click(toggle);
+	await user.click(screen.getByRole("button", { name: /add field/i }));
+	expect(onSave.mock.calls[0]![0]).toMatchObject({ allow_as_query_param: true });
 });

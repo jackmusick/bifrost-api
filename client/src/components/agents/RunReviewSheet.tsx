@@ -7,21 +7,26 @@
  * component is purely presentational.
  */
 
-import { useState } from "react";
-import { ExternalLink, ListTree, Sparkles } from "lucide-react";
+import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
+import { useState, type ReactNode } from "react";
+import { ExternalLink, ListTree, Sparkles, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
+import { Button } from "@/components/ui/button";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 import {
 	Sheet,
 	SheetContent,
 	SheetHeader,
 	SheetTitle,
+	SheetDescription,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	createAgentRunNavigationState,
 	getLocationHref,
 } from "@/lib/agent-run-navigation";
+import { cn } from "@/lib/utils";
 import type { components } from "@/lib/v1";
 
 import { FlagConversation } from "./FlagConversation";
@@ -42,10 +47,16 @@ export interface RunReviewSheetProps {
 	onVerdict: (v: Verdict) => void;
 	onNote: (n: string) => void;
 	conversation: FlagConversationResponse | null;
-	onSendChat: (text: string) => void;
+	onSendChat: (text: string) => void | Promise<void>;
 	chatPending?: boolean;
+	chatDisabled?: boolean;
 	onTestAgainstRun?: () => void;
 	defaultTab?: "review" | "tune";
+	reviewPending?: boolean;
+	reviewFeedback?: ReactNode;
+	reviewActions?: ReactNode;
+	readFeedback?: ReactNode;
+	conversationFeedback?: ReactNode;
 }
 
 export function RunReviewSheet({
@@ -59,16 +70,50 @@ export function RunReviewSheet({
 	conversation,
 	onSendChat,
 	chatPending,
+	chatDisabled,
 	onTestAgainstRun,
 	defaultTab = "review",
+	reviewPending,
+	reviewFeedback,
+	reviewActions,
+	readFeedback,
+	conversationFeedback,
 }: RunReviewSheetProps) {
 	const location = useLocation();
+	const dialogFocus = useDialogReturnFocus();
 	const [activityPreview, setActivityPreview] = useState<{
 		runId: string;
 		activityId: string;
 	} | null>(null);
 
-	if (!run) return null;
+	if (!run)
+		return (
+			<Sheet open={open} onOpenChange={onOpenChange}>
+				<SheetContent
+					{...dialogFocus}
+					side="right"
+					aria-label="Run review"
+					className="w-full bg-background sm:max-w-2xl"
+				>
+					<SheetHeader>
+						<SheetTitle>Run review</SheetTitle>
+						<SheetDescription>
+							Review this run’s activity and outcome.
+						</SheetDescription>
+					</SheetHeader>
+					<div className="px-4 pb-4 sm:px-6">
+						{readFeedback || (
+							<p
+								role="status"
+								className="text-sm text-muted-foreground"
+							>
+								Loading run details…
+							</p>
+						)}
+					</div>
+				</SheetContent>
+			</Sheet>
+		);
 	const runId = run.id;
 	const runNavigationOrigin = {
 		href: getLocationHref(location),
@@ -103,103 +148,249 @@ export function RunReviewSheet({
 	return (
 		<Sheet open={open} onOpenChange={handleOpenChange}>
 			<SheetContent
+				{...dialogFocus}
 				side="right"
 				aria-label="Run review"
-				className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
+				showCloseButton={false}
+				className={cn(
+					"agent-run-review-sheet flex h-full w-full max-w-none flex-col gap-0 overflow-hidden border-border/70 bg-background p-0 text-foreground shadow-xl motion-reduce:transition-none motion-reduce:animate-none sm:max-w-2xl",
+				)}
 			>
-				{/* pr-12 leaves room for the absolutely-positioned X close
-				    button (top-4 right-4 in ui/sheet.tsx); without this, the
-				    "Open full run" link overlaps the X. */}
-				<SheetHeader className="border-b py-4 pl-6 pr-12">
-					<div className="flex items-center justify-between gap-3">
-						<SheetTitle className="truncate">
-							{/* `asked` is the bounded TL;DR; `did` is
-							    multi-sentence prose under v3+ and too long
-							    for a title. */}
-							{run.asked || run.did || "Run review"}
-						</SheetTitle>
-						<Link
-							to={`/agents/${run.agent_id}/runs/${run.id}`}
-							state={createAgentRunNavigationState(
-								runNavigationOrigin,
-							)}
-							className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-							aria-label="Open full run page"
-						>
-							Open full run
-							<ExternalLink className="h-3 w-3" />
-						</Link>
+				<RunReviewSheetHeader
+					title={run.asked || run.did || "Run review"}
+					runId={run.id}
+					agentId={run.agent_id}
+					runNavigationOrigin={runNavigationOrigin}
+					onClose={() => handleOpenChange(false)}
+					closeDisabled={reviewPending}
+				/>
+				{readFeedback ? (
+					<div className="shrink-0 px-4 pt-4 sm:px-6">
+						{readFeedback}
 					</div>
-				</SheetHeader>
+				) : null}
 				<Tabs
 					defaultValue={defaultTab}
-					className="flex min-h-0 flex-1 flex-col gap-0"
+					className="agent-run-review-tabs flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
 				>
-					<TabsList className="mx-6 mt-3 self-start">
-						<TabsTrigger value="review">Review</TabsTrigger>
-						<TabsTrigger value="tune">
-							<Sparkles size={12} /> Tune
-						</TabsTrigger>
+					<TabsList className="mx-4 mt-4 flex min-h-14 shrink-0 w-[calc(100%-2rem)] sm:mx-6 sm:w-fit">
+						<RunReviewSheetTabTrigger
+							value="review"
+							icon={ListTree}
+						>
+							Review
+						</RunReviewSheetTabTrigger>
+						<RunReviewSheetTabTrigger value="tune" icon={Sparkles}>
+							Tune
+						</RunReviewSheetTabTrigger>
 					</TabsList>
 					<TabsContent
 						value="review"
-						className="flex-1 overflow-y-auto"
+						className="agent-run-review-tab flex min-h-0 flex-1 flex-col overflow-hidden"
 					>
-						<RunReviewPanel
-							run={run}
-							verdict={verdict}
-							note={note}
-							onVerdict={onVerdict}
-							onNote={onNote}
-							variant="drawer"
-							runNavigationOrigin={runNavigationOrigin}
-							onActivityReferencePreview={
-								handleActivityReferencePreview
-							}
-							onActivityReferenceActivate={
-								handleActivityReferenceActivate
-							}
-						/>
-						<section
-							className="border-t px-4 pb-5 pt-4"
-							data-slot="run-activity"
-							aria-labelledby="run-review-sheet-activity-title"
-						>
-							<div className="mb-4">
-								<h3
-									id="run-review-sheet-activity-title"
-									className="flex items-center gap-2 text-sm font-semibold"
-								>
-									<ListTree className="h-4 w-4 text-muted-foreground" />
-									Activity
-								</h3>
-								<p className="mt-1 text-xs text-muted-foreground">
-									How the agent handled this run, in order
-								</p>
-							</div>
-							<Timeline
-								steps={run.steps ?? []}
-								childRunIds={run.child_run_ids ?? []}
-								childRuns={run.child_runs ?? []}
-								runStatus={run.status}
+						<RunReviewSheetScrollRegion>
+							{reviewFeedback ? (
+								<div className="px-4 pt-4 sm:px-6">
+									{reviewFeedback}
+								</div>
+							) : null}
+							<fieldset
+								disabled={reviewPending}
+								className="min-w-0 space-y-3"
+							>
+								<RunReviewPanel
+									run={run}
+									verdict={verdict}
+									note={note}
+									onVerdict={onVerdict}
+									onNote={onNote}
+									variant="drawer"
+									runNavigationOrigin={runNavigationOrigin}
+									onActivityReferencePreview={
+										handleActivityReferencePreview
+									}
+									onActivityReferenceActivate={
+										handleActivityReferenceActivate
+									}
+								/>
+								{reviewActions ? (
+									<div className="px-4 pb-4 sm:px-6">
+										{reviewActions}
+									</div>
+								) : null}
+							</fieldset>
+							<RunReviewSheetActivitySection
 								highlightedActivityId={highlightedActivityId}
-								childRunOrigin={runNavigationOrigin}
+								run={run}
+								runNavigationOrigin={runNavigationOrigin}
 							/>
-						</section>
+						</RunReviewSheetScrollRegion>
 					</TabsContent>
 					<TabsContent
 						value="tune"
-						className="flex min-h-0 flex-1 flex-col"
+						className="agent-run-review-tab flex min-h-0 flex-1 flex-col overflow-hidden"
 					>
-						<FlagConversation
-							conversation={conversation}
-							onSend={onSendChat}
-							pending={chatPending}
-							onTestAgainstRun={onTestAgainstRun}
-						/>
+						<div className="agent-run-review-tuning flex min-h-0 flex-1 flex-col overflow-hidden">
+							{conversationFeedback ? (
+								<div className="shrink-0 px-4 pt-4 sm:px-6">
+									{conversationFeedback}
+								</div>
+							) : null}
+							{(!conversationFeedback || conversation) && (
+								<FlagConversation
+									conversation={conversation}
+									onSend={onSendChat}
+									pending={chatPending}
+									disabled={chatDisabled}
+									onTestAgainstRun={onTestAgainstRun}
+								/>
+							)}
+						</div>
 					</TabsContent>
 				</Tabs>
 			</SheetContent>
 		</Sheet>
+	);
+}
+
+function RunReviewSheetHeader({
+	closeDisabled,
+	title,
+	runId,
+	agentId,
+	runNavigationOrigin,
+	onClose,
+}: {
+	title: string;
+	runId: string;
+	agentId: string | null;
+	runNavigationOrigin: {
+		href: string;
+		label: string;
+	};
+	onClose: () => void;
+	closeDisabled?: boolean;
+}) {
+	return (
+		<SheetHeader className="shrink-0 border-b border-border/80 bg-background/95 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] text-left backdrop-blur supports-[backdrop-filter]:bg-background/90 sm:px-6">
+			<div className="flex min-w-0 flex-col gap-3">
+				<div className="flex items-start gap-3">
+					<div className="min-w-0 flex-1">
+						<div className="mb-1 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+							<span className="h-2 w-2 rounded-full bg-primary" />
+							Run review
+						</div>
+						<SheetTitle className="text-pretty break-words text-lg leading-6 sm:text-xl">
+							<MarkdownContent
+								content={title}
+								variant="preview"
+							/>
+						</SheetTitle>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-lg"
+						onClick={onClose}
+						disabled={closeDisabled}
+						aria-label="Close run review"
+						className="h-11 w-11 shrink-0 border border-border/70 bg-background/90 text-foreground hover:bg-muted motion-reduce:transition-none"
+					>
+						<X className="h-5 w-5" />
+					</Button>
+				</div>
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+					<p className="max-w-2xl text-sm leading-5 text-muted-foreground">
+						Review verdicts, notes, and tuning chat for this run.
+					</p>
+					<Button
+						asChild
+						variant="outline"
+						className="h-11 w-full shrink-0 justify-between gap-2 px-3 text-[13px] font-medium text-primary hover:bg-accent sm:w-auto"
+					>
+						<Link
+							to={`/agents/${agentId}/runs/${runId}`}
+							state={createAgentRunNavigationState(
+								runNavigationOrigin,
+							)}
+							aria-label="Open full run page"
+						>
+							Open full run
+							<ExternalLink className="h-4 w-4" />
+						</Link>
+					</Button>
+				</div>
+			</div>
+		</SheetHeader>
+	);
+}
+
+function RunReviewSheetTabTrigger({
+	value,
+	icon: Icon,
+	children,
+}: {
+	value: "review" | "tune";
+	icon: typeof ListTree;
+	children: string;
+}) {
+	return (
+		<TabsTrigger
+			value={value}
+			className="min-h-11 flex-1 gap-2 px-3 text-sm font-medium motion-reduce:transition-none sm:flex-none"
+		>
+			<Icon className="h-4 w-4" />
+			{children}
+		</TabsTrigger>
+	);
+}
+
+function RunReviewSheetScrollRegion({ children }: { children: ReactNode }) {
+	return (
+		<div className="agent-run-review-content flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-background">
+			{children}
+		</div>
+	);
+}
+
+function RunReviewSheetActivitySection({
+	run,
+	runNavigationOrigin,
+	highlightedActivityId,
+}: {
+	run: AgentRunDetail;
+	runNavigationOrigin: {
+		href: string;
+		label: string;
+	};
+	highlightedActivityId: string | null;
+}) {
+	return (
+		<section
+			className="border-t border-border/70 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-6"
+			data-slot="run-activity"
+			aria-labelledby="run-review-sheet-activity-title"
+		>
+			<div className="mb-4">
+				<h3
+					id="run-review-sheet-activity-title"
+					className="flex items-center gap-2 text-sm font-semibold"
+				>
+					<ListTree className="h-4 w-4 text-primary" />
+					Activity
+				</h3>
+				<p className="mt-1 text-xs leading-5 text-muted-foreground">
+					How the agent handled this run, in order
+				</p>
+			</div>
+			<Timeline
+				steps={run.steps ?? []}
+				childRunIds={run.child_run_ids ?? []}
+				childRuns={run.child_runs ?? []}
+				runStatus={run.status}
+				highlightedActivityId={highlightedActivityId}
+				childRunOrigin={runNavigationOrigin}
+			/>
+		</section>
 	);
 }

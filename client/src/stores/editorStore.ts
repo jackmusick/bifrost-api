@@ -15,11 +15,7 @@ type AvailableReplacement = components["schemas"]["AvailableReplacement"];
  */
 
 export type SidebarPanel =
-	| "files"
-	| "search"
-	| "run"
-	| "packages"
-	| "sourceControl";
+	"files" | "search" | "run" | "packages" | "sourceControl";
 export type LayoutMode = "fullscreen" | "minimized";
 
 export interface CursorPosition {
@@ -47,9 +43,7 @@ export interface TerminalOutput {
 
 export type SaveState = "clean" | "dirty" | "saving" | "saved" | "conflict";
 export type ConflictReason =
-	| "content_changed"
-	| "path_not_found"
-	| "workflows_would_deactivate";
+	"content_changed" | "path_not_found" | "workflows_would_deactivate";
 
 // Define ConflictInfo locally since it's not in the OpenAPI spec
 interface ConflictInfo {
@@ -78,6 +72,8 @@ export interface DiffPreviewState {
 	remoteContent: string | null;
 	isConflict: boolean;
 	isLoading?: boolean;
+	error?: string;
+	onRetry?: () => void;
 	resolution?: "ours" | "theirs";
 	onResolve?: (resolution: "ours" | "theirs") => void;
 	conflictType?: string | null;
@@ -207,7 +203,12 @@ interface EditorState {
 	appendTerminalOutput: (result: Omit<ExecutionResult, "timestamp">) => void;
 	streamTerminalLog: (
 		executionId: string,
-		log: { level: string; message: string; source: string; timestamp: string },
+		log: {
+			level: string;
+			message: string;
+			source: string;
+			timestamp: string;
+		},
 		status?: string,
 	) => void;
 	clearTerminalOutput: () => void;
@@ -489,11 +490,11 @@ export const useEditorStore = create<EditorState>()(
 
 				const newTabs = [...state.tabs];
 				const activeTab = newTabs[state.activeTabIndex];
-				if (activeTab) {
+				if (activeTab && activeTab.content !== content) {
 					newTabs[state.activeTabIndex] = {
 						...activeTab,
 						content,
-						unsavedChanges: activeTab.content !== content,
+						unsavedChanges: true,
 					};
 					set({ tabs: newTabs });
 				}
@@ -625,8 +626,7 @@ export const useEditorStore = create<EditorState>()(
 								...tabWithoutConflict,
 								content: serverFile.content,
 								encoding: serverFile.encoding as
-									| "utf-8"
-									| "base64",
+									"utf-8" | "base64",
 								etag: serverFile.etag,
 								saveState: "clean",
 								unsavedChanges: false,
@@ -707,7 +707,9 @@ export const useEditorStore = create<EditorState>()(
 
 			streamTerminalLog: (executionId, log, status = "Running") => {
 				const state = get();
-				const currentOutput = state.terminalOutput || { executions: [] };
+				const currentOutput = state.terminalOutput || {
+					executions: [],
+				};
 				const existing = currentOutput.executions.find(
 					(e) => e.executionId === executionId,
 				);
@@ -915,15 +917,17 @@ export const useEditorStore = create<EditorState>()(
 			setPendingDeactivationConflict: (conflict) =>
 				set({ pendingDeactivationConflict: conflict }),
 
-			resolveDeactivationConflict: async (action, replacements, workflowsToDeactivate) => {
+			resolveDeactivationConflict: async (
+				action,
+				replacements,
+				workflowsToDeactivate,
+			) => {
 				const state = get();
 				const conflict = state.pendingDeactivationConflict;
 				if (!conflict) return null;
 
-				// Clear the pending conflict first
-				set({ pendingDeactivationConflict: null });
-
 				if (action === "cancel") {
+					set({ pendingDeactivationConflict: null });
 					return null;
 				}
 
@@ -942,6 +946,8 @@ export const useEditorStore = create<EditorState>()(
 							undefined, // forceIds
 							true, // forceDeactivation
 						);
+						if (get().pendingDeactivationConflict === conflict)
+							set({ pendingDeactivationConflict: null });
 						return response;
 					} else {
 						// apply: Save with replacements and/or selective deactivations
@@ -956,6 +962,8 @@ export const useEditorStore = create<EditorState>()(
 							replacements,
 							workflowsToDeactivate,
 						);
+						if (get().pendingDeactivationConflict === conflict)
+							set({ pendingDeactivationConflict: null });
 						return response;
 					}
 				} catch (error) {
@@ -964,7 +972,7 @@ export const useEditorStore = create<EditorState>()(
 						error,
 					);
 					// Restore conflict state so the user can retry
-					set({ pendingDeactivationConflict: conflict });
+					// Keep the current conflict and its draft visible while the caller reports the failure.
 					return null;
 				}
 			},

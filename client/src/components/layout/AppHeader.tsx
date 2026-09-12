@@ -6,17 +6,13 @@
  * and standard user controls (search, notifications, theme, profile).
  */
 
-import { useState } from "react";
+import { AccountMenuContent } from "./AccountMenuContent";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
 	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -24,12 +20,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
 import { VersionUpdateBanner } from "@/components/layout/VersionUpdateBanner";
 import { useAuth } from "@/contexts/AuthContext";
-import { APP_VERSION } from "@/lib/version";
 import { term, useTerminology } from "@/lib/terminology";
 import { useProfile } from "@/hooks/useProfile";
 import { useQuickAccessStore } from "@/stores/quickAccessStore";
 import { profileService } from "@/services/profile";
-import { ChevronDown, LogOut, Settings } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 interface AppHeaderProps {
 	/** App name to display */
@@ -42,13 +37,16 @@ export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 	const navigate = useNavigate();
 	const terminology = useTerminology();
 	const { user, logout } = useAuth();
-	const openQuickAccess = useQuickAccessStore((state) => state.openQuickAccess);
-
-	const userEmail = user?.email || "Loading...";
-	const userName = user?.name || user?.email?.split("@")[0] || "User";
+	const openQuickAccess = useQuickAccessStore(
+		(state) => state.openQuickAccess,
+	);
 
 	// Profile data via React Query (cached)
 	const { data: profile, dataUpdatedAt } = useProfile();
+	const userEmail = profile?.email || user?.email || "Loading...";
+	const userName = profile
+		? profile.name || profile.email.split("@")[0]
+		: user?.name || user?.email?.split("@")[0] || "User";
 
 	// Compute avatar URL with cache-busting timestamp
 	const avatarUrl =
@@ -78,25 +76,24 @@ export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 	};
 
 	return (
-		<header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-			<div className="flex h-14 items-center px-4 lg:px-6">
+		<header className="sticky top-0 z-40 w-full shrink-0 border-b bg-background">
+			<div className="flex min-w-0 flex-col gap-2 px-4 py-2 lg:flex-row lg:items-center lg:px-6">
 				{/* Left: Back button + App name + Preview badge */}
-				<div className="flex items-center gap-3">
+				<div className="flex min-w-0 flex-1 items-center gap-2">
 					<Button
+						type="button"
 						variant="ghost"
-						size="icon"
+						size="icon-lg"
 						onClick={handleBack}
-						title={
-							isPreview
-								? "Back to Editor"
-								: `Back to ${term(terminology, "app", "plural")}`
-						}
+						aria-label={`Back to ${term(terminology, "app", "plural")}`}
 					>
 						<ArrowLeft className="h-5 w-5" />
 					</Button>
 
-					<div className="flex items-center gap-2">
-						<span className="font-semibold text-sm">{appName}</span>
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+						<span className="min-w-0 font-display text-base font-semibold leading-snug [overflow-wrap:anywhere]">
+							{appName}
+						</span>
 						{isPreview && (
 							<Badge variant="secondary" className="text-xs">
 								Preview
@@ -106,103 +103,62 @@ export function AppHeader({ appName, isPreview = false }: AppHeaderProps) {
 				</div>
 
 				{/* Spacer */}
-				<div className="flex-1" />
 
 				{/* Right: Version banner, Search, Notifications, Theme, Profile */}
-				<div className="flex items-center gap-1">
+				<div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
 					{/* Version Update Banner — only renders on version mismatch */}
 					<VersionUpdateBanner />
 
 					{/* Search Button */}
 					<Button
+						type="button"
 						variant="ghost"
-						size="icon"
+						size="icon-lg"
 						onClick={() => openQuickAccess()}
 						title="Search (Cmd+K)"
+						aria-label="Search (Cmd+K)"
 					>
 						<Search className="h-4 w-4" />
 					</Button>
 
 					{/* Notification Center */}
-					<NotificationCenter />
+					<NotificationCenter triggerClassName="size-11" />
 
 					{/* Theme Toggle */}
-					<ThemeToggle />
+					<ThemeToggle className="size-11" />
 
 					{/* User Menu */}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" className="gap-2 ml-2">
+							<Button
+								type="button"
+								variant="ghost"
+								className="min-h-11 gap-2 px-2"
+								aria-label="Account menu"
+							>
 								<Avatar className="h-6 w-6">
 									<AvatarImage src={avatarUrl || undefined} />
 									<AvatarFallback className="text-xs">
 										{getInitials()}
 									</AvatarFallback>
 								</Avatar>
-								<span className="hidden md:inline-block">
+								<span className="hidden max-w-40 truncate md:inline-block">
 									{userName}
 								</span>
-								<ChevronDown className="h-4 w-4" />
+								<ChevronDown className="hidden h-4 w-4 md:block" />
 							</Button>
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-56">
-							<DropdownMenuLabel>
-								<div className="flex items-center gap-3">
-									<Avatar className="h-10 w-10">
-										<AvatarImage src={avatarUrl || undefined} />
-										<AvatarFallback>
-											{getInitials()}
-										</AvatarFallback>
-									</Avatar>
-									<div className="flex flex-col space-y-1">
-										<p className="text-sm font-medium">
-											{userName}
-										</p>
-										<p className="text-xs text-muted-foreground">
-											{userEmail}
-										</p>
-									</div>
-								</div>
-							</DropdownMenuLabel>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								onClick={() => navigate("/user-settings")}
-							>
-								<Settings className="mr-2 h-4 w-4" />
-								Settings
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								className="text-destructive"
-								onClick={logout}
-							>
-								<LogOut className="mr-2 h-4 w-4" />
-								Log out
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<VersionMenuItem />
-						</DropdownMenuContent>
+						<AccountMenuContent
+							name={userName}
+							email={userEmail}
+							initials={getInitials()}
+							avatarUrl={avatarUrl}
+							onSettings={() => navigate("/user-settings")}
+							onLogout={logout}
+						/>
 					</DropdownMenu>
 				</div>
 			</div>
 		</header>
-	);
-}
-
-function VersionMenuItem() {
-	const [copied, setCopied] = useState(false);
-	return (
-		<DropdownMenuItem
-			className="text-xs text-muted-foreground font-mono justify-center focus:bg-transparent cursor-pointer"
-			onSelect={(e) => {
-				e.preventDefault();
-				void navigator.clipboard.writeText(APP_VERSION);
-				setCopied(true);
-				setTimeout(() => setCopied(false), 1500);
-			}}
-			title="Click to copy"
-		>
-			{copied ? "Copied!" : APP_VERSION}
-		</DropdownMenuItem>
 	);
 }

@@ -1,3 +1,5 @@
+import { DocsIndexResults, AppDepScanResults, type DocsIndexResponse, type AppDependencyScanResponse } from "./maintenance/MaintenanceResults";
+import { MaintenanceActionRow, type MaintenanceOutcome } from "./maintenance/MaintenanceActionRow";
 /**
  * Workspace Maintenance Settings
  *
@@ -5,7 +7,7 @@
  * Provides tools for documentation indexing and app dependency scanning.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
 	Card,
 	CardContent,
@@ -14,13 +16,8 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-	AlertCircle,
-	CheckCircle2,
 	Loader2,
-	AlertTriangle,
 	Settings2,
 	Database,
 	AppWindow,
@@ -35,40 +32,15 @@ import { exportAll } from "@/services/exportImport";
 import { ImportDialog } from "@/components/ImportDialog";
 import { ArtifactRetentionSettings } from "@/pages/settings/ArtifactRetentionSettings";
 
-interface DocsIndexResponse {
-	status: string;
-	files_indexed: number;
-	files_unchanged: number;
-	files_deleted: number;
-	duration_ms: number;
-	message: string | null;
-}
-
-interface AppDependencyIssue {
-	app_id: string;
-	app_name: string;
-	app_slug: string;
-	file_path: string;
-	dependency_type: string;
-	dependency_id: string;
-}
-
-interface AppDependencyScanResponse {
-	apps_scanned: number;
-	files_scanned: number;
-	dependencies_rebuilt: number;
-	issues_found: number;
-	issues: AppDependencyIssue[];
-	notification_created: boolean;
-}
-
 type ScanResultType = "none" | "docs" | "app-deps";
 
 export function Maintenance() {
+	const reimportController = useRef<AbortController | null>(null);
+	useEffect(() => () => reimportController.current?.abort(), []);
 	// Checklist state
 	const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set());
 	const [runningAction, setRunningAction] = useState<string | null>(null);
-	const [completedActions, setCompletedActions] = useState<Set<string>>(new Set());
+	const [actionOutcomes, setActionOutcomes] = useState<Record<string, MaintenanceOutcome>>({});
 	const [actionQueue, setActionQueue] = useState<string[]>([]);
 
 	// Results
@@ -81,15 +53,16 @@ export function Maintenance() {
 	const [isExportingAll, setIsExportingAll] = useState(false);
 	const [isImportAllOpen, setIsImportAllOpen] = useState(false);
 
-	const isAnyRunning = runningAction !== null;
+	const isAnyRunning = runningAction !== null || actionQueue.length > 0;
 
-	const finishAction = (actionId: string) => {
-		setCompletedActions((prev) => new Set([...prev, actionId]));
+	const finishAction = (actionId: string, outcome: MaintenanceOutcome) => {
+		setActionOutcomes((previous) => ({ ...previous, [actionId]: outcome }));
 		setRunningAction(null);
 	};
 
 	const handleDocsIndex = async () => {
 		setRunningAction("docs");
+		let outcome: MaintenanceOutcome = "failed";
 
 		try {
 			const response = await authFetch("/api/maintenance/index-docs", {
@@ -105,6 +78,7 @@ export function Maintenance() {
 			}
 
 			const data: DocsIndexResponse = await response.json();
+			outcome = data.status === "complete" ? "complete" : data.status === "skipped" ? "skipped" : "failed";
 			setDocsIndexResult(data);
 			setLastScanType("docs");
 
@@ -129,12 +103,13 @@ export function Maintenance() {
 						: "Unknown error occurred",
 			});
 		} finally {
-			finishAction("docs");
+			finishAction("docs", outcome);
 		}
 	};
 
 	const handleAppDepScan = async () => {
 		setRunningAction("app-deps");
+		let outcome: MaintenanceOutcome = "failed";
 
 		try {
 			const response = await authFetch("/api/maintenance/scan-app-dependencies", {
@@ -150,6 +125,7 @@ export function Maintenance() {
 			}
 
 			const data: AppDependencyScanResponse = await response.json();
+			outcome = "complete";
 			setAppDepScanResult(data);
 			setLastScanType("app-deps");
 
@@ -170,28 +146,34 @@ export function Maintenance() {
 						: "Unknown error occurred",
 			});
 		} finally {
-			finishAction("app-deps");
+			finishAction("app-deps", outcome);
 		}
 	};
 
 	const handleReimport = async () => {
+		const controller = new AbortController();
+		reimportController.current = controller;
+		const { signal } = controller;
 		setRunningAction("reimport");
+		let outcome: MaintenanceOutcome = "failed";
 
 		try {
 			const response = await authFetch("/api/maintenance/reimport", {
 				method: "POST",
+				signal,
 			});
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({}));
+				if (signal.aborted) return;
 				toast.error("Reimport failed", {
 					description: errorData.detail || "Unknown error",
 				});
-				finishAction("reimport");
 				return;
 			}
 
 			const { job_id } = await response.json();
+			if (signal.aborted) return;
 			toast.info("Reimport started", {
 				description: "Re-importing entities from repository...",
 			});
@@ -199,11 +181,20 @@ export function Maintenance() {
 			// Poll for job completion
 			const poll = async () => {
 				for (let i = 0; i < 120; i++) {
-					await new Promise((r) => setTimeout(r, 2000));
+					if (signal.aborted) return;
+					await new Promise<void>((resolve) => {
+						const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+						const timer = setTimeout(done, 2000);
+						signal.addEventListener("abort", done, { once: true });
+					});
+					if (signal.aborted) return;
 					try {
-						const res = await authFetch(`/api/jobs/${job_id}`);
+						const res = await authFetch(`/api/jobs/${job_id}`, { signal });
+						if (!res.ok) continue;
 						const result = await res.json();
+						if (signal.aborted) return;
 						if (result.status === "success") {
+							outcome = "complete";
 							toast.success("Reimport complete", {
 								description: result.message || "All entities reimported",
 							});
@@ -216,9 +207,11 @@ export function Maintenance() {
 						}
 						// status === "pending" — keep polling
 					} catch {
+						if (signal.aborted) return;
 						// Network error, keep polling
 					}
 				}
+				outcome = "unknown";
 				toast.warning("Reimport timed out", {
 					description: "Job may still be running. Check scheduler logs.",
 				});
@@ -226,6 +219,7 @@ export function Maintenance() {
 
 			await poll();
 		} catch (err) {
+			if (signal.aborted) return;
 			toast.error("Reimport failed", {
 				description:
 					err instanceof Error
@@ -233,7 +227,8 @@ export function Maintenance() {
 						: "Unknown error occurred",
 			});
 		} finally {
-			finishAction("reimport");
+			if (!signal.aborted) finishAction("reimport", outcome);
+			if (reimportController.current === controller) reimportController.current = null;
 		}
 	};
 
@@ -268,7 +263,9 @@ export function Maintenance() {
 	useEffect(() => {
 		if (runningAction !== null || actionQueue.length === 0) return;
 
+		let cancelled = false;
 		queueMicrotask(() => {
+			if (cancelled) return;
 			const [next, ...rest] = actionQueue;
 			setActionQueue(rest);
 
@@ -280,12 +277,13 @@ export function Maintenance() {
 
 			void handlers[next]?.();
 		});
+		return () => { cancelled = true; };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [runningAction, actionQueue]);
 
 	const handleRunSelected = () => {
-		if (selectedActions.size === 0) return;
-		setCompletedActions(new Set());
+		if (selectedActions.size === 0 || isAnyRunning) return;
+		setActionOutcomes({});
 		const order = ["docs", "app-deps", "reimport"];
 		const queue = order.filter((id) => selectedActions.has(id));
 		setActionQueue(queue);
@@ -329,19 +327,19 @@ export function Maintenance() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="flex items-center gap-4">
-						<Button
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+						<Button className="min-h-11"
 							onClick={handleExportAll}
 							disabled={isExportingAll}
 						>
 							{isExportingAll ? (
-								<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+								<Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
 							) : (
 								<Download className="h-4 w-4 mr-2" />
 							)}
 							Export All
 						</Button>
-						<Button
+						<Button className="min-h-11"
 							variant="outline"
 							onClick={() => setIsImportAllOpen(true)}
 						>
@@ -365,56 +363,15 @@ export function Maintenance() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="rounded-md ring-1 ring-foreground/5 divide-y">
-						{actions.map((action) => {
-							const Icon = action.icon;
-							const isRunning = runningAction === action.id;
-							const isCompleted = completedActions.has(action.id);
-							const isQueued = actionQueue.includes(action.id);
-
-							return (
-								<div key={action.id}>
-									<label
-										htmlFor={`action-${action.id}`}
-										className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 ${
-											isRunning ? "bg-muted/50" : ""
-										}`}
-									>
-										{isRunning ? (
-											<Loader2 className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
-										) : isCompleted ? (
-											<CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-										) : (
-											<Checkbox
-												id={`action-${action.id}`}
-												checked={selectedActions.has(action.id)}
-												onCheckedChange={() => toggleAction(action.id)}
-												disabled={isAnyRunning}
-											/>
-										)}
-										<Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-										<div className="min-w-0">
-											<p className="text-sm font-medium">
-												{action.label}
-												{isQueued && (
-													<span className="text-xs text-muted-foreground ml-2">queued</span>
-												)}
-											</p>
-											<p className="text-xs text-muted-foreground">
-												{action.description}
-											</p>
-										</div>
-									</label>
-								</div>
-							);
-						})}
+						{actions.map((action) => <MaintenanceActionRow key={action.id} {...action} checked={selectedActions.has(action.id)} disabled={isAnyRunning} status={runningAction === action.id ? "running" : actionQueue.includes(action.id) ? "queued" : actionOutcomes[action.id] ?? "idle"} onToggle={() => toggleAction(action.id)} />)}
 					</div>
 
-					<Button
+					<Button className="min-h-11"
 						onClick={handleRunSelected}
 						disabled={selectedActions.size === 0 || isAnyRunning}
 					>
 						{isAnyRunning ? (
-							<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+							<Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
 						) : (
 							<Play className="h-4 w-4 mr-2" />
 						)}
@@ -451,193 +408,6 @@ export function Maintenance() {
 				onOpenChange={setIsImportAllOpen}
 				entityType="all"
 			/>
-		</div>
-	);
-}
-
-function DocsIndexResults({ result }: { result: DocsIndexResponse }) {
-	const isSuccess = result.status === "complete";
-	const isSkipped = result.status === "skipped";
-
-	const formatDuration = (ms: number) => {
-		if (ms < 1000) return `${ms}ms`;
-		return `${(ms / 1000).toFixed(1)}s`;
-	};
-
-	return (
-		<div className="space-y-4">
-			{/* Summary */}
-			<div className="flex items-center gap-4 flex-wrap">
-				{isSuccess ? (
-					<div className="flex items-center gap-2 text-green-600">
-						<CheckCircle2 className="h-5 w-5" />
-						<span className="font-medium">Indexing complete</span>
-					</div>
-				) : isSkipped ? (
-					<div className="flex items-center gap-2 text-amber-600">
-						<AlertCircle className="h-5 w-5" />
-						<span className="font-medium">Indexing skipped</span>
-					</div>
-				) : (
-					<div className="flex items-center gap-2 text-destructive">
-						<AlertTriangle className="h-5 w-5" />
-						<span className="font-medium">Indexing failed</span>
-					</div>
-				)}
-			</div>
-
-			{/* Stats */}
-			{isSuccess && (
-				<div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-					<div className="rounded-lg bg-muted/50 p-3 text-center ring-1 ring-foreground/5">
-						<div className="text-2xl font-bold">
-							{result.files_indexed}
-						</div>
-						<div className="text-xs text-muted-foreground">
-							Indexed
-						</div>
-					</div>
-					<div className="rounded-lg bg-muted/50 p-3 text-center ring-1 ring-foreground/5">
-						<div className="text-2xl font-bold">
-							{result.files_unchanged}
-						</div>
-						<div className="text-xs text-muted-foreground">
-							Unchanged
-						</div>
-					</div>
-					<div className="rounded-lg bg-muted/50 p-3 text-center ring-1 ring-foreground/5">
-						<div className="text-2xl font-bold">
-							{result.files_deleted}
-						</div>
-						<div className="text-xs text-muted-foreground">
-							Deleted
-						</div>
-					</div>
-					<div className="rounded-lg bg-muted/50 p-3 text-center ring-1 ring-foreground/5">
-						<div className="text-2xl font-bold">
-							{formatDuration(result.duration_ms)}
-						</div>
-						<div className="text-xs text-muted-foreground">
-							Duration
-						</div>
-					</div>
-				</div>
-			)}
-
-			{/* Message */}
-			{result.message && (
-				<p className="text-sm text-muted-foreground">
-					{result.message}
-				</p>
-			)}
-		</div>
-	);
-}
-
-function AppDepScanResults({ result }: { result: AppDependencyScanResponse }) {
-	const hasIssues = result.issues_found > 0;
-
-	// Group issues by app
-	const issuesByApp = result.issues.reduce(
-		(acc, issue) => {
-			const key = issue.app_slug;
-			if (!acc[key]) {
-				acc[key] = {
-					app_name: issue.app_name,
-					app_slug: issue.app_slug,
-					issues: [],
-				};
-			}
-			acc[key].issues.push(issue);
-			return acc;
-		},
-		{} as Record<
-			string,
-			{
-				app_name: string;
-				app_slug: string;
-				issues: AppDependencyIssue[];
-			}
-		>,
-	);
-
-	return (
-		<div className="space-y-4">
-			{/* Summary */}
-			<div className="flex items-center gap-4 flex-wrap">
-				{hasIssues ? (
-					<div className="flex items-center gap-2 text-amber-600">
-						<AlertTriangle className="h-5 w-5" />
-						<span className="font-medium">
-							{result.issues_found} broken reference
-							{result.issues_found !== 1 ? "s" : ""}
-						</span>
-					</div>
-				) : (
-					<div className="flex items-center gap-2 text-green-600">
-						<CheckCircle2 className="h-5 w-5" />
-						<span className="font-medium">
-							All dependencies valid
-						</span>
-					</div>
-				)}
-				<Badge variant="secondary">
-					{result.apps_scanned} app
-					{result.apps_scanned !== 1 ? "s" : ""} scanned
-				</Badge>
-				<Badge variant="outline">
-					{result.files_scanned} file
-					{result.files_scanned !== 1 ? "s" : ""}
-				</Badge>
-				<Badge variant="outline">
-					{result.dependencies_rebuilt} dependenc
-					{result.dependencies_rebuilt !== 1 ? "ies" : "y"} rebuilt
-				</Badge>
-			</div>
-
-			{/* Issues by app */}
-			{hasIssues && (
-				<div className="space-y-2">
-					<h4 className="text-sm font-medium text-muted-foreground">
-						Missing workflow references:
-					</h4>
-					<div className="max-h-64 overflow-y-auto rounded-md bg-muted/50 p-3 space-y-3 ring-1 ring-foreground/5">
-						{Object.entries(issuesByApp).map(
-							([appSlug, { app_name, issues }]) => (
-								<div key={appSlug} className="space-y-1">
-									<div className="flex items-center gap-2 text-sm font-medium">
-										<AppWindow className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-										<span>{app_name}</span>
-										<Badge
-											variant="outline"
-											className="text-xs px-1.5 py-0"
-										>
-											{appSlug}
-										</Badge>
-									</div>
-									<ul className="ml-6 space-y-1">
-										{issues.map((issue, idx) => (
-											<li
-												key={`${issue.dependency_id}-${idx}`}
-												className="text-sm text-muted-foreground"
-											>
-												<span className="font-mono text-xs">
-													{issue.file_path}
-												</span>
-												<span className="mx-1">→</span>
-												<code className="bg-destructive/10 text-destructive px-1 py-0.5 rounded text-xs">
-													{issue.dependency_type}:{" "}
-													{issue.dependency_id}
-												</code>
-											</li>
-										))}
-									</ul>
-								</div>
-							),
-						)}
-					</div>
-				</div>
-			)}
 		</div>
 	);
 }

@@ -1,6 +1,7 @@
+import { SchedulerReplicaList } from "./SchedulerReplicaList";
+import { SchedulerTaskList } from "./SchedulerTaskList";
 import { useState } from "react";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
 import {
 	Activity,
 	AlertTriangle,
@@ -15,14 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-	DataTable,
-	DataTableBody,
-	DataTableCell,
-	DataTableHead,
-	DataTableHeader,
-	DataTableRow,
-} from "@/components/ui/data-table";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	Tooltip,
@@ -36,81 +30,6 @@ import {
 } from "@/services/schedulerDiagnostics";
 import { PlatformJobsPanel } from "./PlatformJobsPanel";
 import { SchedulerRunDrawer } from "./SchedulerRunDrawer";
-
-function formatBytes(value: number | null | undefined) {
-	if (value == null) return "Not limited";
-	const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-	let amount = value;
-	let unit = 0;
-	while (amount >= 1024 && unit < units.length - 1) {
-		amount /= 1024;
-		unit += 1;
-	}
-	return `${amount >= 10 || unit === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`;
-}
-function relativeTime(value: string | null | undefined) {
-	if (!value) return "Never";
-	return formatDistanceToNow(new Date(value), { addSuffix: true });
-}
-
-function statusVariant(status: string | undefined) {
-	if (status === "failed" || status === "cancelled")
-		return "destructive" as const;
-	if (
-		[
-			"queued",
-			"running",
-			"enqueued",
-			"waiting",
-			"cancel_requested",
-		].includes(status ?? "")
-	)
-		return "warning" as const;
-	if (status === "succeeded") return "secondary" as const;
-	return "outline" as const;
-}
-
-function statusClassName(status: string | undefined) {
-	if (status === "succeeded") {
-		return "border-green-500/30 bg-green-500/15 text-green-700 dark:text-green-400";
-	}
-	if (
-		[
-			"queued",
-			"running",
-			"enqueued",
-			"waiting",
-			"cancel_requested",
-		].includes(status ?? "")
-	) {
-		return "border-amber-500/30 bg-amber-500/15 text-amber-700 dark:text-amber-400";
-	}
-	return undefined;
-}
-
-function formatStatus(status: string | undefined) {
-	if (!status) return "Not run";
-	return status
-		.split("_")
-		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-		.join(" ");
-}
-
-function containerMemoryChange(
-	startBytes: number | null | undefined,
-	peakBytes: number | null | undefined,
-) {
-	if (startBytes == null || peakBytes == null) return null;
-	return Math.max(0, peakBytes - startBytes);
-}
-
-function formatContainerMemoryChange(
-	startBytes: number | null | undefined,
-	peakBytes: number | null | undefined,
-) {
-	const change = containerMemoryChange(startBytes, peakBytes);
-	return change == null ? "—" : formatBytes(change);
-}
 
 export function schedulerRecommendations(
 	data: SchedulerDiagnosticsResponse,
@@ -189,17 +108,28 @@ export function SchedulerTab() {
 	if (query.isLoading && !data) {
 		return (
 			<div className="flex justify-center py-16">
-				<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+				<Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
 			</div>
 		);
 	}
-	if (query.error || !data) {
+	if (!data) {
 		return (
 			<Alert variant="destructive">
 				<AlertTitle>Scheduler diagnostics unavailable</AlertTitle>
 				<AlertDescription>
-					Check the API and scheduler logs, then try again.
+					Scheduler data could not be loaded.
 				</AlertDescription>
+				<Button
+					type="button"
+					variant="outline"
+					className="min-h-11 mt-3 w-fit"
+					disabled={query.isFetching}
+					onClick={() => {
+						void query.refetch();
+					}}
+				>
+					{query.isFetching ? "Retrying…" : "Retry scheduler"}
+				</Button>
 			</Alert>
 		);
 	}
@@ -229,9 +159,9 @@ export function SchedulerTab() {
 				className="max-w-[1100px] mx-auto space-y-6"
 				data-testid="scheduler-diagnostics"
 			>
-				<div className="flex items-center justify-between gap-4">
+				<div className="flex flex-wrap items-start justify-between gap-4">
 					<div>
-						<div className="flex items-center gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							<h2 className="text-lg font-semibold">Scheduler</h2>
 							<Badge
 								variant={
@@ -241,7 +171,7 @@ export function SchedulerTab() {
 								}
 								className={
 									data.leader.healthy
-										? "border-green-500/30 bg-green-500/15 text-green-700 dark:text-green-400"
+										? "border-[var(--bf-success)]/30 bg-[var(--bf-success)]/10 text-[var(--bf-success)]"
 										: undefined
 								}
 							>
@@ -260,6 +190,8 @@ export function SchedulerTab() {
 							<Button
 								variant="outline"
 								size="icon"
+								type="button"
+								className="min-h-11 min-w-11 shrink-0"
 								aria-label="Refresh scheduler diagnostics"
 								onClick={() => {
 									void query.refetch();
@@ -270,7 +202,7 @@ export function SchedulerTab() {
 								disabled={isRefreshing}
 							>
 								<RefreshCw
-									className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+									className={`h-4 w-4 ${isRefreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
 								/>
 							</Button>
 						</TooltipTrigger>
@@ -278,9 +210,18 @@ export function SchedulerTab() {
 					</Tooltip>
 				</div>
 
+				{query.error && (
+					<Alert variant="destructive">
+						<AlertTitle>Scheduler refresh failed</AlertTitle>
+						<AlertDescription>
+							Showing the last available snapshot. Use Refresh to
+							try again.
+						</AlertDescription>
+					</Alert>
+				)}
 				{recommendations.length > 0 ? (
-					<Alert className="border-amber-500/50">
-						<AlertTriangle className="h-4 w-4 text-amber-600" />
+					<Alert className="border-[var(--bf-warning)]/40">
+						<AlertTriangle className="h-4 w-4 text-[var(--bf-warning)]" />
 						<AlertTitle>Capacity action recommended</AlertTitle>
 						<AlertDescription>
 							<ul className="mt-1 list-disc space-y-1 pl-4">
@@ -291,8 +232,8 @@ export function SchedulerTab() {
 						</AlertDescription>
 					</Alert>
 				) : (
-					<Alert className="border-green-500/40">
-						<Activity className="h-4 w-4 text-green-600" />
+					<Alert className="border-[var(--bf-success)]/30">
+						<Activity className="h-4 w-4 text-[var(--bf-success)]" />
 						<AlertTitle>Capacity looks healthy</AlertTitle>
 						<AlertDescription>
 							No sustained queue or memory pressure is visible in
@@ -352,107 +293,26 @@ export function SchedulerTab() {
 							instances.
 						</p>
 					</div>
-					<DataTable
-						className={
-							data.replicas.length === 0 ? "hidden" : undefined
-						}
-					>
-						<DataTableHeader>
-							<DataTableRow>
-								<DataTableHead>Replica</DataTableHead>
-								<DataTableHead>Role</DataTableHead>
-								<DataTableHead>Status</DataTableHead>
-								<DataTableHead>Memory</DataTableHead>
-								<DataTableHead>Slots</DataTableHead>
-								<DataTableHead>Workload</DataTableHead>
-							</DataTableRow>
-						</DataTableHeader>
-						<DataTableBody>
-							{data.replicas.map((replica) => (
-								<DataTableRow key={replica.id}>
-									<DataTableCell>
-										<div className="font-medium">
-											{replica.hostname}
-										</div>
-										<div
-											className="max-w-[220px] truncate text-xs text-muted-foreground"
-											title={replica.id}
-										>
-											{replica.id}
-										</div>
-									</DataTableCell>
-									<DataTableCell>
-										<Badge
-											variant="outline"
-											className={
-												replica.is_leader
-													? "border-violet-500/30 bg-violet-500/15 text-violet-700 dark:text-violet-400"
-													: "border-blue-500/30 bg-blue-500/15 text-blue-700 dark:text-blue-400"
-											}
-										>
-											{replica.is_leader
-												? "Trigger Leader"
-												: "Job Runner"}
-										</Badge>
-									</DataTableCell>
-									<DataTableCell>
-										<Badge
-											variant={
-												replica.online
-													? "outline"
-													: "destructive"
-											}
-											className={
-												replica.online
-													? "border-green-500/30 bg-green-500/15 text-green-700 dark:text-green-400"
-													: undefined
-											}
-										>
-											{replica.online
-												? "Online"
-												: "Stale"}
-										</Badge>
-										<div className="mt-1 text-xs text-muted-foreground">
-											{relativeTime(
-												replica.last_heartbeat_at,
-											)}
-										</div>
-									</DataTableCell>
-									<DataTableCell>
-										{formatBytes(
-											replica.memory_current_bytes,
-										)}{" "}
-										/{" "}
-										{formatBytes(
-											replica.memory_limit_bytes,
-										)}
-									</DataTableCell>
-									<DataTableCell>
-										{replica.active_platform_jobs} /{" "}
-										{replica.job_slots}
-									</DataTableCell>
-									<DataTableCell>
-										{replica.active_platform_jobs === 0
-											? "Idle"
-											: `${replica.active_platform_jobs} running`}
-									</DataTableCell>
-								</DataTableRow>
-							))}
-						</DataTableBody>
-					</DataTable>
+					<SchedulerReplicaList replicas={data.replicas} />
 					{data.replicas.length === 0 && (
-						<p className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+						<p className="rounded-[var(--bf-radius-surface)] border border-dashed py-8 text-center text-sm text-muted-foreground">
 							No scheduler replicas have reported a heartbeat.
 						</p>
 					)}
 				</section>
 
 				<Tabs defaultValue="platform-jobs" className="space-y-3">
-					<TabsList>
-						<TabsTrigger value="platform-jobs">
+					<TabsList
+						aria-label="Scheduler views"
+						className="h-auto w-full flex-wrap sm:w-fit"
+					>
+						<TabsTrigger className="min-h-11" value="platform-jobs">
 							Platform Jobs
 						</TabsTrigger>
-						<TabsTrigger value="system-schedules">
+						<TabsTrigger
+							className="min-h-11"
+							value="system-schedules"
+						>
 							System Schedules
 						</TabsTrigger>
 					</TabsList>
@@ -478,129 +338,12 @@ export function SchedulerTab() {
 									latest run.
 								</p>
 							</div>
-							<DataTable
-								className={
-									data.tasks.length === 0
-										? "hidden"
-										: "max-h-[min(56vh,620px)]"
-								}
-							>
-								<DataTableHeader>
-									<DataTableRow>
-										<DataTableHead>Name</DataTableHead>
-										<DataTableHead>State</DataTableHead>
-										<DataTableHead>Schedule</DataTableHead>
-										<DataTableHead>Next Run</DataTableHead>
-										<DataTableHead>Last Run</DataTableHead>
-										<DataTableHead title="Change in the shared scheduler container working set while this job ran">
-											Memory
-										</DataTableHead>
-									</DataTableRow>
-								</DataTableHeader>
-								<DataTableBody>
-									{data.tasks.map((task) => (
-										<DataTableRow
-											key={task.task_id}
-											clickable
-											className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-											tabIndex={0}
-											aria-label={`View recent runs for ${task.name}`}
-											onClick={() =>
-												setSelectedTask(task)
-											}
-											onKeyDown={(event) => {
-												if (
-													event.key === "Enter" ||
-													event.key === " "
-												) {
-													event.preventDefault();
-													setSelectedTask(task);
-												}
-											}}
-										>
-											<DataTableCell>
-												<div className="font-medium">
-													{task.name}
-												</div>
-												<div className="text-xs text-muted-foreground">
-													{task.execution_mode ===
-													"durable_job"
-														? "Distributed Job"
-														: "Leader Trigger"}
-												</div>
-											</DataTableCell>
-											<DataTableCell>
-												<Badge
-													variant={statusVariant(
-														task.last_run
-															?.platform_job_status ??
-															task.last_run
-																?.status,
-													)}
-													className={statusClassName(
-														task.last_run
-															?.platform_job_status ??
-															task.last_run
-																?.status,
-													)}
-												>
-													{formatStatus(
-														task.last_run
-															?.platform_job_status ??
-															task.last_run
-																?.status,
-													)}
-												</Badge>
-												{task.last_run
-													?.error_message && (
-													<div
-														className="mt-1 max-w-[260px] truncate text-xs text-destructive"
-														title={
-															task.last_run
-																.error_message
-														}
-													>
-														{
-															task.last_run
-																.error_message
-														}
-													</div>
-												)}
-											</DataTableCell>
-											<DataTableCell>
-												<div>{task.schedule}</div>
-											</DataTableCell>
-											<DataTableCell>
-												{relativeTime(task.next_run_at)}
-											</DataTableCell>
-											<DataTableCell>
-												<div>
-													{task.last_run
-														?.duration_ms == null
-														? "—"
-														: `${task.last_run.duration_ms} ms`}
-												</div>
-												<div className="text-xs text-muted-foreground">
-													{relativeTime(
-														task.last_run
-															?.completed_at,
-													)}
-												</div>
-											</DataTableCell>
-											<DataTableCell>
-												{formatContainerMemoryChange(
-													task.last_run
-														?.platform_job_memory_start_bytes,
-													task.last_run
-														?.platform_job_memory_peak_bytes,
-												)}
-											</DataTableCell>
-										</DataTableRow>
-									))}
-								</DataTableBody>
-							</DataTable>
+							<SchedulerTaskList
+								tasks={data.tasks}
+								onSelect={setSelectedTask}
+							/>
 							{data.tasks.length === 0 && (
-								<p className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+								<p className="rounded-[var(--bf-radius-surface)] border border-dashed py-8 text-center text-sm text-muted-foreground">
 									No System Schedules are registered.
 								</p>
 							)}

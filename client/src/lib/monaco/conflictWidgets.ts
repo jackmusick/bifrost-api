@@ -35,7 +35,7 @@ class ConflictActionsZoneWidget implements monaco.editor.IViewZone {
 			padding: 2px 0;
 			margin: 0;
 			font-size: 12px;
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+			font-family: var(--bf-font-sans, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
 			white-space: nowrap;
 			align-items: center;
 			background: transparent;

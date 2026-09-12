@@ -40,7 +40,13 @@ export function FormConfirmation({ formId, markdown }: FormConfirmationProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		window.scrollTo({ top: 0, behavior: "smooth" });
+		window.scrollTo({
+			top: 0,
+			behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")
+				.matches
+				? "auto"
+				: "smooth",
+		});
 		containerRef.current?.focus({ preventScroll: true });
 
 		const targetOrigin = parentOrigin();
@@ -75,10 +81,10 @@ export function FormConfirmation({ formId, markdown }: FormConfirmationProps) {
 			tabIndex={-1}
 			role="status"
 			aria-live="polite"
-			className="flex scroll-mt-4 justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			className="min-w-0 flex scroll-mt-4 justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
-			<Card className="w-full max-w-2xl">
-				<CardContent className="prose prose-sm max-w-none overflow-hidden pt-6 dark:prose-invert">
+			<Card className="min-w-0 w-full max-w-2xl">
+				<CardContent className="prose prose-sm min-w-0 max-w-none p-5 sm:p-6 dark:prose-invert">
 					<FormConfirmationMarkdown markdown={markdown} />
 				</CardContent>
 			</Card>
@@ -88,10 +94,48 @@ export function FormConfirmation({ formId, markdown }: FormConfirmationProps) {
 
 export function FormConfirmationMarkdown({ markdown }: { markdown: string }) {
 	return (
-		<div className="markdown-content">
+		<div className="markdown-content min-w-0 text-sm leading-6 [overflow-wrap:anywhere] [&_code]:font-mono">
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				components={{
+					table: ({ children }) => (
+						<div
+							role="region"
+							aria-label="Confirmation table"
+							tabIndex={0}
+							className="my-4 max-w-full overflow-x-auto rounded-[var(--bf-radius-surface)] border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							<table className="w-full min-w-96 text-left text-sm">
+								{children}
+							</table>
+						</div>
+					),
+					th: ({ children, style }) => (
+						<th
+							style={style}
+							className="min-w-32 border-b bg-muted px-3 py-2 font-semibold"
+						>
+							{children}
+						</th>
+					),
+					td: ({ children, style }) => (
+						<td
+							style={style}
+							className="min-w-32 border-b px-3 py-2 align-top"
+						>
+							{children}
+						</td>
+					),
+					pre: ({ children }) => (
+						<pre
+							tabIndex={0}
+							aria-label="Confirmation code example"
+							className="max-w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							style={{ borderRadius: "var(--bf-radius-surface)" }}
+						>
+							{children}
+						</pre>
+					),
 					img: ({ src, alt }) => {
 						const safeSrc = safeImageSource(src);
 						return safeSrc ? (

@@ -5,7 +5,7 @@
  * Shows upload progress, uploaded file list, and error states.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useId } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,7 @@ export function FileUploadField({
 	error,
 }: FileUploadFieldProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
+	const id = useId();
 	const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 	const [isDragOver, setIsDragOver] = useState(false);
 	const activeUploadsRef = useRef(0);
@@ -112,82 +113,82 @@ export function FileUploadField({
 
 	const processFiles = useCallback(
 		async (files: FileList | File[]) => {
+			if (activeUploadsRef.current > 0) return;
 			const fileArray = Array.from(files);
 
 			// For single file mode, only take the first file
 			const filesToUpload = multiple ? fileArray : fileArray.slice(0, 1);
 
-			// Clear existing files if single mode
-			if (!multiple && completedFiles.length > 0) {
-				onChange(null);
-			}
+			if (!filesToUpload.length) return;
+			let currentPaths = Array.isArray(value)
+				? [...value]
+				: value
+					? [value]
+					: [];
+			handleUploadStart();
+			try {
+				for (const file of filesToUpload) {
+					const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-			for (const file of filesToUpload) {
-				const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+					// Add to uploading list
+					setUploadingFiles((prev) => [
+						...prev,
+						{
+							id: uploadId,
+							name: file.name,
+							progress: null,
+							status: "uploading",
+							file,
+						},
+					]);
 
-				// Add to uploading list
-				setUploadingFiles((prev) => [
-					...prev,
-					{
-						id: uploadId,
-						name: file.name,
-						progress: null,
-						status: "uploading",
-						file,
-					},
-				]);
+					try {
+						const path = await uploadFile(file, (progress) => {
+							setUploadingFiles((prev) =>
+								prev.map((f) =>
+									f.id === uploadId ? { ...f, progress } : f,
+								),
+							);
+						});
 
-				handleUploadStart();
+						// Remove from uploading, add to completed
+						setUploadingFiles((prev) =>
+							prev.filter((f) => f.id !== uploadId),
+						);
 
-				try {
-					const path = await uploadFile(file, (progress) => {
-					setUploadingFiles((prev) =>
-						prev.map((f) =>
-							f.id === uploadId ? { ...f, progress } : f,
-						),
-					);
-				});
+						// Update form value
+						if (multiple) {
+							currentPaths = [...currentPaths, path];
+							onChange(currentPaths);
+						} else {
+							onChange(path);
+						}
+					} catch (err) {
+						const errorMsg =
+							err instanceof Error
+								? err.message
+								: "Upload failed";
 
-					// Remove from uploading, add to completed
-					setUploadingFiles((prev) =>
-						prev.filter((f) => f.id !== uploadId),
-					);
+						// Mark as error in uploading list
+						setUploadingFiles((prev) =>
+							prev.map((f) =>
+								f.id === uploadId
+									? { ...f, status: "error", error: errorMsg }
+									: f,
+							),
+						);
 
-					// Update form value
-					if (multiple) {
-						const currentPaths = Array.isArray(value)
-							? value
-							: value
-								? [value]
-								: [];
-						onChange([...currentPaths, path]);
-					} else {
-						onChange(path);
+						toast.error(`Failed to upload ${file.name}`, {
+							description: errorMsg,
+						});
 					}
-				} catch (err) {
-					const errorMsg =
-						err instanceof Error ? err.message : "Upload failed";
-
-					// Mark as error in uploading list
-					setUploadingFiles((prev) =>
-						prev.map((f) =>
-							f.id === uploadId
-								? { ...f, status: "error", error: errorMsg }
-								: f,
-						),
-					);
-
-					toast.error(`Failed to upload ${file.name}`, {
-						description: errorMsg,
-					});
-				} finally {
-					handleUploadEnd();
 				}
+			} finally {
+				handleUploadEnd();
 			}
 		},
 		[
 			multiple,
-			completedFiles.length,
 			value,
 			onChange,
 			uploadFile,
@@ -264,8 +265,12 @@ export function FileUploadField({
 	const isUploading = uploadingFiles.some((f) => f.status === "uploading");
 
 	return (
-		<div className="space-y-2">
-			<Label htmlFor={fieldName}>
+		<div
+			role="group"
+			aria-labelledby={`${id}-label`}
+			className="min-w-0 space-y-3"
+		>
+			<Label id={`${id}-label`}>
 				{label}
 				{required && <span className="text-destructive ml-1">*</span>}
 			</Label>
@@ -273,7 +278,7 @@ export function FileUploadField({
 			{/* Drop zone - show when no files or in multiple mode */}
 			{(!hasFiles || multiple) && (
 				<div
-					className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+					className={`min-w-0 border border-dashed rounded-[var(--bf-radius-surface)] p-4 motion-safe:transition-colors ${
 						isDragOver
 							? "border-primary bg-primary/5"
 							: "hover:border-primary/50"
@@ -285,26 +290,41 @@ export function FileUploadField({
 					<div className="flex flex-col items-center gap-2">
 						<Upload className="h-8 w-8 text-muted-foreground" />
 						<div className="text-center">
-							<Label
-								htmlFor={fieldName}
-								className="cursor-pointer text-sm font-medium text-primary hover:underline"
+							<Button
+								type="button"
+								variant="outline"
+								className="min-h-11"
+								disabled={isUploading}
+								onClick={() => inputRef.current?.click()}
 							>
 								Choose file{multiple ? "s" : ""}
-							</Label>
+							</Button>
 							<span className="text-sm text-muted-foreground">
 								{" "}
 								or drag and drop
 							</span>
 							<Input
 								ref={inputRef}
-								id={fieldName}
+								id={`${id}-input`}
+								aria-label={label || fieldName}
+								aria-required={required}
+								aria-invalid={!!error}
+								aria-describedby={
+									[
+										helpText ? `${id}-help` : "",
+										error ? `${id}-error` : "",
+									]
+										.filter(Boolean)
+										.join(" ") || undefined
+								}
+								disabled={isUploading}
 								type="file"
 								className="hidden"
 								onChange={handleFileChange}
 								accept={allowedTypes?.join(",") ?? undefined}
 								multiple={multiple ?? undefined}
 							/>
-							<p className="text-xs text-muted-foreground mt-1">
+							<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground mt-1">
 								{allowedTypes && allowedTypes.length > 0
 									? `Allowed: ${allowedTypes.join(", ")}`
 									: "All file types allowed"}
@@ -321,44 +341,50 @@ export function FileUploadField({
 					{uploadingFiles.map((uploadingFile) => (
 						<div
 							key={uploadingFile.id}
-							className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
+							className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-[var(--bf-radius-surface)] border bg-muted/30 p-3"
 						>
 							{uploadingFile.status === "uploading" ? (
-								<Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+								<Loader2 className="h-4 w-4 motion-safe:animate-spin text-primary shrink-0" />
 							) : (
 								<AlertCircle className="h-4 w-4 text-destructive shrink-0" />
 							)}
 							<div className="flex-1 min-w-0">
-								<p className="text-sm font-medium truncate">
+								<p className="text-sm font-medium [overflow-wrap:anywhere]">
 									{uploadingFile.name}
 								</p>
 								{uploadingFile.status === "uploading" &&
 								uploadingFile.progress ? (
 									<div className="mt-1">
 										<Progress
+											aria-label={`Uploading ${uploadingFile.name}`}
 											value={
 												uploadingFile.progress
 													.percentage
 											}
 											className="h-1"
 										/>
-										<p className="text-xs text-muted-foreground mt-1">
+										<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground mt-1">
 											{uploadingFile.progress.percentage}%
 										</p>
 									</div>
 								) : uploadingFile.status === "error" ? (
-									<p className="text-xs text-destructive mt-1">
+									<p
+										role="alert"
+										className="text-sm leading-6 [overflow-wrap:anywhere] text-destructive mt-1"
+									>
 										{uploadingFile.error}
 									</p>
 								) : null}
 							</div>
 							{uploadingFile.status === "error" && (
-								<div className="flex gap-1">
+								<div className="col-start-2 flex flex-wrap gap-1">
 									<Button
 										type="button"
 										variant="ghost"
 										size="icon"
-										className="h-6 w-6"
+										className="h-11 w-11"
+										disabled={isUploading}
+										aria-label={`Retry ${uploadingFile.name}`}
 										onClick={() =>
 											retryUpload(uploadingFile)
 										}
@@ -369,7 +395,9 @@ export function FileUploadField({
 										type="button"
 										variant="ghost"
 										size="icon"
-										className="h-6 w-6"
+										className="h-11 w-11"
+										disabled={isUploading}
+										aria-label={`Dismiss failed upload ${uploadingFile.name}`}
 										onClick={() =>
 											removeUploadingFile(
 												uploadingFile.id,
@@ -389,43 +417,75 @@ export function FileUploadField({
 			{completedFiles.length > 0 && (
 				<div className="space-y-2">
 					{completedFiles.map((completedFile) => (
-						<div
+						<CompletedFileRow
 							key={completedFile.path}
-							className="flex items-center gap-3 rounded-lg bg-muted/50 p-3 ring-1 ring-foreground/5"
-						>
-							<File className="h-4 w-4 text-muted-foreground shrink-0" />
-							<div className="flex-1 min-w-0">
-								<p className="text-sm font-medium truncate">
-									{completedFile.name}
-								</p>
-								{completedFile.size > 0 && (
-									<p className="text-xs text-muted-foreground">
-										{formatFileSize(completedFile.size)}
-									</p>
-								)}
-							</div>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon"
-								className="h-6 w-6 shrink-0"
-								onClick={() =>
-									removeCompletedFile(completedFile.path)
-								}
-							>
-								<X className="h-3 w-3" />
-							</Button>
-						</div>
+							completedFile={completedFile}
+							disabled={isUploading}
+							onRemove={() =>
+								removeCompletedFile(completedFile.path)
+							}
+						/>
 					))}
 				</div>
 			)}
 
 			{helpText && (
-				<p className="text-sm text-muted-foreground">{helpText}</p>
+				<p
+					id={`${id}-help`}
+					className="text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]"
+				>
+					{helpText}
+				</p>
 			)}
 			{error && (
-				<p className="text-sm text-destructive">{error.message}</p>
+				<p
+					id={`${id}-error`}
+					role="alert"
+					className="text-sm text-destructive [overflow-wrap:anywhere]"
+				>
+					{error.message}
+				</p>
 			)}
+		</div>
+	);
+}
+
+function CompletedFileRow({
+	completedFile,
+	disabled,
+	onRemove,
+}: {
+	completedFile: CompletedFile;
+	disabled: boolean;
+	onRemove: () => void;
+}) {
+	return (
+		<div
+			key={completedFile.path}
+			className="min-w-0 flex flex-wrap items-start gap-3 rounded-[var(--bf-radius-surface)] border bg-muted/30 p-3"
+		>
+			<File className="h-4 w-4 text-muted-foreground shrink-0" />
+			<div className="flex-1 min-w-0">
+				<p className="text-sm font-medium [overflow-wrap:anywhere]">
+					{completedFile.name}
+				</p>
+				{completedFile.size > 0 && (
+					<p className="text-sm leading-6 [overflow-wrap:anywhere] text-muted-foreground">
+						{formatFileSize(completedFile.size)}
+					</p>
+				)}
+			</div>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon"
+				className="h-11 w-11 shrink-0"
+				disabled={disabled}
+				aria-label={`Remove ${completedFile.name}`}
+				onClick={() => onRemove()}
+			>
+				<X className="h-3 w-3" />
+			</Button>
 		</div>
 	);
 }

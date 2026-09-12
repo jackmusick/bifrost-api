@@ -11,6 +11,14 @@ import { supportsPasskeys } from "@/services/passkeys";
 
 const DISMISSED_KEY = "passkey_banner_dismissed";
 
+function isDismissed(): boolean {
+	try {
+		return localStorage.getItem(DISMISSED_KEY) === "true";
+	} catch {
+		return false;
+	}
+}
+
 export function PasskeySetupBadge() {
 	const navigate = useNavigate();
 	const isSupported = supportsPasskeys();
@@ -19,7 +27,7 @@ export function PasskeySetupBadge() {
 	if (
 		isLoading ||
 		!isSupported ||
-		localStorage.getItem(DISMISSED_KEY) === "true" ||
+		isDismissed() ||
 		(passkeyData && passkeyData.count > 0)
 	) {
 		return null;
@@ -28,13 +36,13 @@ export function PasskeySetupBadge() {
 	return (
 		<Button
 			variant="ghost"
-			size="icon"
+			size="icon-lg"
 			className="relative mr-1 sm:mr-2"
 			onClick={() => navigate("/user-settings/security")}
 			title="Set up passkey"
 			aria-label="Set up passkey"
 		>
-			<Fingerprint className="h-4 w-4" />
+			<Fingerprint className="h-5 w-5" />
 			<span
 				aria-hidden="true"
 				data-slot="passkey-setup-indicator"

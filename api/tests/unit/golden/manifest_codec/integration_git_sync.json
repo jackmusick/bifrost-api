@@ -10,6 +10,7 @@
     }
   ],
   "default_entity_id": null,
+  "description": null,
   "entity_id": "tenant_id",
   "entity_id_name": "Tenant ID",
   "id": "<volatile>",

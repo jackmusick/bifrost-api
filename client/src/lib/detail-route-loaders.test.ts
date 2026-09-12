@@ -12,6 +12,7 @@ import { queryClient } from "@/lib/queryClient";
 import {
 	agentDetailLoader,
 	applicationDetailLoader,
+	prefetchApplicationDetail,
 } from "./detail-route-loaders";
 
 class LoadedImage {
@@ -59,6 +60,7 @@ describe("detail route loaders", () => {
 		vi.spyOn(queryClient, "ensureQueryData").mockResolvedValue({
 			id: "app-1",
 			slug: "portal",
+			is_published: true,
 			logo_url: "/app-logo.png",
 		});
 		const request = new Request("http://localhost/apps/portal");
@@ -78,3 +80,43 @@ describe("detail route loaders", () => {
 		});
 	});
 });
+
+it("does not replace newer application detail with a card snapshot", () => {
+	vi.spyOn(queryClient, "getQueryData").mockReturnValue({
+		name: "Updated remotely",
+	});
+	const set = vi.spyOn(queryClient, "setQueryData");
+	prefetchApplicationDetail(
+		{
+			id: "fixture",
+			slug: "fixture",
+			name: "Old list name",
+			logo_url: null,
+		} as Parameters<typeof prefetchApplicationDetail>[0],
+		false,
+	);
+	expect(set).not.toHaveBeenCalled();
+	vi.restoreAllMocks();
+});
+
+it.each([false, true])(
+	"only prepares unpublished apps in preview mode (%s)",
+	async (preview) => {
+		vi.spyOn(queryClient, "ensureQueryData").mockResolvedValue({
+			id: "unpublished",
+			slug: "unpublished",
+			is_published: false,
+		});
+		prepareAppBundle.mockClear();
+		const request = new Request("http://localhost/apps/unpublished");
+		await applicationDetailLoader(preview)({
+			params: { applicationId: "unpublished" },
+			request,
+			url: new URL(request.url),
+			pattern: "/apps/:applicationId/*",
+			context: {},
+		});
+		expect(prepareAppBundle).toHaveBeenCalledTimes(preview ? 1 : 0);
+		vi.restoreAllMocks();
+	},
+);

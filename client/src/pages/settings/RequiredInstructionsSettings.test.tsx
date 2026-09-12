@@ -84,4 +84,36 @@ describe("RequiredInstructionsSettings", () => {
 			),
 		);
 	});
+	it("retries a failed read before exposing an editable form", async () => {
+		getSettings.mockRejectedValueOnce(new Error("Synthetic failure"));
+		const user = userEvent.setup();
+		render(<RequiredInstructionsSettings />);
+		expect(await screen.findByRole("alert")).toHaveTextContent("Retry before editing");
+		expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Save Instructions" })).toBeDisabled();
+		await user.click(screen.getByRole("button", { name: "Retry instructions" }));
+		expect(await screen.findByRole("textbox")).toBeVisible();
+	});
+
+	it("clears the previous scope while a new organization loads", async () => {
+		getSettings.mockResolvedValueOnce({ instructions: "First organization" }).mockReturnValueOnce(new Promise(() => {}));
+		const { rerender } = render(<RequiredInstructionsSettings organizationId="first" />);
+		expect(await screen.findByRole("textbox")).toHaveValue("First organization");
+		rerender(<RequiredInstructionsSettings organizationId="second" />);
+		expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+		expect(screen.getByRole("status")).toBeVisible();
+		expect(screen.getByRole("button", { name: "Save Instructions" })).toBeDisabled();
+	});
+
+	it("retains draft text on a failed save", async () => {
+		updateSettings.mockRejectedValueOnce(new Error("Synthetic failure"));
+		const user = userEvent.setup();
+		render(<RequiredInstructionsSettings />);
+		const input = await screen.findByRole("textbox");
+		await user.type(input, "Keep this draft");
+		await user.click(screen.getByRole("button", { name: "Save Instructions" }));
+		expect(await screen.findByRole("alert")).toHaveTextContent("Your draft is preserved");
+		expect(input).toHaveValue("Keep this draft");
+	});
+
 });

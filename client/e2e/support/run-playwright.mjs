@@ -1,12 +1,27 @@
 import http from "node:http";
 import net from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { buildReport, markdown, validateLedger } from "./acceptance-report.mjs";
+import {
+	createMonacoAssetHandler,
+	defaultMonacoAssetRoot,
+} from "./monaco-assets.mjs";
 
 const target = { host: process.env.TEST_CLIENT_HOST || "client", port: 80 };
 const localOrigins = [3000, 3001, 3002];
 
+const tryServeMonacoAsset = createMonacoAssetHandler({
+	assetRoot:
+		process.env.PLAYWRIGHT_MONACO_ASSET_ROOT || defaultMonacoAssetRoot,
+});
+
 function createLocalOrigin(port) {
 	const server = http.createServer((request, response) => {
+		if (tryServeMonacoAsset(request, response)) {
+			return;
+		}
+
 		const upstream = http.request(
 			{
 				...target,
@@ -62,7 +77,21 @@ function createLocalOrigin(port) {
 	});
 }
 
+// Run these fast checks in the same Node/container environment as browser CI.
+// This keeps report joins and worker-asset delivery covered by the existing gate.
+const harnessChecks = spawnSync(
+	process.execPath,
+	[
+		"--test",
+		"e2e/support/acceptance-report.test.mjs",
+		"e2e/support/monaco-assets.test.mjs",
+	],
+	{ stdio: "inherit" },
+);
+if (harnessChecks.status !== 0) process.exit(harnessChecks.status ?? 1);
+
 const servers = await Promise.all(localOrigins.map(createLocalOrigin));
+const runStartedAt = Date.now();
 const playwright = spawn(
 	"npx",
 	["playwright", "test", ...process.argv.slice(2)],
@@ -86,3 +115,30 @@ await Promise.all(
 	),
 );
 process.exitCode = exitCode;
+
+// The ledger supplements the existing full HTML/JSON reports. Preserve a red
+// browser result, and fail loudly if the coverage references become invalid.
+try {
+	const ledger = JSON.parse(
+		readFileSync("e2e/acceptance-ledger.json", "utf8"),
+	);
+	validateLedger(ledger, (spec) => readFileSync(`e2e/${spec}`, "utf8"));
+	const results = JSON.parse(
+		readFileSync("playwright-results/results.json", "utf8"),
+	);
+	if (
+		!results.stats?.startTime ||
+		Date.parse(results.stats.startTime) < runStartedAt
+	) {
+		throw new Error(
+			"No fresh Playwright JSON report was produced for this run",
+		);
+	}
+	writeFileSync(
+		"playwright-results/acceptance.md",
+		markdown(buildReport(ledger, results)),
+	);
+} catch (error) {
+	console.error("Could not produce acceptance report:", error);
+	process.exitCode = 1;
+}

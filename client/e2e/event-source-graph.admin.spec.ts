@@ -250,7 +250,7 @@ test.describe.serial("Microsoft Graph event source", () => {
 		await expect(page.getByText("adele@example.com")).toBeVisible();
 		await expect(page.getByText("Connected")).toBeVisible();
 		await page.getByRole("tab", { name: /Events/ }).click();
-		await expect(page.getByText("graph.messages.created")).toBeVisible();
+		await expect(page.getByRole("link", { name: "graph.messages.created", exact: true })).toBeVisible();
 		await expect(
 			page.getByText("01V6T7ZK0M0Q8SHJ4A1N5W2X9B.created"),
 		).toBeHidden();

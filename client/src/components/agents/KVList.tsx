@@ -6,7 +6,7 @@ import { TONE_MUTED, TYPE_MONO } from "./design-tokens";
 export interface KVItem {
 	label: string;
 	value: ReactNode;
-	/** Render value with mono font at 12.5px (for keys, hashes, model names). */
+	/** Render value with mono font (for keys, hashes, model names). */
 	mono?: boolean;
 }
 
@@ -15,25 +15,29 @@ export interface KVListProps {
 	className?: string;
 }
 
-/**
- * 2-column definition list matching the mockup's `.kv` layout:
- *   `grid-template-columns: 120px 1fr`
- *   8px row gap, 14px column gap, 13px muted labels, normal-tone values.
- *
- * Used for Configuration / Budgets / Captured data / run sidebars.
- */
+/** Label/value records stack inside narrow panels and retain complete values. */
 export function KVList({ items, className }: KVListProps) {
 	return (
-		<dl
-			className={cn(
-				"grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-[13px]",
-				className,
-			)}
-		>
+		<dl className={cn("@container min-w-0 space-y-3 text-sm", className)}>
 			{items.map((item, idx) => (
-				<div key={idx} className="contents">
-					<dt className={TONE_MUTED}>{item.label}</dt>
-					<dd className={cn("m-0", item.mono && `truncate ${TYPE_MONO}`)}>
+				<div
+					key={idx}
+					className="grid min-w-0 gap-1 @sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] @sm:gap-x-3"
+				>
+					<dt
+						className={cn(
+							TONE_MUTED,
+							"min-w-0 [overflow-wrap:anywhere]",
+						)}
+					>
+						{item.label}
+					</dt>
+					<dd
+						className={cn(
+							item.mono && TYPE_MONO,
+							"m-0 min-w-0 text-sm [overflow-wrap:anywhere]",
+						)}
+					>
 						{item.value}
 					</dd>
 				</div>

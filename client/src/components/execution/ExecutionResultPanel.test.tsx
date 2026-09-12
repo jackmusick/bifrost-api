@@ -1,3 +1,4 @@
+import { ExecutionResultPanel } from "./ExecutionResultPanel";
 /**
  * Component tests for ExecutionResultPanel.
  *
@@ -13,11 +14,13 @@ import { renderWithProviders, screen } from "@/test-utils";
 vi.mock("./PrettyInputDisplay", () => ({
 	PrettyInputDisplay: ({
 		inputData,
+		context,
 	}: {
 		inputData: Record<string, unknown>;
+		context?: string;
 	}) => (
 		<div aria-label="pretty-input-stub">
-			PRETTY:{JSON.stringify(inputData)}
+			PRETTY:{context}:{JSON.stringify(inputData)}
 		</div>
 	),
 }));
@@ -33,11 +36,10 @@ vi.mock("./SafeHTMLRenderer", () => ({
 async function renderPanel(
 	props: Partial<
 		Parameters<
-			typeof import("./ExecutionResultPanel")["ExecutionResultPanel"]
+			(typeof import("./ExecutionResultPanel"))["ExecutionResultPanel"]
 		>[0]
 	>,
 ) {
-	const { ExecutionResultPanel } = await import("./ExecutionResultPanel");
 	return renderWithProviders(<ExecutionResultPanel {...props} />);
 }
 
@@ -62,7 +64,9 @@ describe("ExecutionResultPanel — empty/loading", () => {
 		expect(
 			container.querySelectorAll(".animate-pulse").length,
 		).toBeGreaterThan(0);
-		expect(screen.queryByText(/no result returned/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/no result returned/i),
+		).not.toBeInTheDocument();
 	});
 });
 
@@ -70,6 +74,7 @@ describe("ExecutionResultPanel — renderer dispatch", () => {
 	it("renders JSON objects via PrettyInputDisplay when resultType=json", async () => {
 		await renderPanel({ result: { foo: "bar" }, resultType: "json" });
 		const pretty = screen.getByLabelText("pretty-input-stub");
+		expect(pretty.textContent).toContain("PRETTY:result:");
 		expect(pretty.textContent).toContain('"foo":"bar"');
 	});
 
@@ -122,14 +127,15 @@ describe("ExecutionResultPanel — renderer dispatch", () => {
 	});
 });
 
-describe("ExecutionResultPanel — section header", () => {
-	it("renders the small-caps section label", async () => {
+describe("ExecutionResultPanel — chrome", () => {
+	it("does not render a duplicate Result heading above renderer controls", async () => {
 		await renderPanel({
 			result: { ok: true },
 			resultType: "json",
 		});
-		const heading = screen.getByRole("heading", { name: /result/i });
-		expect(heading.tagName).toBe("H4");
+		expect(
+			screen.queryByRole("heading", { name: /result/i }),
+		).not.toBeInTheDocument();
 		expect(screen.getByLabelText("pretty-input-stub")).toBeInTheDocument();
 	});
 });

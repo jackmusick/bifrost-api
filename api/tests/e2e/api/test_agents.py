@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import func, select
 
-from src.models.orm.agents import Agent
+from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.agent_runs import AgentRun
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,46 @@ class TestAgentsCRUD:
         assert data["is_active"] is True
         assert "id" in data
 
+    def test_list_agent_summaries_include_assigned_role_ids(
+        self,
+        e2e_client,
+        platform_admin,
+    ):
+        role_resp = e2e_client.post(
+            "/api/roles",
+            json={"name": f"Agent List Role {uuid4().hex[:8]}", "permissions": {}},
+            headers=platform_admin.headers,
+        )
+        assert role_resp.status_code == 201, role_resp.text
+        role_id = role_resp.json()["id"]
+
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"List Role Agent {uuid4().hex[:8]}",
+                "description": "Agent list role regression test",
+                "system_prompt": "You are a test assistant.",
+                "channels": ["chat"],
+                "access_level": "role_based",
+                "role_ids": [role_id],
+            },
+            headers=platform_admin.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+
+        try:
+            list_resp = e2e_client.get(
+                "/api/agents",
+                headers=platform_admin.headers,
+            )
+            assert list_resp.status_code == 200, list_resp.text
+            listed = next(item for item in list_resp.json() if item["id"] == agent_id)
+            assert listed["role_ids"] == [role_id]
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
+            e2e_client.delete(f"/api/roles/{role_id}", headers=platform_admin.headers)
+
     def test_get_agent(
         self,
         e2e_client,
@@ -97,6 +137,146 @@ class TestAgentsCRUD:
         data = response.json()
         assert data["name"] == "Updated Assistant"
         assert data["description"] == "An updated description"
+
+    @pytest.mark.asyncio
+    async def test_update_agent_to_private_sets_owner_and_clears_roles(
+        self,
+        e2e_client,
+        platform_admin,
+        db_session,
+    ):
+        """Admin updates to private should leave an owner-only agent."""
+        role_resp = e2e_client.post(
+            "/api/roles",
+            json={"name": f"Agent Private Role {uuid4().hex[:8]}", "permissions": {}},
+            headers=platform_admin.headers,
+        )
+        assert role_resp.status_code == 201, role_resp.text
+        role_id = role_resp.json()["id"]
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"Role Based Transition {uuid4().hex[:8]}",
+                "system_prompt": "You are a role-based transition test agent.",
+                "access_level": "role_based",
+                "role_ids": [role_id],
+            },
+            headers=platform_admin.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+
+        try:
+            assert create_resp.json()["role_ids"] == [role_id]
+
+            private_update = e2e_client.put(
+                f"/api/agents/{agent_id}",
+                json={"access_level": "private"},
+                headers=platform_admin.headers,
+            )
+            assert private_update.status_code == 200, private_update.text
+            body = private_update.json()
+            assert body["access_level"] == "private"
+            assert body["owner_user_id"] == str(platform_admin.user_id)
+            assert body["role_ids"] == []
+
+            db_session.expire_all()
+            agent = (
+                await db_session.execute(
+                    select(Agent).where(Agent.id == UUID(agent_id))
+                )
+            ).scalar_one()
+            role_count = await db_session.scalar(
+                select(func.count())
+                .select_from(AgentRole)
+                .where(AgentRole.agent_id == UUID(agent_id))
+            )
+            assert agent.owner_user_id == platform_admin.user_id
+            assert role_count == 0
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
+            e2e_client.delete(f"/api/roles/{role_id}", headers=platform_admin.headers)
+
+    @pytest.mark.asyncio
+    async def test_update_private_agent_to_shared_clears_owner(
+        self,
+        e2e_client,
+        platform_admin,
+        db_session,
+    ):
+        """Admin updates away from private should remove owner-only scoping."""
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"Private Transition {uuid4().hex[:8]}",
+                "system_prompt": "You are a private transition test agent.",
+                "access_level": "private",
+            },
+            headers=platform_admin.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+
+        try:
+            assert create_resp.json()["owner_user_id"] == str(platform_admin.user_id)
+
+            shared_update = e2e_client.put(
+                f"/api/agents/{agent_id}",
+                json={"access_level": "authenticated"},
+                headers=platform_admin.headers,
+            )
+            assert shared_update.status_code == 200, shared_update.text
+            body = shared_update.json()
+            assert body["access_level"] == "authenticated"
+            assert body["owner_user_id"] is None
+
+            db_session.expire_all()
+            agent = (
+                await db_session.execute(select(Agent).where(Agent.id == UUID(agent_id)))
+            ).scalar_one()
+            assert agent.owner_user_id is None
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
+
+    @pytest.mark.asyncio
+    async def test_admin_edit_existing_private_agent_preserves_owner(
+        self,
+        e2e_client,
+        platform_admin,
+        org1_user,
+    ):
+        """Admin edits should not steal an already-private agent from its owner."""
+        create_resp = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"Owner Preserve {uuid4().hex[:8]}",
+                "system_prompt": "You are an owner preservation test agent.",
+                "access_level": "private",
+            },
+            headers=org1_user.headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        agent_id = create_resp.json()["id"]
+        assert create_resp.json()["owner_user_id"] == str(org1_user.user_id)
+
+        try:
+            update_resp = e2e_client.put(
+                f"/api/agents/{agent_id}",
+                json={
+                    "name": "Owner Preserve Edited",
+                    "access_level": "private",
+                    "role_ids": [],
+                },
+                headers=platform_admin.headers,
+            )
+            assert update_resp.status_code == 200, update_resp.text
+            body = update_resp.json()
+            assert body["name"] == "Owner Preserve Edited"
+            assert body["access_level"] == "private"
+            assert body["owner_user_id"] == str(org1_user.user_id)
+            assert body["role_ids"] == []
+        finally:
+            e2e_client.delete(f"/api/agents/{agent_id}", headers=platform_admin.headers)
 
     def test_delete_agent(
         self,

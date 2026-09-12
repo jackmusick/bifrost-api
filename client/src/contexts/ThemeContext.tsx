@@ -10,6 +10,7 @@ import {
 	useEffect,
 	ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { parseFormEmbedPresentation } from "@/lib/form-embed-presentation";
 
 type Theme = "dark" | "light";
@@ -74,7 +75,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 	const setTheme = (newTheme: Theme, skipTransition = false) => {
 		if (embedPresentation) return;
-		if (skipTransition || !document.startViewTransition) {
+		if (
+			skipTransition ||
+			window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
+			!document.startViewTransition
+		) {
 			// No animation support or explicitly skipped
 			setThemeState(newTheme);
 			localStorage.setItem("theme", newTheme);
@@ -83,7 +88,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 		// Use View Transitions API for smooth animation
 		document.startViewTransition(() => {
-			setThemeState(newTheme);
+			flushSync(() => setThemeState(newTheme));
 			localStorage.setItem("theme", newTheme);
 		});
 	};

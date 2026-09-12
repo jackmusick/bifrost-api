@@ -1,45 +1,16 @@
+import { generateUUID } from "@/lib/uuid";
+import { SourceChangesSection } from "./SourceChangesSection";
+import { SourceOperationDialog } from "./SourceOperationDialog";
+import { SourceControlSetupState } from "./SourceControlSetupState";
+import {
+	SourceControlHeader,
+	SourceControlMergeBanner,
+} from "./SourceControlStatus";
+import { CommitHistorySection } from "./CommitHistorySection";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { webSocketService, type GitOpComplete } from "@/services/websocket";
-import {
-	GitBranch,
-	Loader2,
-	RefreshCw,
-	ArrowDownToLine,
-	ChevronDown,
-	ChevronRight,
-	History,
-	Circle,
-	CheckCircle2,
-	Plus,
-	Edit3,
-	Minus,
-	FileText,
-	Bot,
-	AppWindow,
-	Workflow,
-	FileCode,
-	Undo2,
-	AlertTriangle,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
 	useGitStatus,
@@ -66,7 +37,7 @@ import {
 	type DiscardResult,
 	type PreflightResult,
 } from "@/hooks/useGitHub";
-import { useEditorStore } from "@/stores/editorStore";
+import { useEditorStore, type DiffPreviewState } from "@/stores/editorStore";
 
 /** Custom error that preserves the data payload from failed git operations */
 class GitOpError extends Error {
@@ -79,7 +50,10 @@ class GitOpError extends Error {
 }
 
 /** Log preflight validation issues to the editor terminal */
-function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boolean) {
+function logPreflightToTerminal(
+	preflight: PreflightResult,
+	commitSucceeded: boolean,
+) {
 	if (!preflight.issues.length) return;
 
 	const errors = preflight.issues.filter((i) => i.severity === "error");
@@ -89,7 +63,12 @@ function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boo
 		? `Commit succeeded with ${warnings.length} warning(s)`
 		: `Commit blocked: ${errors.length} error(s), ${warnings.length} warning(s)`;
 
-	const logs: Array<{ level: string; message: string; source: string; timestamp: string }> = [
+	const logs: Array<{
+		level: string;
+		message: string;
+		source: string;
+		timestamp: string;
+	}> = [
 		{
 			level: commitSucceeded ? "WARNING" : "ERROR",
 			message: `[Preflight] ${header}`,
@@ -111,10 +90,16 @@ function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boo
 				timestamp: new Date().toISOString(),
 			});
 		} else {
-			warningsByCategory.set(issue.category, (warningsByCategory.get(issue.category) ?? 0) + 1);
+			warningsByCategory.set(
+				issue.category,
+				(warningsByCategory.get(issue.category) ?? 0) + 1,
+			);
 		}
 		if (issue.fix_hint) {
-			hintGroups.set(issue.fix_hint, (hintGroups.get(issue.fix_hint) ?? 0) + 1);
+			hintGroups.set(
+				issue.fix_hint,
+				(hintGroups.get(issue.fix_hint) ?? 0) + 1,
+			);
 		}
 	}
 
@@ -130,9 +115,12 @@ function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boo
 
 	// Append deduplicated fix hints at the end (errors only)
 	for (const [hint] of hintGroups) {
-		const errorHintCount = preflight.issues.filter((i) => i.severity === "error" && i.fix_hint === hint).length;
+		const errorHintCount = preflight.issues.filter(
+			(i) => i.severity === "error" && i.fix_hint === hint,
+		).length;
 		if (errorHintCount > 0) {
-			const suffix = errorHintCount > 1 ? ` (${errorHintCount} issues)` : "";
+			const suffix =
+				errorHintCount > 1 ? ` (${errorHintCount} issues)` : "";
 			logs.push({
 				level: "INFO",
 				message: `-> Fix: ${hint}${suffix}`,
@@ -152,7 +140,10 @@ function logPreflightToTerminal(preflight: PreflightResult, commitSucceeded: boo
 }
 
 /** Log entity changes to the editor terminal */
-function logEntityChangesToTerminal(changes: EntityChange[], context: "commit" | "sync") {
+function logEntityChangesToTerminal(
+	changes: EntityChange[],
+	context: "commit" | "sync",
+) {
 	if (!changes.length) return;
 
 	const added = changes.filter((c) => c.action === "added");
@@ -168,11 +159,25 @@ function logEntityChangesToTerminal(changes: EntityChange[], context: "commit" |
 	const header = `${label} — ${changes.length} entity change(s): ${countParts.join(", ")}`;
 
 	const symbols = { added: "+", updated: "~", removed: "-" } as const;
-	const levels = { added: "INFO", updated: "INFO", removed: "WARNING" } as const;
+	const levels = {
+		added: "INFO",
+		updated: "INFO",
+		removed: "WARNING",
+	} as const;
 	const timestamp = new Date().toISOString();
 
-	const logs: Array<{ level: string; message: string; source: string; timestamp: string }> = [
-		{ level: "INFO", message: `[Entity Changes] ${header}`, source: "entity-changes", timestamp },
+	const logs: Array<{
+		level: string;
+		message: string;
+		source: string;
+		timestamp: string;
+	}> = [
+		{
+			level: "INFO",
+			message: `[Entity Changes] ${header}`,
+			source: "entity-changes",
+			timestamp,
+		},
 	];
 
 	for (const change of changes) {
@@ -195,49 +200,6 @@ function logEntityChangesToTerminal(changes: EntityChange[], context: "commit" |
 	});
 }
 
-/** Icon mapping for entity types */
-const ENTITY_ICONS = {
-	form: { icon: FileText, className: "text-green-500" },
-	agent: { icon: Bot, className: "text-orange-500" },
-	app: { icon: AppWindow, className: "text-purple-500" },
-	workflow: { icon: Workflow, className: "text-blue-500" },
-	app_file: { icon: FileCode, className: "text-gray-500" },
-} as const;
-
-/** Get icon for change type */
-function getChangeIcon(changeType: string) {
-	switch (changeType) {
-		case "added":
-		case "untracked":
-			return <Plus className="h-3 w-3 text-green-500" />;
-		case "modified":
-			return <Edit3 className="h-3 w-3 text-blue-500" />;
-		case "deleted":
-			return <Minus className="h-3 w-3 text-red-500" />;
-		case "renamed":
-			return <Edit3 className="h-3 w-3 text-yellow-500" />;
-		default:
-			return <Edit3 className="h-3 w-3 text-muted-foreground" />;
-	}
-}
-
-/** Get change type badge text */
-function getChangeBadge(changeType: string) {
-	switch (changeType) {
-		case "added":
-		case "untracked":
-			return "A";
-		case "modified":
-			return "M";
-		case "deleted":
-			return "D";
-		case "renamed":
-			return "R";
-		default:
-			return "?";
-	}
-}
-
 /**
  * Helper to run a git operation via WebSocket job pattern.
  * Queues the job, connects to WebSocket, waits for completion.
@@ -249,12 +211,17 @@ async function runGitOp<T>(
 	// Generate job_id client-side and subscribe BEFORE queueing to avoid
 	// race condition where fast operations (e.g. diff) complete before
 	// the WebSocket subscription is active.
-	const job_id = crypto.randomUUID();
+	const job_id = generateUUID();
 
 	await webSocketService.connectToGitSync(job_id);
 
 	// Stream progress messages immediately; accumulate sync log summaries for final flush
-	const syncLogs: Array<{ level: string; message: string; source: string; timestamp: string }> = [];
+	const syncLogs: Array<{
+		level: string;
+		message: string;
+		source: string;
+		timestamp: string;
+	}> = [];
 	const executionId = `git-${resultType}-${job_id.slice(0, 8)}`;
 
 	const unsubLog = webSocketService.onGitSyncLog(job_id, (log) => {
@@ -270,9 +237,10 @@ async function runGitOp<T>(
 	const unsubProgress = webSocketService.onGitProgress(job_id, (progress) => {
 		hadProgress = true;
 		// Stream each progress message immediately to the terminal
-		const pct = progress.total > 0
-			? `[${Math.round((progress.current / progress.total) * 100)}%] `
-			: "";
+		const pct =
+			progress.total > 0
+				? `[${Math.round((progress.current / progress.total) * 100)}%] `
+				: "";
 		useEditorStore.getState().streamTerminalLog(
 			executionId,
 			{
@@ -295,7 +263,9 @@ async function runGitOp<T>(
 
 				// Treat "needs_confirmation" as a non-error status — the caller
 				// handles the confirmation flow, not the terminal.
-				const isOk = complete.status === "success" || complete.status === "needs_confirmation";
+				const isOk =
+					complete.status === "success" ||
+					complete.status === "needs_confirmation";
 
 				// Only emit terminal logs if there was visible activity (progress
 				// messages or sync logs). Silent operations like "status" produce
@@ -304,12 +274,19 @@ async function runGitOp<T>(
 				if (hadOutput || !isOk) {
 					const finalStatus = isOk ? "Success" : "Failed";
 					for (const log of syncLogs) {
-						useEditorStore.getState().streamTerminalLog(executionId, log, finalStatus);
+						useEditorStore
+							.getState()
+							.streamTerminalLog(executionId, log, finalStatus);
 					}
-					const opLabel = resultType === "sync" ? "Sync"
-						: resultType === "fetch" ? "Fetch"
-						: resultType === "commit" ? "Commit"
-						: resultType.charAt(0).toUpperCase() + resultType.slice(1);
+					const opLabel =
+						resultType === "sync"
+							? "Sync"
+							: resultType === "fetch"
+								? "Fetch"
+								: resultType === "commit"
+									? "Commit"
+									: resultType.charAt(0).toUpperCase() +
+										resultType.slice(1);
 					useEditorStore.getState().streamTerminalLog(
 						executionId,
 						{
@@ -326,12 +303,22 @@ async function runGitOp<T>(
 
 				if (isOk || complete.resultType === resultType) {
 					if (complete.error && !isOk) {
-						reject(new GitOpError(complete.error, complete.data as Record<string, unknown>));
+						reject(
+							new GitOpError(
+								complete.error,
+								complete.data as Record<string, unknown>,
+							),
+						);
 					} else {
 						resolve((complete.data ?? {}) as T);
 					}
 				} else {
-					reject(new GitOpError(complete.error || `${resultType} failed`, complete.data as Record<string, unknown>));
+					reject(
+						new GitOpError(
+							complete.error || `${resultType} failed`,
+							complete.data as Record<string, unknown>,
+						),
+					);
 				}
 			},
 		);
@@ -352,8 +339,18 @@ export function SourceControlPanel() {
 	const [commitMessage, setCommitMessage] = useState("");
 	const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([]);
 	const [conflicts, setConflicts] = useState<MergeConflict[]>([]);
-	const [conflictResolutions, setConflictResolutions] = useState<Record<string, "ours" | "theirs">>({});
-	const [loading, setLoading] = useState<"fetching" | "committing" | "syncing" | "resolving" | "loading_changes" | null>(null);
+	const [conflictResolutions, setConflictResolutions] = useState<
+		Record<string, "ours" | "theirs">
+	>({});
+	const [loading, setLoading] = useState<
+		| "fetching"
+		| "committing"
+		| "syncing"
+		| "resolving"
+		| "discarding"
+		| "loading_changes"
+		| null
+	>(null);
 
 	const [commitsAhead, setCommitsAhead] = useState(0);
 	const [commitsBehind, setCommitsBehind] = useState(0);
@@ -379,8 +376,19 @@ export function SourceControlPanel() {
 	const diffCacheRef = useRef<Map<string, DiffResult>>(new Map());
 
 	// Query hooks
-	const { data: status, isLoading } = useGitStatus();
-	const { data: commitsData, isLoading: isLoadingCommits } = useGitCommits(20, 0);
+	const {
+		data: status,
+		isLoading,
+		isError: statusError,
+		isFetching: statusFetching,
+		refetch: refetchGitStatus,
+	} = useGitStatus();
+	const {
+		data: commitsData,
+		isFetching: isLoadingCommits,
+		isError: commitsError,
+		refetch: refetchCommits,
+	} = useGitCommits(20, 0);
 
 	// Operation hooks
 	const fetchOp = useFetch();
@@ -406,11 +414,17 @@ export function SourceControlPanel() {
 
 	// Refresh helpers
 	const refreshStatus = useCallback(() => {
-		queryClient.invalidateQueries({ queryKey: ["get", "/api/github/status"] });
-		queryClient.invalidateQueries({ queryKey: ["get", "/api/github/commits"] });
+		queryClient.invalidateQueries({
+			queryKey: ["get", "/api/github/status"],
+		});
+		queryClient.invalidateQueries({
+			queryKey: ["get", "/api/github/commits"],
+		});
 	}, [queryClient]);
 
+	const [changesError, setChangesError] = useState(false);
 	const loadChanges = useCallback(async () => {
+		setChangesError(false);
 		setLoading("loading_changes");
 		try {
 			const result = await runGitOp<WorkingTreeStatus>(
@@ -423,8 +437,11 @@ export function SourceControlPanel() {
 			// Update ahead/behind from real git status
 			setCommitsAhead(result.commits_ahead);
 			setCommitsBehind(result.commits_behind);
+			return true;
 		} catch (error) {
 			console.error("Failed to load changes:", error);
+			setChangesError(true);
+			return false;
 		} finally {
 			setLoading(null);
 		}
@@ -454,21 +471,29 @@ export function SourceControlPanel() {
 				(jobId) => fetchOp.mutateAsync(jobId),
 				"fetch",
 			);
-			toast.success(
-				result.commits_behind > 0 || result.commits_ahead > 0
-					? `${result.commits_behind} behind, ${result.commits_ahead} ahead`
-					: "Already up to date",
-			);
+
 			if (result.commits_behind > 0) setNeedsSync(true);
-			// Auto-load changes after fetch
-			await loadChanges();
+			// Refresh initialization/branch state as well as working changes.
+			refreshStatus();
+			const refreshed = await loadChanges();
+			if (!refreshed) {
+				toast.error(
+					"Repository fetched, but working changes could not be refreshed.",
+				);
+			} else {
+				toast.success(
+					result.commits_behind > 0 || result.commits_ahead > 0
+						? `${result.commits_behind} behind, ${result.commits_ahead} ahead`
+						: "Already up to date",
+				);
+			}
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			toast.error(`Fetch failed: ${msg}`);
 		} finally {
 			setLoading(null);
 		}
-	}, [fetchOp, loadChanges]);
+	}, [fetchOp, loadChanges, refreshStatus]);
 
 	const handleCommit = useCallback(async () => {
 		if (!commitMessage.trim()) {
@@ -534,12 +559,18 @@ export function SourceControlPanel() {
 					source: "preflight",
 					timestamp: new Date().toISOString(),
 				},
-				...cleaned.map((e: { entity_type: string; entity_name: string; path: string }) => ({
-					level: "INFO",
-					message: `   Deactivated ${e.entity_type}: ${e.entity_name} (${e.path})`,
-					source: "preflight",
-					timestamp: new Date().toISOString(),
-				})),
+				...cleaned.map(
+					(e: {
+						entity_type: string;
+						entity_name: string;
+						path: string;
+					}) => ({
+						level: "INFO",
+						message: `   Deactivated ${e.entity_type}: ${e.entity_name} (${e.path})`,
+						source: "preflight",
+						timestamp: new Date().toISOString(),
+					}),
+				),
 			];
 			useEditorStore.getState().appendTerminalOutput({
 				loggerOutput: logs,
@@ -553,7 +584,9 @@ export function SourceControlPanel() {
 			setOrphanedCount(0);
 
 			// Re-commit automatically
-			toast.success(`Cleaned ${count} orphaned reference(s), retrying commit...`);
+			toast.success(
+				`Cleaned ${count} orphaned reference(s), retrying commit...`,
+			);
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			toast.error(`Cleanup failed: ${msg}`);
@@ -593,58 +626,107 @@ export function SourceControlPanel() {
 		}
 	}, [cleanupOp, commitOp, commitMessage, loadChanges, refreshStatus]);
 
-	const handleSync = useCallback(async (confirmDeletes = false) => {
-		setLoading("syncing");
-		try {
-			const result = await runGitOp<SyncResult>(
-				(jobId) => syncOp.mutateAsync(jobId, confirmDeletes ? { confirm_deletes: true } : undefined),
-				"sync",
-			);
-			if (result.needs_delete_confirmation && result.pending_deletes?.length) {
-				setPendingDeletes(result.pending_deletes);
-				toast.warning(`${result.pending_deletes.length} entity deletion(s) require confirmation`);
-			} else if (result.success) {
-				const parts = [];
-				if (result.pushed_commits > 0) parts.push(`pushed ${result.pushed_commits} commit(s)`);
-				if (result.entities_imported > 0) parts.push(`imported ${result.entities_imported} entities`);
-				toast.success(parts.length > 0 ? `Sync complete: ${parts.join(", ")}` : "Already up to date");
-				setNeedsSync(false);
-				setConflicts([]);
-				setConflictResolutions({});
-				setPendingDeletes([]);
-				refreshStatus();
-				await loadChanges();
-				if (result.entity_changes?.length) {
-					logEntityChangesToTerminal(result.entity_changes, "sync");
+	const [syncError, setSyncError] = useState<string | null>(null);
+	const handleSync = useCallback(
+		async (confirmDeletes = false) => {
+			setSyncError(null);
+			setLoading("syncing");
+			try {
+				const result = await runGitOp<SyncResult>(
+					(jobId) =>
+						syncOp.mutateAsync(
+							jobId,
+							confirmDeletes
+								? { confirm_deletes: true }
+								: undefined,
+						),
+					"sync",
+				);
+				if (
+					result.needs_delete_confirmation &&
+					result.pending_deletes?.length
+				) {
+					setPendingDeletes(result.pending_deletes);
+					toast.warning(
+						`${result.pending_deletes.length} entity deletion(s) require confirmation`,
+					);
+				} else if (result.success) {
+					const parts = [];
+					if (result.pushed_commits > 0)
+						parts.push(`pushed ${result.pushed_commits} commit(s)`);
+					if (result.entities_imported > 0)
+						parts.push(
+							`imported ${result.entities_imported} entities`,
+						);
+					const deletedCount =
+						result.entity_changes?.filter(
+							(entity) => entity.action === "removed",
+						).length ?? 0;
+					if (deletedCount > 0)
+						parts.push(
+							`deleted ${deletedCount} ${deletedCount === 1 ? "entity" : "entities"}`,
+						);
+					toast.success(
+						parts.length > 0
+							? `Sync complete: ${parts.join(", ")}`
+							: "Sync complete",
+					);
+					setNeedsSync(false);
+					setConflicts([]);
+					setConflictResolutions({});
+					setPendingDeletes([]);
+					refreshStatus();
+					await loadChanges();
+					if (result.entity_changes?.length) {
+						logEntityChangesToTerminal(
+							result.entity_changes,
+							"sync",
+						);
+					}
+				} else if (result.conflicts && result.conflicts.length > 0) {
+					setConflicts(result.conflicts);
+					toast.warning(
+						`${result.conflicts.length} conflict(s) need resolution`,
+					);
+				} else {
+					setSyncError(result.error || "Sync failed. Try again.");
+					toast.error(result.error || "Sync failed");
 				}
-			} else if (result.conflicts && result.conflicts.length > 0) {
-				setConflicts(result.conflicts);
-				toast.warning(`${result.conflicts.length} conflict(s) need resolution`);
-			} else {
-				toast.error(result.error || "Sync failed");
+			} catch (error) {
+				// Check if this is a conflict or delete-confirmation result
+				if (error instanceof GitOpError && error.data) {
+					const syncData = error.data as unknown as SyncResult;
+					if (
+						syncData.needs_delete_confirmation &&
+						syncData.pending_deletes?.length
+					) {
+						setPendingDeletes(syncData.pending_deletes);
+						toast.warning(
+							`${syncData.pending_deletes.length} entity deletion(s) require confirmation`,
+						);
+						return;
+					}
+					if (syncData.conflicts && syncData.conflicts.length > 0) {
+						setConflicts(syncData.conflicts);
+						toast.warning(
+							`${syncData.conflicts.length} conflict(s) need resolution`,
+						);
+						return;
+					}
+				}
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				setSyncError(msg);
+				toast.error(`Sync failed: ${msg}`);
+			} finally {
+				setLoading(null);
 			}
-		} catch (error) {
-			// Check if this is a conflict or delete-confirmation result
-			if (error instanceof GitOpError && error.data) {
-				const syncData = error.data as unknown as SyncResult;
-				if (syncData.needs_delete_confirmation && syncData.pending_deletes?.length) {
-					setPendingDeletes(syncData.pending_deletes);
-					toast.warning(`${syncData.pending_deletes.length} entity deletion(s) require confirmation`);
-					return;
-				}
-				if (syncData.conflicts && syncData.conflicts.length > 0) {
-					setConflicts(syncData.conflicts);
-					toast.warning(`${syncData.conflicts.length} conflict(s) need resolution`);
-					return;
-				}
-			}
-			const msg = error instanceof Error ? error.message : String(error);
-			toast.error(`Sync failed: ${msg}`);
-		} finally {
-			setLoading(null);
-		}
-	}, [syncOp, refreshStatus, loadChanges]);
+		},
+		[syncOp, refreshStatus, loadChanges],
+	);
 
+	const [showAbortConfirm, setShowAbortConfirm] = useState(false);
+	const panelRef = useRef<HTMLDivElement>(null);
 	const handleAbortMerge = useCallback(async () => {
 		setLoading("resolving");
 		try {
@@ -659,18 +741,19 @@ export function SourceControlPanel() {
 				refreshStatus();
 				await loadChanges();
 			} else {
-				toast.error(result.error || "Abort merge failed");
+				throw new Error(
+					result.error || "Couldn’t abort the merge. Try again.",
+				);
 			}
-		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			toast.error(`Abort merge failed: ${msg}`);
 		} finally {
 			setLoading(null);
 		}
 	}, [abortMergeOp, refreshStatus, loadChanges]);
 
 	const handleResolveConflicts = useCallback(async () => {
-		const unresolvedCount = conflicts.filter((c) => !conflictResolutions[c.path]).length;
+		const unresolvedCount = conflicts.filter(
+			(c) => !conflictResolutions[c.path],
+		).length;
 		if (unresolvedCount > 0) {
 			toast.error("Please resolve all conflicts before completing merge");
 			return;
@@ -700,53 +783,68 @@ export function SourceControlPanel() {
 		}
 	}, [conflicts, conflictResolutions, resolveOp, refreshStatus, loadChanges]);
 
-	const handleShowDiff = useCallback(async (file: ChangedFile) => {
-		// Check cache first
-		const cached = diffCacheRef.current.get(file.path);
-		if (cached) {
-			setDiffPreview({
+	const handleShowDiff = useCallback(
+		async function showDiff(file: ChangedFile) {
+			// Check cache first
+			const cached = diffCacheRef.current.get(file.path);
+			if (cached) {
+				setDiffPreview({
+					path: file.path,
+					displayName: file.display_name || file.path,
+					entityType: file.entity_type || "workflow",
+					localContent: cached.working_content ?? null,
+					remoteContent: cached.head_content ?? null,
+					isConflict: false,
+					isLoading: false,
+				});
+				return;
+			}
+
+			const pendingPreview: DiffPreviewState = {
 				path: file.path,
 				displayName: file.display_name || file.path,
 				entityType: file.entity_type || "workflow",
-				localContent: cached.working_content ?? null,
-				remoteContent: cached.head_content ?? null,
+				localContent: null,
+				remoteContent: null,
 				isConflict: false,
-				isLoading: false,
-			});
-			return;
-		}
+				isLoading: true,
+			};
+			setDiffPreview(pendingPreview);
 
-		setDiffPreview({
-			path: file.path,
-			displayName: file.display_name || file.path,
-			entityType: file.entity_type || "workflow",
-			localContent: null,
-			remoteContent: null,
-			isConflict: false,
-			isLoading: true,
-		});
-
-		try {
-			const result = await runGitOp<DiffResult>(
-				(jobId) => diffOp.mutateAsync(file.path, jobId),
-				"diff",
-			);
-			// Store in cache
-			diffCacheRef.current.set(file.path, result);
-			setDiffPreview({
-				path: file.path,
-				displayName: file.display_name || file.path,
-				entityType: file.entity_type || "workflow",
-				localContent: result.working_content ?? null,
-				remoteContent: result.head_content ?? null,
-				isConflict: false,
-				isLoading: false,
-			});
-		} catch (error) {
-			console.error("Failed to load diff:", error);
-			setDiffPreview(null);
-		}
-	}, [diffOp, setDiffPreview]);
+			try {
+				const result = await runGitOp<DiffResult>(
+					(jobId) => diffOp.mutateAsync(file.path, jobId),
+					"diff",
+				);
+				if (useEditorStore.getState().diffPreview !== pendingPreview)
+					return;
+				// Store in cache
+				diffCacheRef.current.set(file.path, result);
+				setDiffPreview({
+					path: file.path,
+					displayName: file.display_name || file.path,
+					entityType: file.entity_type || "workflow",
+					localContent: result.working_content ?? null,
+					remoteContent: result.head_content ?? null,
+					isConflict: false,
+					isLoading: false,
+				});
+			} catch (error) {
+				if (useEditorStore.getState().diffPreview !== pendingPreview)
+					return;
+				setDiffPreview({
+					...pendingPreview,
+					isLoading: false,
+					error:
+						error instanceof Error
+							? error.message
+							: "Couldn’t load this comparison.",
+					onRetry: () => void showDiff(file),
+				});
+			}
+		},
+		[diffOp, setDiffPreview],
+	);
 
 	const handleShowConflictDiff = useCallback(
 		(conflict: MergeConflict) => {
@@ -762,58 +860,53 @@ export function SourceControlPanel() {
 				resolution,
 				conflictType: conflict.conflict_type,
 				onResolve: (res) => {
-					setConflictResolutions((prev) => ({ ...prev, [conflict.path]: res }));
+					setConflictResolutions((prev) => ({
+						...prev,
+						[conflict.path]: res,
+					}));
 					// Update diff preview resolution
-					setDiffPreview((prev) => (prev ? { ...prev, resolution: res } : null));
+					setDiffPreview((prev) =>
+						prev ? { ...prev, resolution: res } : null,
+					);
 				},
 			});
 		},
 		[conflictResolutions, setDiffPreview],
 	);
 
-	const handleDiscard = useCallback(async (file: ChangedFile) => {
-		try {
-			const result = await runGitOp<DiscardResult>(
-				(jobId) => discardOp.mutateAsync([file.path], jobId),
-				"discard",
-			);
-			if (result.success) {
-				toast.success(`Discarded changes to ${file.display_name || file.path}`);
-				setChangedFiles((prev) => prev.filter((f) => f.path !== file.path));
+	const handleDiscardFiles = useCallback(
+		async (files: ChangedFile[]) => {
+			if (files.length === 0) return;
+			setLoading("discarding");
+			try {
+				const result = await runGitOp<DiscardResult>(
+					(jobId) =>
+						discardOp.mutateAsync(
+							files.map((file) => file.path),
+							jobId,
+						),
+					"discard",
+				);
+				if (!result.success)
+					throw new Error(
+						result.error || "Couldn’t discard changes. Try again.",
+					);
+				toast.success(
+					`Discarded changes to ${files.length} ${files.length === 1 ? "file" : "files"}`,
+				);
+				const discardedPaths = new Set(files.map((file) => file.path));
+				setChangedFiles((current) =>
+					current.filter((file) => !discardedPaths.has(file.path)),
+				);
 				setNeedsSync(true);
 				await loadChanges();
 				refreshStatus();
-			} else {
-				toast.error(result.error || "Discard failed");
+			} finally {
+				setLoading(null);
 			}
-		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			toast.error(`Discard failed: ${msg}`);
-		}
-	}, [discardOp, loadChanges, refreshStatus]);
-
-	const handleDiscardAll = useCallback(async () => {
-		if (changedFiles.length === 0) return;
-		try {
-			const result = await runGitOp<DiscardResult>(
-				(jobId) => discardOp.mutateAsync(changedFiles.map((f) => f.path), jobId),
-				"discard",
-			);
-			if (result.success) {
-				toast.success(`Discarded all ${changedFiles.length} changes`);
-				setChangedFiles([]);
-				setNeedsSync(true);
-				await loadChanges();
-				refreshStatus();
-			} else {
-				toast.error(result.error || "Discard all failed");
-			}
-		} catch (error) {
-			if (error instanceof Error) {
-				toast.error(error.message);
-			}
-		}
-	}, [changedFiles, discardOp, loadChanges, refreshStatus]);
+		},
+		[discardOp, loadChanges, refreshStatus],
+	);
 
 	// Auto-refresh on visibility change
 	useEffect(() => {
@@ -826,134 +919,122 @@ export function SourceControlPanel() {
 			}
 		};
 		document.addEventListener("visibilitychange", handleVisibility);
-		return () => document.removeEventListener("visibilitychange", handleVisibility);
+		return () =>
+			document.removeEventListener("visibilitychange", handleVisibility);
 	}, [sidebarPanel, refreshStatus, loadChanges]);
 
 	// --- Render ---
 
-	if (isLoading || !status) {
+	if (!status && statusError)
 		return (
-			<div className="flex h-full flex-col p-4">
-				<div className="flex items-center gap-2 mb-4">
-					<GitBranch className="h-5 w-5" />
-					<h3 className="text-sm font-semibold">Source Control</h3>
-				</div>
-				<div className="flex flex-col items-center justify-center flex-1 text-center">
-					<Loader2 className="h-12 w-12 text-muted-foreground mb-4 animate-spin" />
-					<p className="text-sm text-muted-foreground">Loading Git status...</p>
-				</div>
-			</div>
+			<SourceControlSetupState
+				state="error"
+				busy={statusFetching}
+				onAction={() => void refetchGitStatus()}
+			/>
 		);
-	}
-
-	if (!status?.initialized) {
-		if (status?.configured) {
-			return (
-				<div className="flex h-full flex-col p-4">
-					<div className="flex items-center gap-2 mb-4">
-						<GitBranch className="h-5 w-5" />
-						<h3 className="text-sm font-semibold">Source Control</h3>
-					</div>
-					<div className="flex flex-col items-center justify-center flex-1 text-center">
-						<GitBranch className="h-12 w-12 text-muted-foreground mb-4" />
-						<p className="text-sm text-muted-foreground mb-2">GitHub connected</p>
-						<p className="text-xs text-muted-foreground mb-4">
-							Fetch to initialize your local repository
-						</p>
-						<Button
-							onClick={handleFetch}
-							disabled={!!loading}
-							className="gap-2"
-						>
-							{loading === "fetching" ? (
-								<>
-									<Loader2 className="h-4 w-4 animate-spin" />
-									Fetching...
-								</>
-							) : (
-								<>
-									<ArrowDownToLine className="h-4 w-4" />
-									Fetch from GitHub
-								</>
-							)}
-						</Button>
-					</div>
-				</div>
-			);
-		}
-
+	if (isLoading || !status)
+		return <SourceControlSetupState state="loading" />;
+	if (!status.initialized)
 		return (
-			<div className="flex h-full flex-col p-4">
-				<div className="flex items-center gap-2 mb-4">
-					<GitBranch className="h-5 w-5" />
-					<h3 className="text-sm font-semibold">Source Control</h3>
-				</div>
-				<div className="flex flex-col items-center justify-center flex-1 text-center">
-					<GitBranch className="h-12 w-12 text-muted-foreground mb-4" />
-					<p className="text-sm text-muted-foreground mb-2">Git not initialized</p>
-					<p className="text-xs text-muted-foreground">
-						Configure GitHub integration in Settings
-					</p>
-				</div>
-			</div>
+			<SourceControlSetupState
+				state={status.configured ? "initialize" : "configure"}
+				busy={!!loading}
+				onAction={handleFetch}
+			/>
 		);
-	}
 
 	const hasConflicts = conflicts.length > 0;
 	const resolvedCount = Object.keys(conflictResolutions).length;
-	const allConflictsResolved = hasConflicts && resolvedCount === conflicts.length;
+	const allConflictsResolved =
+		hasConflicts && resolvedCount === conflicts.length;
 
 	return (
-		<div className="flex h-full flex-col">
-			{/* Header */}
-			<div className="flex items-center justify-between p-4 border-b">
-				<div className="flex items-center gap-2">
-					<GitBranch className="h-5 w-5" />
-					<div className="flex flex-col">
-						<h3 className="text-sm font-semibold">Source Control</h3>
-						{status.current_branch && (
-							<span className="text-xs text-muted-foreground">
-								{status.current_branch}
-							</span>
-						)}
-					</div>
+		<div ref={panelRef} className="flex h-full flex-col">
+			<SourceControlHeader
+				branch={status.current_branch}
+				isFetching={loading === "fetching"}
+				disabled={!!loading}
+				onFetch={handleFetch}
+			/>
+
+			{statusError && (
+				<div className="space-y-2 border-b p-3">
+					<p role="alert" className="text-sm text-destructive">
+						Couldn’t refresh Git status. Previously loaded
+						information is shown.
+					</p>
+					<Button
+						variant="outline"
+						className="min-h-11"
+						disabled={statusFetching}
+						onClick={() => void refetchGitStatus()}
+					>
+						Retry Git status
+					</Button>
 				</div>
-				<button
-					onClick={handleFetch}
-					disabled={!!loading}
-					className="p-1.5 rounded-md hover:bg-muted/50 transition-colors disabled:opacity-50"
-					title="Fetch from remote"
-				>
-					{loading === "fetching" ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
-					) : (
-						<RefreshCw className="h-4 w-4" />
-					)}
-				</button>
-			</div>
+			)}
+
+			{showAbortConfirm && (
+				<SourceOperationDialog
+					title="Abort merge?"
+					description="Return the repository to its state before the pull. Conflict resolution work for this merge will be discarded."
+					confirmLabel="Abort merge"
+					pendingLabel="Aborting merge…"
+					cancelLabel="Keep reviewing"
+					onConfirm={handleAbortMerge}
+					onClose={() => {
+						setShowAbortConfirm(false);
+						requestAnimationFrame(() => {
+							const panel = panelRef.current;
+							const button = Array.from(
+								panel?.querySelectorAll("button") ?? [],
+							).find(
+								(button) =>
+									button.textContent?.trim() ===
+									"Abort merge",
+							);
+							(
+								button ??
+								panel?.querySelector<HTMLButtonElement>(
+									'[aria-label="Fetch from remote"]',
+								)
+							)?.focus();
+						});
+					}}
+				/>
+			)}
 
 			{/* Scrollable sections */}
-			<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+			<div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
 				{/* Merge banner + unified list when conflicts exist */}
 				{hasConflicts && (
-					<MergeBanner
+					<SourceControlMergeBanner
 						conflictCount={conflicts.length}
 						resolvedCount={resolvedCount}
-						onAbortMerge={handleAbortMerge}
-						isResolving={loading === "resolving"}
+						onAbortMerge={() => setShowAbortConfirm(true)}
+						disabled={!!loading}
 					/>
 				)}
 
 				{/* Changes (uncommitted) — includes conflicts in unified list when merging */}
-				<ChangesSection
+				<SourceChangesSection
+					syncError={syncError}
+					hasLoadError={changesError}
+					onRetryLoad={loadChanges}
 					changedFiles={changedFiles}
 					conflicts={hasConflicts ? conflicts : []}
 					conflictResolutions={conflictResolutions}
 					onShowConflictDiff={handleShowConflictDiff}
 					onResolveConflict={(path, res) => {
-						setConflictResolutions((prev) => ({ ...prev, [path]: res }));
+						setConflictResolutions((prev) => ({
+							...prev,
+							[path]: res,
+						}));
 						setDiffPreview((prev) =>
-							prev?.path === path ? { ...prev, resolution: res } : prev,
+							prev?.path === path
+								? { ...prev, resolution: res }
+								: prev,
 						);
 					}}
 					commitMessage={commitMessage}
@@ -963,8 +1044,7 @@ export function SourceControlPanel() {
 					allConflictsResolved={allConflictsResolved}
 					onSync={handleSync}
 					onShowDiff={handleShowDiff}
-					onDiscard={handleDiscard}
-					onDiscardAll={handleDiscardAll}
+					onDiscardFiles={handleDiscardFiles}
 					commitsBehind={commitsBehind}
 					commitsAhead={commitsAhead}
 					needsSync={needsSync}
@@ -982,14 +1062,15 @@ export function SourceControlPanel() {
 				/>
 
 				{/* Commits */}
-				<CommitsSection
+				<CommitHistorySection
 					commits={commits}
 					totalCommits={totalCommits}
 					hasMore={hasMoreCommits}
 					isLoading={isLoadingCommits}
+					hasError={commitsError}
+					onRetry={() => void refetchCommits()}
 				/>
 			</div>
-
 		</div>
 	);
 }
@@ -997,563 +1078,3 @@ export function SourceControlPanel() {
 // =============================================================================
 // Sub-components
 // =============================================================================
-
-/** Merge banner — shown above the file list when conflicts exist */
-function MergeBanner({
-	conflictCount,
-	resolvedCount,
-	onAbortMerge,
-	isResolving,
-}: {
-	conflictCount: number;
-	resolvedCount: number;
-	onAbortMerge: () => void;
-	isResolving: boolean;
-}) {
-	const unresolvedCount = conflictCount - resolvedCount;
-	return (
-		<div className="px-4 py-2.5 border-b bg-orange-500/10 flex-shrink-0">
-			<div className="flex items-center gap-2">
-				<AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
-				<span className="text-xs font-medium text-orange-700 dark:text-orange-400 flex-1">
-					{unresolvedCount > 0
-						? `${unresolvedCount} conflict${unresolvedCount !== 1 ? "s" : ""} — resolve to continue`
-						: "All conflicts resolved"}
-				</span>
-				<button
-					onClick={onAbortMerge}
-					disabled={isResolving}
-					className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-				>
-					Abort Merge
-				</button>
-			</div>
-		</div>
-	);
-}
-
-function ChangesSection({
-	changedFiles,
-	conflicts,
-	conflictResolutions,
-	onShowConflictDiff,
-	onResolveConflict,
-	commitMessage,
-	onCommitMessageChange,
-	onCommit,
-	onCompleteMerge,
-	allConflictsResolved,
-	onSync,
-	onShowDiff,
-	onDiscard,
-	onDiscardAll,
-	commitsBehind,
-	commitsAhead,
-	needsSync,
-	loading,
-	disabled,
-	branch,
-	showCleanupPrompt,
-	orphanedCount,
-	onCleanupAndRetry,
-	onDismissCleanup,
-	pendingDeletes,
-	onConfirmDeletes,
-	onDismissDeletes,
-}: {
-	changedFiles: ChangedFile[];
-	conflicts: MergeConflict[];
-	conflictResolutions: Record<string, "ours" | "theirs">;
-	onShowConflictDiff: (conflict: MergeConflict) => void;
-	onResolveConflict: (path: string, resolution: "ours" | "theirs") => void;
-	commitMessage: string;
-	onCommitMessageChange: (msg: string) => void;
-	onCommit: () => void;
-	onCompleteMerge: () => void;
-	allConflictsResolved: boolean;
-	onSync: (confirmDeletes?: boolean) => void;
-	onShowDiff: (file: ChangedFile) => void;
-	onDiscard: (file: ChangedFile) => void;
-	onDiscardAll: () => void;
-	commitsBehind: number;
-	commitsAhead: number;
-	needsSync: boolean;
-	loading: "fetching" | "committing" | "syncing" | "resolving" | "loading_changes" | null;
-	disabled: boolean;
-	branch: string;
-	showCleanupPrompt?: boolean;
-	orphanedCount?: number;
-	onCleanupAndRetry?: () => void;
-	onDismissCleanup?: () => void;
-	pendingDeletes?: EntityChange[];
-	onConfirmDeletes?: () => void;
-	onDismissDeletes?: () => void;
-}) {
-	const [expanded, setExpanded] = useState(true);
-	const [showDiscardAllConfirm, setShowDiscardAllConfirm] = useState(false);
-
-	const hasConflicts = conflicts.length > 0;
-	const hasChanges = changedFiles.length > 0;
-	const canCommit = hasChanges && commitMessage.trim().length > 0;
-	const totalItems = conflicts.length + changedFiles.length;
-
-	return (
-		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
-			<ContextMenu>
-				<ContextMenuTrigger asChild>
-					<button
-						onClick={() => setExpanded(!expanded)}
-						className="w-full px-4 py-2 flex items-center gap-2 hover:bg-muted/30 transition-colors text-left flex-shrink-0"
-					>
-						{expanded ? (
-							<ChevronDown className="h-4 w-4 flex-shrink-0" />
-						) : (
-							<ChevronRight className="h-4 w-4 flex-shrink-0" />
-						)}
-						<Edit3 className="h-4 w-4 flex-shrink-0" />
-						<span className="text-sm font-medium flex-1 truncate">Changes</span>
-						<span className="text-xs text-muted-foreground bg-muted w-10 text-center py-0.5 rounded-full flex-shrink-0">
-							{totalItems}
-						</span>
-					</button>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="z-[200]">
-					<ContextMenuItem
-						disabled={!hasChanges || disabled}
-						onClick={() => setShowDiscardAllConfirm(true)}
-					>
-						<Undo2 className="h-4 w-4 mr-2" />
-						Discard All Changes
-					</ContextMenuItem>
-				</ContextMenuContent>
-			</ContextMenu>
-			{expanded && (
-				<div className="flex-1 flex flex-col overflow-hidden min-h-0">
-					{/* Commit message input (shown when there are uncommitted changes) */}
-					{hasChanges && (
-						<div className="px-4 pt-2 pb-2 flex-shrink-0">
-							<input
-								type="text"
-								value={commitMessage}
-								onChange={(e) => onCommitMessageChange(e.target.value)}
-								placeholder="Commit message"
-								className="w-full px-2 py-1.5 text-xs bg-muted/50 border border-border rounded-none focus:outline-none focus:ring-1 focus:ring-ring"
-								disabled={disabled}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && canCommit) {
-										onCommit();
-									}
-								}}
-							/>
-						</div>
-					)}
-
-					{/* Morphing sync button */}
-					<div className="px-4 pb-2 flex-shrink-0 flex flex-col gap-1">
-						{hasConflicts ? (
-							/* Complete Merge button replaces normal commit/push when conflicts exist */
-							<Button
-								size="sm"
-								className="w-full gap-2 rounded-none"
-								onClick={onCompleteMerge}
-								disabled={disabled || !allConflictsResolved}
-							>
-								{loading === "resolving" ? (
-									<>
-										<Loader2 className="h-3.5 w-3.5 animate-spin" />
-										Completing Merge...
-									</>
-								) : (
-									<>
-										<CheckCircle2 className="h-3.5 w-3.5" />
-										Complete Merge
-									</>
-								)}
-							</Button>
-						) : (
-							<>
-								{hasChanges && (
-									<Button
-										size="sm"
-										className="w-full gap-2 rounded-none"
-										onClick={onCommit}
-										disabled={disabled || !canCommit}
-									>
-										{loading === "committing" ? (
-											<>
-												<Loader2 className="h-3.5 w-3.5 animate-spin" />
-												Committing...
-											</>
-										) : (
-											`Commit to ${branch}`
-										)}
-									</Button>
-								)}
-								{(commitsBehind > 0 || commitsAhead > 0 || needsSync) && (
-									<div className="flex flex-col gap-0.5">
-										<Button
-											size="sm"
-											variant={hasChanges ? "outline" : "default"}
-											className="w-full gap-2 rounded-none"
-											onClick={() => onSync()}
-											disabled={disabled || (hasChanges && (commitsAhead > 0 || commitsBehind > 0))}
-											title={hasChanges && (commitsAhead > 0 || commitsBehind > 0) ? "Commit your changes before syncing" : undefined}
-										>
-											{loading === "syncing" ? (
-												<>
-													<Loader2 className="h-3.5 w-3.5 animate-spin" />
-													Syncing...
-												</>
-											) : (
-												<>
-													<RefreshCw className="h-3.5 w-3.5" />
-													Sync origin
-													{commitsBehind > 0 && ` ↓${commitsBehind}`}
-													{commitsAhead > 0 && ` ↑${commitsAhead}`}
-												</>
-											)}
-										</Button>
-										{hasChanges && (commitsAhead > 0 || commitsBehind > 0) && (
-											<p className="text-[10px] text-muted-foreground text-center">Commit changes before syncing</p>
-										)}
-									</div>
-								)}
-							</>
-						)}
-					</div>
-
-					{/* Orphaned cleanup banner */}
-					{showCleanupPrompt && (
-						<div className="mx-4 mb-2 p-2.5 rounded-md bg-yellow-500/10 ring-1 ring-yellow-500/30 flex-shrink-0">
-							<div className="flex items-start gap-2">
-								<AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-								<div className="flex-1 min-w-0">
-									<p className="text-xs font-medium text-yellow-700">
-										{orphanedCount} orphaned reference(s) found
-									</p>
-									<p className="text-xs text-muted-foreground mt-0.5">
-										Some entities reference files that no longer exist.
-									</p>
-									<div className="flex gap-2 mt-2">
-										<Button
-											size="sm"
-											variant="default"
-											className="h-6 text-xs px-2 rounded-none"
-											onClick={onCleanupAndRetry}
-											disabled={disabled}
-										>
-											{loading === "committing" ? (
-												<>
-													<Loader2 className="h-3 w-3 animate-spin mr-1" />
-													Cleaning up...
-												</>
-											) : (
-												"Clean up & Retry"
-											)}
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											className="h-6 text-xs px-2 rounded-none"
-											onClick={onDismissCleanup}
-											disabled={disabled}
-										>
-											Dismiss
-										</Button>
-									</div>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{/* Pending deletes confirmation banner */}
-					{pendingDeletes && pendingDeletes.length > 0 && (
-						<div className="mx-4 mb-2 p-2.5 rounded-md bg-red-500/10 ring-1 ring-red-500/30 flex-shrink-0">
-							<div className="flex items-start gap-2">
-								<AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-								<div className="flex-1 min-w-0">
-									<p className="text-xs font-medium text-red-700">
-										{pendingDeletes.length} entity deletion(s) pending
-									</p>
-									<p className="text-xs text-muted-foreground mt-0.5">
-										Sync requires deleting entities removed from the repo.
-									</p>
-									<ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
-										{pendingDeletes.slice(0, 5).map((d, i) => (
-											<li key={i} className="flex items-center gap-1">
-												<Minus className="h-3 w-3 text-red-500 flex-shrink-0" />
-												<span className="truncate">{d.entity_type}: {d.name}</span>
-											</li>
-										))}
-										{pendingDeletes.length > 5 && (
-											<li className="text-muted-foreground/70">
-												...and {pendingDeletes.length - 5} more
-											</li>
-										)}
-									</ul>
-									<div className="flex gap-2 mt-2">
-										<Button
-											size="sm"
-											variant="destructive"
-											className="h-6 text-xs px-2 rounded-none"
-											onClick={onConfirmDeletes}
-											disabled={disabled}
-										>
-											{loading === "syncing" ? (
-												<>
-													<Loader2 className="h-3 w-3 animate-spin mr-1" />
-													Deleting...
-												</>
-											) : (
-												"Confirm & Sync"
-											)}
-										</Button>
-										<Button
-											size="sm"
-											variant="ghost"
-											className="h-6 text-xs px-2 rounded-none"
-											onClick={onDismissDeletes}
-											disabled={disabled}
-										>
-											Dismiss
-										</Button>
-									</div>
-								</div>
-							</div>
-						</div>
-					)}
-
-					{/* File list */}
-					<div className="flex-1 overflow-y-auto px-4 pb-2 min-h-0">
-						{loading === "loading_changes" ? (
-							<div className="flex items-center justify-center py-4">
-								<Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-							</div>
-						) : totalItems === 0 ? (
-							<p className="text-xs text-muted-foreground text-center py-4">
-								No uncommitted changes
-							</p>
-						) : (
-							<>
-								{/* Conflict files first */}
-								{conflicts.map((conflict) => {
-									const resolution = conflictResolutions[conflict.path];
-									const entityType = conflict.entity_type as keyof typeof ENTITY_ICONS | null;
-									const iconConfig = entityType ? ENTITY_ICONS[entityType] : null;
-									const IconComponent = iconConfig?.icon ?? FileCode;
-									const iconClassName = iconConfig?.className ?? "text-gray-500";
-
-									return (
-										<div
-											key={`conflict-${conflict.path}`}
-											onClick={() => onShowConflictDiff(conflict)}
-											className={cn(
-												"group flex items-center gap-1.5 text-xs py-1.5 px-2 rounded-md cursor-pointer",
-												!resolution && "border-l-2 border-orange-500 hover:bg-orange-500/5",
-												resolution && "border-l-2 border-green-500 hover:bg-green-500/5",
-											)}
-										>
-											{resolution ? (
-												<CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
-											) : (
-												<AlertTriangle className="h-3 w-3 text-orange-500 flex-shrink-0" />
-											)}
-											<IconComponent className={cn("h-3.5 w-3.5 flex-shrink-0", iconClassName)} />
-											<span className="flex-1 truncate" title={conflict.path}>
-												{conflict.display_name || conflict.path}
-											</span>
-											<span className={cn(
-												"flex-shrink-0 flex items-center gap-0.5",
-												resolution ? "flex" : "hidden group-hover:flex",
-											)}>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														onResolveConflict(conflict.path, "ours");
-													}}
-													className={cn(
-														"px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors",
-														resolution === "ours"
-															? "bg-blue-500/20 text-blue-400"
-															: "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-													)}
-													title="Keep local version"
-												>
-													Local
-												</button>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														onResolveConflict(conflict.path, "theirs");
-													}}
-													className={cn(
-														"px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors",
-														resolution === "theirs"
-															? "bg-purple-500/20 text-purple-400"
-															: "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-													)}
-													title="Keep remote version"
-												>
-													Remote
-												</button>
-											</span>
-										</div>
-									);
-								})}
-								{/* Then normal changed files */}
-								{changedFiles.map((file) => {
-									const entityType = file.entity_type as keyof typeof ENTITY_ICONS | null;
-									const iconConfig = entityType ? ENTITY_ICONS[entityType] : null;
-									const IconComponent = iconConfig?.icon ?? FileCode;
-									const iconClassName = iconConfig?.className ?? "text-gray-500";
-
-									return (
-										<div
-											key={file.path}
-											onClick={() => onShowDiff(file)}
-											className="group flex items-center gap-2 text-xs py-1.5 px-2 rounded-md hover:bg-muted/30 cursor-pointer"
-										>
-											{getChangeIcon(file.change_type)}
-											<IconComponent className={cn("h-3.5 w-3.5 flex-shrink-0", iconClassName)} />
-											<span className="flex-1 truncate" title={file.path}>
-												{file.display_name || file.path}
-											</span>
-											{!hasConflicts && (
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														onDiscard(file);
-													}}
-													className="hidden group-hover:block p-0.5 rounded-md hover:bg-muted/80 flex-shrink-0"
-													title="Discard changes"
-												>
-													<Undo2 className="h-3 w-3 text-muted-foreground" />
-												</button>
-											)}
-											<span
-												className={cn(
-													"text-xs font-mono w-4 text-center flex-shrink-0",
-													file.change_type === "added" && "text-green-500",
-													file.change_type === "modified" && "text-blue-500",
-													file.change_type === "deleted" && "text-red-500",
-												)}
-											>
-												{getChangeBadge(file.change_type)}
-											</span>
-										</div>
-									);
-								})}
-							</>
-						)}
-					</div>
-				</div>
-			)}
-
-			<AlertDialog open={showDiscardAllConfirm} onOpenChange={setShowDiscardAllConfirm}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Discard All Changes?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will discard all {changedFiles.length} uncommitted change(s). This cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={onDiscardAll}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							Discard All
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</div>
-	);
-}
-
-function CommitsSection({
-	commits,
-	totalCommits,
-	hasMore,
-	isLoading,
-}: {
-	commits: Array<{
-		sha: string;
-		message: string;
-		author: string;
-		timestamp: string;
-		is_pushed: boolean;
-	}>;
-	totalCommits?: number;
-	hasMore?: boolean;
-	isLoading?: boolean;
-}) {
-	const [expanded, setExpanded] = useState(true);
-
-	return (
-		<div className={cn("border-t flex flex-col min-h-0", expanded && "flex-1")}>
-			<button
-				onClick={() => setExpanded(!expanded)}
-				className="w-full px-4 py-2 flex items-center gap-2 hover:bg-muted/30 transition-colors text-left flex-shrink-0"
-			>
-				{expanded ? (
-					<ChevronDown className="h-4 w-4 flex-shrink-0" />
-				) : (
-					<ChevronRight className="h-4 w-4 flex-shrink-0" />
-				)}
-				<History className="h-4 w-4 flex-shrink-0" />
-				<span className="text-sm font-medium flex-1 truncate">Commits</span>
-				<span className="text-xs text-muted-foreground bg-muted w-10 text-center py-0.5 rounded-full flex-shrink-0">
-					{totalCommits ?? commits.length}
-				</span>
-			</button>
-			{expanded && (
-				<div className="flex-1 flex flex-col overflow-hidden min-h-0">
-					<div className="flex-1 overflow-y-auto px-4 py-2 min-h-0">
-						{isLoading && commits.length === 0 ? (
-							<div className="flex flex-col items-center justify-center py-8 text-center">
-								<Loader2 className="h-6 w-6 text-muted-foreground mb-2 animate-spin" />
-								<p className="text-xs text-muted-foreground">Loading commits...</p>
-							</div>
-						) : commits.length === 0 ? (
-							<div className="flex flex-col items-center justify-center py-8 text-center">
-								<History className="h-6 w-6 text-muted-foreground mb-2" />
-								<p className="text-xs text-muted-foreground">No commits</p>
-							</div>
-						) : (
-							<div className="space-y-1">
-								{commits.map((commit) => (
-									<div
-										key={commit.sha}
-										className="group flex items-start gap-2 px-2 py-2 rounded-md hover:bg-muted/30 transition-colors"
-									>
-										{commit.is_pushed ? (
-											<CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0 mt-0.5" />
-										) : (
-											<Circle className="h-3.5 w-3.5 text-yellow-500 flex-shrink-0 mt-0.5" />
-										)}
-										<div className="flex-1 min-w-0">
-											<p className="text-xs font-medium truncate">
-												{commit.message}
-											</p>
-											<p className="text-xs text-muted-foreground">
-												{commit.author} ·{" "}
-												{new Date(commit.timestamp).toLocaleDateString()}
-											</p>
-										</div>
-									</div>
-								))}
-								{hasMore && (
-									<p className="text-xs text-center text-muted-foreground py-2">
-										{(totalCommits ?? 0) - commits.length} more commits
-									</p>
-								)}
-							</div>
-						)}
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}

@@ -78,25 +78,27 @@ export class ErrorBoundary extends Component<Props, State> {
 
 			// Default error UI
 			return (
-				<div className="flex items-center justify-center min-h-screen bg-background p-4">
-					<Card className="w-full max-w-2xl">
-						<CardHeader>
+				<div className="flex min-h-[100dvh] items-center justify-center bg-background p-4">
+					<Card className="flex max-h-[calc(100dvh-2rem)] flex-col w-full max-w-2xl overflow-hidden">
+						<CardHeader className="shrink-0">
 							<div className="flex items-center gap-3">
-								<div className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10">
+								<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] bg-destructive/10">
 									<AlertTriangle className="h-6 w-6 text-destructive" />
 								</div>
-								<div>
-									<CardTitle>Something went wrong</CardTitle>
-									<CardDescription>
+								<div className="min-w-0">
+									<CardTitle role="heading" aria-level={1} className="text-pretty [overflow-wrap:anywhere]">
+										Something went wrong
+									</CardTitle>
+									<CardDescription className="[overflow-wrap:anywhere]">
 										An unexpected error occurred in the
 										application
 									</CardDescription>
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="space-y-4">
+						<CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto">
 							<Alert variant="destructive">
-								<AlertDescription className="font-mono text-sm">
+								<AlertDescription className="font-mono text-sm [overflow-wrap:anywhere]">
 									{this.state.error?.message ||
 										"Unknown error"}
 								</AlertDescription>
@@ -104,10 +106,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
 							{import.meta.env.DEV && this.state.errorInfo && (
 								<details className="text-sm">
-									<summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+									<summary className="min-h-11 cursor-pointer py-3 font-medium text-muted-foreground hover:text-foreground">
 										Error Details (Development Only)
 									</summary>
-									<pre className="mt-2 overflow-auto rounded-lg bg-muted p-4 text-xs">
+									<pre className="mt-2 overflow-auto rounded-[var(--bf-radius-surface)] bg-muted p-4 text-xs">
 										{this.state.error?.stack}
 										{"\n\nComponent Stack:\n"}
 										{this.state.errorInfo.componentStack}
@@ -115,26 +117,27 @@ export class ErrorBoundary extends Component<Props, State> {
 								</details>
 							)}
 
-							<div className="rounded-lg bg-muted p-4">
-								<h4 className="font-medium mb-2">
+							<div className="rounded-[var(--bf-radius-surface)] bg-muted p-4">
+								<h4 className="mb-2 font-medium">
 									What you can do:
 								</h4>
 								<ul className="space-y-1 text-sm text-muted-foreground">
-									<li>• Try refreshing the page</li>
+									<li>Try again to reload this view.</li>
 									<li>
-										• Clear your browser cache and cookies
+										If the error returns, refresh the page.
 									</li>
 									<li>
-										• Contact support if the problem
+										Contact support if the problem
 										persists
 									</li>
 								</ul>
 							</div>
 						</CardContent>
-						<CardFooter className="flex gap-2">
+						<CardFooter className="flex shrink-0 flex-col gap-2 sm:flex-row">
 							<Button
 								onClick={this.handleReset}
 								variant="default"
+								className="h-11 w-full sm:w-auto"
 							>
 								<RotateCcw className="mr-2 h-4 w-4" />
 								Try Again
@@ -142,6 +145,7 @@ export class ErrorBoundary extends Component<Props, State> {
 							<Button
 								onClick={this.handleGoHome}
 								variant="outline"
+								className="h-11 w-full sm:w-auto"
 							>
 								<Home className="mr-2 h-4 w-4" />
 								Go to Home

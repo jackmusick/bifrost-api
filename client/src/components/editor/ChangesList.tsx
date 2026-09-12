@@ -25,17 +25,17 @@ export function ChangesList({
 	const getStatusIcon = (status: string) => {
 		switch (status) {
 			case "M":
-				return <span className="text-blue-500">M</span>;
+				return <span className="text-[var(--bf-info)]">M</span>;
 			case "A":
-				return <span className="text-green-500">A</span>;
+				return <span className="text-[var(--bf-success)]">A</span>;
 			case "D":
-				return <span className="text-red-500">D</span>;
+				return <span className="text-[var(--bf-danger)]">D</span>;
 			case "U":
-				return <span className="text-yellow-500">U</span>;
+				return <span className="text-[var(--bf-warning)]">U</span>;
 			case "C":
-				return <span className="text-orange-500">C</span>;
+				return <span className="text-[var(--bf-warning)]">C</span>;
 			default:
-				return <span className="text-gray-500">?</span>;
+				return <span className="text-muted-foreground">?</span>;
 		}
 	};
 
@@ -43,9 +43,12 @@ export function ChangesList({
 		<Collapsible
 			open={isOpen}
 			onOpenChange={setIsOpen}
-			className="flex flex-col min-h-0"
+			className="flex min-w-0 flex-col min-h-0"
 		>
-			<CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-2 hover:bg-muted/50 transition-colors border-b flex-shrink-0">
+			<CollapsibleTrigger
+				type="button"
+				className="min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none flex items-center justify-between w-full px-4 py-2 hover:bg-muted/50 transition-colors border-b flex-shrink-0"
+			>
 				<div className="flex items-center gap-2">
 					{isOpen ? (
 						<ChevronDown className="h-4 w-4" />
@@ -60,16 +63,22 @@ export function ChangesList({
 			<CollapsibleContent className="flex-1 min-h-0">
 				<div className="h-full overflow-y-auto px-4 py-2">
 					{isLoading ? (
-						<div className="flex flex-col items-center justify-center py-8 text-center">
-							<Loader2 className="h-6 w-6 text-muted-foreground mb-2 animate-spin" />
-							<p className="text-xs text-muted-foreground">
+						<div
+							role="status"
+							className="flex flex-col items-center justify-center py-8 text-center"
+						>
+							<Loader2 className="h-6 w-6 text-muted-foreground mb-2 motion-safe:animate-spin" />
+							<p className="text-sm text-muted-foreground">
 								Loading changes...
 							</p>
 						</div>
 					) : changes.length === 0 && !hasConflicts ? (
-						<div className="flex flex-col items-center justify-center py-8 text-center">
-							<Check className="h-6 w-6 text-green-500 mb-2" />
-							<p className="text-xs text-muted-foreground">
+						<div
+							role="status"
+							className="flex flex-col items-center justify-center py-8 text-center"
+						>
+							<Check className="h-6 w-6 text-[var(--bf-success)] mb-2" />
+							<p className="text-sm text-muted-foreground">
 								No changes
 							</p>
 						</div>
@@ -78,16 +87,17 @@ export function ChangesList({
 							{changes.map((file) => (
 								<button
 									key={file.path}
+									type="button"
 									onClick={() => onFileClick(file)}
-									className="flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs hover:bg-muted/50 transition-colors"
+									className="grid grid-cols-[auto_minmax(0,1fr)] min-h-11 min-w-0 items-start gap-x-2 gap-y-1 w-full px-2 py-3 rounded-[var(--bf-radius-control)] text-sm leading-5 hover:bg-muted/50 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 								>
 									{getStatusIcon(file.status)}
-									<span className="truncate text-left flex-1">
+									<span className="min-w-0 text-left flex-1 font-mono [overflow-wrap:anywhere]">
 										{file.path}
 									</span>
 									{file.additions !== null &&
 										file.deletions !== null && (
-											<span className="text-muted-foreground text-xs">
+											<span className="col-start-2 text-left text-muted-foreground text-xs tabular-nums">
 												+{file.additions} -
 												{file.deletions}
 											</span>

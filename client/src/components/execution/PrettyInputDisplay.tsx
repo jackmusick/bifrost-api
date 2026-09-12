@@ -1,21 +1,19 @@
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { InputDisplayToolbar } from "./InputDisplayToolbar";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Copy, Check, TreeDeciduous } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { JsonValuePreview } from "./JsonValuePreview";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { classify, tableColumns, MAX_TABLE_ROWS } from "./prettyShape";
 
 const MAX_SCALAR_DISPLAY_CHARS = 1000;
-const MAX_HIGHLIGHTED_JSON_CHARS = 25_000;
 
 interface PrettyInputDisplayProps {
 	inputData: Record<string, unknown> | unknown[];
 	showToggle?: boolean;
+	showDescription?: boolean;
 	defaultView?: "pretty" | "tree";
+	context?: "input" | "result";
 }
 
 /**
@@ -124,43 +122,6 @@ function badgeFor(value: unknown): string | undefined {
 	return formatScalar(value).badge;
 }
 
-/** Syntax-highlighted JSON block — the ladder's last resort. */
-function JsonBlock({ value }: { value: unknown }) {
-	const json = JSON.stringify(value, null, 2);
-	if (json.length > MAX_HIGHLIGHTED_JSON_CHARS) {
-		return (
-			<div className="mt-1 space-y-1.5">
-				<p className="text-xs text-muted-foreground">
-					Showing the first {MAX_HIGHLIGHTED_JSON_CHARS.toLocaleString()} of{" "}
-					{json.length.toLocaleString()} JSON characters. Copy retains the full
-					value.
-				</p>
-				<pre className="max-h-64 max-w-full overflow-auto rounded-md bg-slate-950 p-3 font-mono text-xs text-slate-100">
-					{json.slice(0, MAX_HIGHLIGHTED_JSON_CHARS)}
-					{"\n…"}
-				</pre>
-			</div>
-		);
-	}
-
-	return (
-		<SyntaxHighlighter
-			language="json"
-			style={oneDark}
-			customStyle={{
-				margin: "0.25rem 0 0 0",
-				borderRadius: "0.375rem",
-				fontSize: "0.75rem",
-				maxHeight: "16rem",
-				maxWidth: "100%",
-				overflow: "auto",
-			}}
-		>
-			{json}
-		</SyntaxHighlighter>
-	);
-}
-
 /** Quiet in-panel mini table for arrays of same-shaped flat objects. */
 function MiniTable({
 	items,
@@ -170,62 +131,108 @@ function MiniTable({
 	className?: string;
 }) {
 	const columns = tableColumns(items);
-	if (columns === null) return <JsonBlock value={items} />;
+	if (columns === null) return <JsonValuePreview value={items} />;
 	const previewItems = items.slice(0, MAX_TABLE_ROWS);
 
 	return (
-		<div className="space-y-1.5">
+		<div className="@container min-w-0 space-y-1.5">
 			{items.length > previewItems.length && (
 				<p className="text-xs text-muted-foreground">
 					Showing first {previewItems.length.toLocaleString()} of{" "}
 					{items.length.toLocaleString()} rows
 				</p>
 			)}
+			<ol
+				aria-label="Input records"
+				className="divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-background/60 @2xl:hidden"
+			>
+				{previewItems.map((item, index) => (
+					<InputArrayRecord
+						key={index}
+						item={item}
+						columns={columns}
+						index={index}
+					/>
+				))}
+			</ol>
 			<div
 				className={cn(
-					"overflow-x-auto rounded-md ring-1 ring-foreground/5",
+					"hidden overflow-x-auto rounded-[var(--bf-radius-surface)] border border-border bg-background/60 @2xl:block",
 					className,
 				)}
 			>
-			<table className="w-full text-sm">
-				<thead>
-					<tr className="bg-muted">
-						{columns.map((col) => (
-							<th
-								key={col}
-								className="px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground"
-							>
-								{snakeCaseToTitleCase(col)}
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody className="divide-y divide-border/60">
-					{previewItems.map((item, i) => (
-						<tr key={i}>
-							{columns.map((col) => {
-								const cell = item[col];
-								return (
-									<td
-										key={col}
-										className="px-2.5 py-1.5 align-top break-words"
-									>
-										{cell === null || cell === undefined ? (
-											<span className="text-muted-foreground/60">
-												—
-											</span>
-										) : (
-											formatScalar(cell).display
-										)}
-									</td>
-								);
-							})}
+				<table className="w-full text-sm">
+					<thead>
+						<tr className="bg-muted">
+							{columns.map((col) => (
+								<th
+									key={col}
+									className="px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground"
+								>
+									{snakeCaseToTitleCase(col)}
+								</th>
+							))}
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody className="divide-y divide-border/60">
+						{previewItems.map((item, i) => (
+							<tr key={i}>
+								{columns.map((col) => {
+									const cell = item[col];
+									return (
+										<td
+											key={col}
+											className="px-2.5 py-1.5 align-top break-words"
+										>
+											{cell === null ||
+											cell === undefined ? (
+												<span className="text-muted-foreground/60">
+													—
+												</span>
+											) : (
+												formatScalar(cell).display
+											)}
+										</td>
+									);
+								})}
+							</tr>
+						))}
+					</tbody>
+				</table>
 			</div>
 		</div>
+	);
+}
+
+function InputArrayRecord({
+	item,
+	columns,
+	index,
+}: {
+	item: Record<string, unknown>;
+	columns: string[];
+	index: number;
+}) {
+	return (
+		<li className="min-w-0 px-3 py-3">
+			<p className="mb-3 text-xs font-medium text-muted-foreground">
+				Item {index + 1}
+			</p>
+			<dl className="space-y-3">
+				{columns.map((column) => (
+					<div key={column}>
+						<dt className="text-xs font-medium [overflow-wrap:anywhere]">
+							{snakeCaseToTitleCase(column)}
+						</dt>
+						<dd className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground [overflow-wrap:anywhere]">
+							{item[column] == null
+								? "—"
+								: formatScalar(item[column]).display}
+						</dd>
+					</div>
+				))}
+			</dl>
+		</li>
 	);
 }
 
@@ -268,7 +275,7 @@ function ValueContent({ value, depth }: { value: unknown; depth: number }) {
 	switch (shape) {
 		case "scalar":
 			return (
-				<p className="whitespace-pre-wrap break-all">
+				<p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{formatScalar(value).display}
 				</p>
 			);
@@ -282,7 +289,7 @@ function ValueContent({ value, depth }: { value: unknown; depth: number }) {
 				);
 			}
 			return (
-				<p className="whitespace-pre-wrap break-words">
+				<p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
 					{items.map((v) => formatScalar(v).display).join(", ")}
 				</p>
 			);
@@ -302,71 +309,35 @@ function ValueContent({ value, depth }: { value: unknown; depth: number }) {
 				/>
 			);
 		case "json":
-			return <JsonBlock value={value} />;
+			return <JsonValuePreview value={value} />;
 	}
 }
 
 export function PrettyInputDisplay({
 	inputData,
 	showToggle = false,
+	showDescription = true,
 	defaultView = "pretty",
+	context = "input",
 }: PrettyInputDisplayProps) {
 	const [view, setView] = useState<"pretty" | "tree">(defaultView);
-	const [copied, setCopied] = useState(false);
-
-	const handleCopy = async () => {
-		try {
-			await navigator.clipboard.writeText(
-				JSON.stringify(inputData, null, 2),
-			);
-			setCopied(true);
-			toast.success("Copied to clipboard");
-			setTimeout(() => setCopied(false), 2000);
-		} catch {
-			toast.error("Failed to copy to clipboard");
-		}
-	};
 
 	// Tree view
 	if (view === "tree") {
 		return (
-			<div className="space-y-2">
-				<div className="flex items-center justify-between">
-					{showToggle ? (
-						<p className="text-xs text-muted-foreground">
-							Viewing tree structure
-						</p>
-					) : (
-						<div />
-					)}
-					<div className="flex gap-1.5">
-						<Button
-							variant="outline"
-							size="sm"
-							className="h-7 px-2.5 text-xs"
-							onClick={handleCopy}
-						>
-							{copied ? (
-								<Check className="mr-1.5 h-3.5 w-3.5" />
-							) : (
-								<Copy className="mr-1.5 h-3.5 w-3.5" />
-							)}
-							{copied ? "Copied!" : "Copy"}
-						</Button>
-						{showToggle && (
-							<Button
-								variant="outline"
-								size="sm"
-								className="h-7 px-2.5 text-xs"
-								onClick={() => setView("pretty")}
-							>
-								<Eye className="mr-1.5 h-3.5 w-3.5" />
-								Pretty View
-							</Button>
-						)}
-					</div>
-				</div>
-				<div className="rounded-lg ring-1 ring-foreground/5 p-3 bg-muted/50">
+			<div className="min-w-0 space-y-2">
+				<InputDisplayToolbar
+					inputData={inputData}
+					view={view}
+					showToggle={showToggle}
+					description={
+						showToggle && showDescription
+							? "Viewing tree structure"
+							: undefined
+					}
+					onViewChange={setView}
+				/>
+				<div className="min-w-0 rounded-[var(--bf-radius-surface)] border border-border bg-muted/40 p-2 sm:p-3">
 					<VariablesTreeView
 						data={inputData as Record<string, unknown>}
 					/>
@@ -382,28 +353,29 @@ export function PrettyInputDisplay({
 	if (entries.length === 0) {
 		return (
 			<div className="text-center text-muted-foreground py-8">
-				{isTopLevelArray ? "No items" : "No input parameters"}
+				{isTopLevelArray
+					? "No items"
+					: context === "result"
+						? "No result fields"
+						: "No input parameters"}
 			</div>
 		);
 	}
 
 	const countLine = isTopLevelArray
 		? `${inputData.length} item${inputData.length !== 1 ? "s" : ""}`
-		: `Viewing ${entries.length} parameter${entries.length !== 1 ? "s" : ""}`;
+		: context === "result"
+			? `Viewing ${entries.length} result field${entries.length !== 1 ? "s" : ""}`
+			: `Viewing ${entries.length} parameter${entries.length !== 1 ? "s" : ""}`;
 
-	const toggleBar = showToggle && (
-		<div className="flex items-center justify-between">
-			<p className="text-xs text-muted-foreground">{countLine}</p>
-			<Button
-				variant="outline"
-				size="sm"
-				className="h-7 px-2.5 text-xs"
-				onClick={() => setView("tree")}
-			>
-				<TreeDeciduous className="mr-1.5 h-3.5 w-3.5" />
-				Tree View
-			</Button>
-		</div>
+	const toggleBar = (
+		<InputDisplayToolbar
+			inputData={inputData}
+			view={view}
+			showToggle={showToggle}
+			description={showToggle && showDescription ? countLine : undefined}
+			onViewChange={setView}
+		/>
 	);
 
 	// Top-level array: frame honestly ("5 items") and render the array itself
@@ -411,7 +383,7 @@ export function PrettyInputDisplay({
 	if (isTopLevelArray) {
 		const shape = classify(inputData);
 		return (
-			<div className="space-y-2">
+			<div className="min-w-0 space-y-2">
 				{toggleBar}
 				{shape === "object-table" ? (
 					<MiniTable
@@ -423,41 +395,48 @@ export function PrettyInputDisplay({
 						<ValueContent value={inputData} depth={0} />
 					</div>
 				) : (
-					<JsonBlock value={inputData} />
+					<JsonValuePreview value={inputData} />
 				)}
 			</div>
 		);
 	}
 
 	return (
-		<div className="space-y-2">
+		<div className="min-w-0 space-y-2">
 			{toggleBar}
 
-			<div className="divide-y divide-border/60 overflow-hidden rounded-lg ring-1 ring-foreground/5 bg-muted/50">
+			<div className="@container min-w-0 divide-y divide-border rounded-[var(--bf-radius-surface)] border border-border bg-muted/40">
 				{entries.map(([key, value]) => {
 					const friendlyLabel = snakeCaseToTitleCase(key);
 					const badge = badgeFor(value);
+					const scalar = classify(value) === "scalar";
 
 					return (
 						<div
 							key={key}
-							className="flex items-start gap-4 px-3 py-2.5 hover:bg-muted/50 transition-colors"
+							className="min-w-0 px-3 py-3 sm:px-4 sm:py-3.5"
 						>
-							<div className="flex-1 min-w-0">
-								<div className="flex items-center gap-2 mb-0.5">
-									<label className="text-sm font-medium">
+							<div
+								className={cn(
+									"min-w-0",
+									scalar &&
+										"@lg:grid @lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] @lg:gap-6",
+								)}
+							>
+								<div className="flex flex-wrap items-center gap-2 mb-2">
+									<span className="text-sm font-semibold text-primary [overflow-wrap:anywhere]">
 										{friendlyLabel}
-									</label>
+									</span>
 									{badge && (
 										<Badge
 											variant="secondary"
-											className="text-xs"
+											className="bg-background/70 text-xs font-normal text-muted-foreground"
 										>
 											{badge}
 										</Badge>
 									)}
 								</div>
-								<div className="text-sm text-muted-foreground break-words">
+								<div className="min-w-0 text-sm leading-relaxed text-foreground break-words">
 									<ValueContent value={value} depth={0} />
 								</div>
 							</div>

@@ -1,3 +1,4 @@
+import { AgentRunDetailPage } from "./AgentRunDetailPage";
 /**
  * Tests for AgentRunDetailPage.
  *
@@ -21,9 +22,11 @@ const mockSetVerdict = vi.fn();
 const mockClearVerdict = vi.fn();
 const mockRegenSummary = vi.fn();
 const mockRerun = vi.fn();
+let rerunPending = false;
 
 vi.mock("@/services/agentRuns", () => ({
 	useAgentRun: (id: string | undefined) => mockUseAgentRun(id),
+	useAgentRunStream: () => {},
 	useFlagConversation: (id: string | undefined) =>
 		mockUseFlagConversation(id),
 	useSendFlagMessage: () => ({
@@ -38,13 +41,22 @@ vi.mock("@/services/agentRuns", () => ({
 	}),
 	useRerunAgentRun: () => ({
 		mutate: mockRerun,
-		isPending: false,
+		isPending: rerunPending,
 	}),
 }));
 
 const mockUseAgent = vi.fn();
 vi.mock("@/hooks/useAgents", () => ({
 	useAgent: (id: string | undefined) => mockUseAgent(id),
+}));
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useMediaQuery: (query: string) => query.includes("min-width"),
+}));
+
+const mockUseExecution = vi.fn();
+vi.mock("@/hooks/useExecutions", () => ({
+	useExecution: (id: string | undefined) => mockUseExecution(id),
 }));
 
 vi.mock("@/hooks/useAgentRunUpdates", () => ({
@@ -68,16 +80,25 @@ vi.mock("@/components/agents/RunReviewPanel", () => ({
 		run,
 		verdict,
 		onVerdict,
+		note,
+		onNote,
 		onActivityReferencePreview,
 		onActivityReferenceActivate,
 	}: {
 		run: { id: string };
+		note: string;
+		onNote: (value: string) => void;
 		verdict: string | null;
 		onVerdict: (v: string | null) => void;
 		onActivityReferencePreview?: (activityId: string | null) => void;
 		onActivityReferenceActivate?: (activityId: string) => void;
 	}) => (
 		<div data-testid="run-review-panel" data-run-id={run.id}>
+			<input
+				aria-label="Review note"
+				value={note}
+				onChange={(e) => onNote(e.target.value)}
+			/>
 			<span data-testid="verdict-label">{verdict ?? "none"}</span>
 			<button
 				type="button"
@@ -166,8 +187,10 @@ const baseAgent = {
 };
 
 beforeEach(() => {
+	rerunPending = false;
 	mockUseAgentRun.mockReturnValue({ data: makeRun(), isLoading: false });
 	mockUseAgent.mockReturnValue({ data: baseAgent, isLoading: false });
+	mockUseExecution.mockReturnValue({ data: undefined });
 	mockUseFlagConversation.mockReturnValue({ data: undefined });
 	mockSendFlagMessage.mockReset();
 	mockSetVerdict.mockReset();
@@ -177,7 +200,6 @@ beforeEach(() => {
 });
 
 async function renderPage(path = "/agents/agent-1/runs/run-1") {
-	const { AgentRunDetailPage } = await import("./AgentRunDetailPage");
 	return renderWithProviders(
 		<Routes>
 			<Route
@@ -194,13 +216,13 @@ async function renderPage(path = "/agents/agent-1/runs/run-1") {
 // -----------------------------------------------------------------------------
 
 describe("AgentRunDetailPage — header + summary", () => {
-	it("renders the run summary in the header", async () => {
-		// Header uses `asked` as the TL;DR title (not `did` — that's prose
-		// under v3+ and too long for a heading).
+	it("uses a concise agent heading while preserving the run summary", async () => {
+		// The request remains in the summary; the heading identifies the agent.
 		await renderPage();
-		expect(
-			screen.getByRole("heading", { name: /reset password please/i }),
-		).toBeInTheDocument();
+		const heading = screen.getByRole("heading", {
+			name: "Triage",
+		});
+		expect(heading).toBeVisible();
 	});
 
 	it("renders the agent name in the breadcrumb", async () => {
@@ -214,8 +236,19 @@ describe("AgentRunDetailPage — header + summary", () => {
 		}
 	});
 
+	it("renders a semantic badge for completed runs", async () => {
+		await renderPage();
+		const completedBadge = screen
+			.getByText("Completed")
+			.closest('[data-slot="badge"]');
+		expect(completedBadge).toHaveClass(
+			"border-[color:var(--bf-success)]/30",
+			"bg-[color:var(--bf-success)]/10",
+			"text-[color:var(--bf-success)]",
+		);
+	});
+
 	it("returns to the exact in-app origin from the contextual breadcrumb", async () => {
-		const { AgentRunDetailPage } = await import("./AgentRunDetailPage");
 		const { user } = renderWithProviders(
 			<Routes>
 				<Route
@@ -243,9 +276,7 @@ describe("AgentRunDetailPage — header + summary", () => {
 			{ initialEntries: ["/parent-run"] },
 		);
 
-		await user.click(
-			screen.getByRole("link", { name: "Open child run" }),
-		);
+		await user.click(screen.getByRole("link", { name: "Open child run" }));
 		const back = screen.getByTestId("run-context-back");
 		expect(back).toHaveTextContent("Back to Service Desk Triage run");
 		expect(back).toHaveAttribute("href", "/parent-run");
@@ -354,23 +385,17 @@ describe("AgentRunDetailPage — header + summary", () => {
 		expect(screen.queryByText("Raw input")).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		expect(screen.getByText(/result from get_ticket/i)).not.toBeVisible();
-		expect(screen.getByText("Looked up ticket")).toBeInTheDocument();
 		expect(screen.getByText("Raw input")).toBeInTheDocument();
-		await user.click(screen.getByText("Details", { exact: true }));
-		expect(
-			screen.getByText("get_ticket", { exact: true }),
-		).toBeInTheDocument();
-		expect(screen.getByText("ticket_id:")).toBeInTheDocument();
-		expect(screen.getByText("428950")).toBeInTheDocument();
-
+		expect(screen.getByText(/result from get_ticket/i)).toBeVisible();
 		await user.click(
-			screen.getByText("Raw executor trace", { exact: true }),
+			screen.getByRole("button", { name: "Toggle details for step 1" }),
 		);
-		expect(screen.getByText(/result from get_ticket/i)).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Toggle details for step 1" }),
+		).toHaveAttribute("aria-expanded", "true");
 	});
 
-	it("previews and scrolls to the activity referenced by summary prose", async () => {
+	it("switches to Activity and focuses the activity referenced by summary prose", async () => {
 		const scrollIntoView = vi.fn();
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 			configurable: true,
@@ -398,22 +423,85 @@ describe("AgentRunDetailPage — header + summary", () => {
 		const reference = screen.getByRole("button", {
 			name: "activity reference",
 		});
+		await user.hover(reference);
+		await user.click(reference);
+		expect(screen.queryByTestId("run-overview")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Show overview" }),
+		).toBeInTheDocument();
 		const activity = container.querySelector('[data-activity-id="step-1"]');
 		expect(activity).toHaveAttribute("data-highlighted", "false");
-
-		await user.hover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "true");
-		await user.unhover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "false");
-
-		await user.click(reference);
 		expect(scrollIntoView).toHaveBeenCalledWith({
-			behavior: "smooth",
+			behavior: "auto",
 			block: "center",
 		});
-		await user.unhover(reference);
-		expect(activity).toHaveAttribute("data-highlighted", "false");
 		expect(activity).toHaveFocus();
+	});
+
+	it("expands Activity in place when a call is selected from Overview", async () => {
+		const scrollIntoView = vi.fn();
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: scrollIntoView,
+		});
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				steps: [
+					{
+						id: "step-1",
+						run_id: "run-1",
+						step_number: 1,
+						type: "tool_result",
+						content: {
+							tool_name: "customer_summary",
+							execution_id: "execution-428950",
+							result: { ticket_id: 428950 },
+						},
+						created_at: "2026-04-20T12:35:00Z",
+					},
+				],
+			}),
+			isLoading: false,
+		});
+		mockUseExecution.mockReturnValue({
+			data: {
+				workflow_name: "Ticket details",
+				result: { ticket_id: 428950 },
+			},
+		});
+
+		const { user, container } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: /Ticket details/ }),
+		);
+
+		expect(screen.getByTestId("run-overview")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Focus activity" }),
+		).toBeInTheDocument();
+		const activityFrame = container.querySelector(
+			"[data-activity-inspecting]",
+		);
+		expect(activityFrame).toHaveAttribute(
+			"data-activity-inspecting",
+			"true",
+		);
+		await waitFor(() =>
+			expect(scrollIntoView).toHaveBeenCalledWith({
+				behavior: "smooth",
+				block: "start",
+			}),
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: "Close call details" }),
+		);
+		await waitFor(() =>
+			expect(activityFrame).toHaveAttribute(
+				"data-activity-inspecting",
+				"false",
+			),
+		);
 	});
 });
 
@@ -441,7 +529,7 @@ describe("AgentRunDetailPage — verdict actions", () => {
 			expect(mockSetVerdict).toHaveBeenCalledWith(
 				expect.objectContaining({
 					params: { path: { run_id: "run-1" } },
-					body: { verdict: "up" },
+					body: { verdict: "up", note: "" },
 				}),
 				expect.any(Object),
 			);
@@ -463,18 +551,18 @@ describe("AgentRunDetailPage — verdict actions", () => {
 });
 
 describe("AgentRunDetailPage — sidebar metadata", () => {
-	it("keeps technical metadata in Advanced while retaining operational context", async () => {
+	it("keeps Activity free of the old metadata sidebar and exposes run ID copy in the header", async () => {
 		const { user } = await renderPage();
-		expect(screen.queryByText(/run-1/)).not.toBeInTheDocument();
-		expect(screen.queryByText(/claude-opus-4-7/)).not.toBeInTheDocument();
-		expect(screen.getByText(/test/)).toBeInTheDocument();
-		expect(screen.getByText(/alice/i)).toBeInTheDocument();
-
+		expect(
+			screen.getByRole("button", { name: "Copy run ID" }),
+		).toBeInTheDocument();
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Focus activity" }),
+		);
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
-		expect(screen.getByText(/run-1/)).toBeInTheDocument();
-		expect(screen.getByText(/claude-opus-4-7/)).toBeInTheDocument();
-		expect(screen.getByText("Iterations")).toBeInTheDocument();
-		expect(screen.getByText("Tokens")).toBeInTheDocument();
+		expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
 	});
 });
 
@@ -493,14 +581,16 @@ describe("AgentRunDetailPage — regenerate summary", () => {
 		expect(screen.getByTestId("regen-summary-button")).toBeInTheDocument();
 	});
 
-	it("shows the regenerate button when summary_status is failed (any role)", async () => {
+	it("does not offer sidebar regeneration to non-admins after summary failure", async () => {
 		mockAuth.mockReturnValue({ isPlatformAdmin: false });
 		mockUseAgentRun.mockReturnValue({
 			data: makeRun({ summary_status: "failed" }),
 			isLoading: false,
 		});
 		await renderPage();
-		expect(screen.getByTestId("regen-summary-button")).toBeInTheDocument();
+		expect(
+			screen.queryByTestId("regen-summary-button"),
+		).not.toBeInTheDocument();
 	});
 
 	it("calls useRegenerateSummary when the button is clicked", async () => {
@@ -522,6 +612,16 @@ describe("AgentRunDetailPage — rerun", () => {
 	it("renders the rerun button in the header", async () => {
 		await renderPage();
 		expect(screen.getByTestId("rerun-button")).toBeInTheDocument();
+	});
+
+	it("shows the pending rerun spinner with reduced-motion-safe animation classes", async () => {
+		rerunPending = true;
+		await renderPage();
+		const spinner = screen.getByTestId("rerun-button").querySelector("svg");
+		expect(spinner).toHaveClass(
+			"animate-spin",
+			"motion-reduce:animate-none",
+		);
 	});
 
 	it("calls useRerunAgentRun with the current run id on click", async () => {
@@ -588,13 +688,145 @@ describe("AgentRunDetailPage — AI usage card", () => {
 			isLoading: false,
 		});
 		const { user } = await renderPage();
-		expect(screen.queryByTestId("ai-usage-card")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
+		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
+		expect(screen.getByText("claude-opus-4-7")).toBeInTheDocument();
+		await user.click(
+			screen.getByRole("button", { name: "Focus activity" }),
+		);
 		await user.click(screen.getByRole("button", { name: /advanced/i }));
+		await user.click(screen.getByRole("button", { name: "Show overview" }));
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
 		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
 	});
 
 	it("hides the AI usage card when there is no usage data", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				ai_usage: [],
+				ai_totals: null,
+				llm_model: null,
+				tokens_used: 0,
+			}),
+			isLoading: false,
+		});
 		await renderPage();
 		expect(screen.queryByTestId("ai-usage-card")).not.toBeInTheDocument();
 	});
+
+	it("renders reported model and tokens for legacy runs without usage breakdown", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				ai_usage: [],
+				ai_totals: null,
+				llm_model: "gpt-5.2",
+				tokens_used: 5000,
+			}),
+			isLoading: false,
+		});
+		const { user } = await renderPage();
+		expect(screen.getByText("AI Usage")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: /ai usage/i }));
+		expect(screen.getByTestId("ai-usage-card")).toBeInTheDocument();
+		expect(screen.getByText("gpt-5.2")).toBeInTheDocument();
+		expect(screen.getByText("5,000")).toBeInTheDocument();
+	});
+});
+
+it("distinguishes failed run reads from missing runs and offers retry", async () => {
+	const refetch = vi.fn();
+	mockUseAgentRun.mockReturnValue({
+		isLoading: false,
+		isError: true,
+		isFetching: false,
+		refetch,
+	});
+	const { user } = await renderPage();
+	expect(screen.queryByTestId("run-not-found")).not.toBeInTheDocument();
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Could not load run details",
+	);
+	await user.click(screen.getByRole("button", { name: "Retry run details" }));
+	expect(refetch).toHaveBeenCalledOnce();
+});
+it("retains the execution when refreshing its run fails", async () => {
+	mockUseAgentRun.mockReturnValue({
+		data: makeRun(),
+		isLoading: false,
+		isError: true,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+	await renderPage();
+	expect(screen.getByTestId("agent-run-detail-page")).toBeInTheDocument();
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Previously loaded data is still shown",
+	);
+});
+
+it.each(["run-1", "__proto__", "constructor"])("loads and edits the stored note for run key %s", async (runId) => {
+	mockUseAgentRun.mockReturnValue({
+		data: makeRun({ id: runId, verdict_note: "Stored review", verdict: "down" }),
+		isLoading: false,
+	});
+	const { user } = await renderPage(`/agents/agent-1/runs/${runId}`);
+	const input = screen.getByRole("textbox", { name: "Review note" });
+	expect(input).toHaveValue("Stored review");
+	await user.clear(input);
+	await user.type(input, "Check renewal");
+	await user.click(screen.getByRole("button", { name: "Save review note" }));
+	expect(mockSetVerdict).toHaveBeenCalledWith(
+		expect.objectContaining({
+			body: { verdict: "down", note: "Check renewal" },
+		}),
+		expect.any(Object),
+	);
+	expect(input).toBeDisabled();
+});
+
+it("retains the run and retries failed agent information", async () => {
+	const refetch = vi.fn();
+	mockUseAgent.mockReturnValue({ isError: true, isFetching: false, refetch });
+	const { user } = await renderPage();
+	expect(screen.getByTestId("agent-run-detail-page")).toBeInTheDocument();
+	await user.click(
+		screen.getByRole("button", { name: "Retry agent information" }),
+	);
+	expect(refetch).toHaveBeenCalledOnce();
+});
+it("keeps a child execution visible when its parent read fails", async () => {
+	const refetch = vi.fn();
+	mockUseAgentRun.mockImplementation((id) =>
+		id === "parent-run"
+			? { isError: true, isFetching: false, refetch }
+			: {
+					data: makeRun({ parent_run_id: "parent-run" }),
+					isLoading: false,
+				},
+	);
+	const { user } = await renderPage();
+	expect(screen.getByTestId("agent-run-detail-page")).toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry parent run" }));
+	expect(refetch).toHaveBeenCalledOnce();
+});
+
+it("keeps deleted-agent runs readable without invalid agent links", async () => {
+	mockUseAgentRun.mockReturnValue({
+		data: makeRun({ agent_id: null, agent_name: "Archived agent" }),
+		isLoading: false,
+	});
+	mockUseAgent.mockReturnValue({ data: undefined, isLoading: false });
+	await renderPage();
+	expect(
+		screen.getByText("This agent is no longer available."),
+	).toBeVisible();
+	expect(
+		screen.getByRole("link", { name: "Back to agents" }),
+	).toHaveAttribute("href", "/agents");
+	expect(screen.getByRole("button", { name: "Rerun" })).toBeDisabled();
+	expect(
+		screen
+			.getAllByRole("link")
+			.some((link) => link.getAttribute("href")?.includes("/null")),
+	).toBe(false);
 });

@@ -1,3 +1,4 @@
+import { Solutions } from "./Solutions";
 /**
  * Tests for the Solutions list page — card/table rendering, search + org
  * filtering, and the CreateEditSolution install flow (dialog dropzone,
@@ -9,6 +10,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, within } from "@/test-utils";
 import { waitFor } from "@testing-library/react";
 
+const mockIsDesktop = vi.fn(() => true);
+vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => mockIsDesktop() }));
 const mockNavigate = vi.fn();
 const mockSetSearchParams = vi.fn();
 let mockSearchParams = new URLSearchParams();
@@ -85,7 +88,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Solutions } = await import("./Solutions");
 	return renderWithProviders(<Solutions />);
 }
 
@@ -305,7 +307,7 @@ describe("Solutions — list", () => {
 		const { user } = await renderPage();
 		await screen.findAllByTestId("install-card");
 
-		await user.type(screen.getByPlaceholderText(/search solutions/i), "alp");
+		await user.type(screen.getByRole("textbox", { name: "Search solutions" }), "alp");
 
 		await waitFor(() =>
 			expect(screen.getAllByTestId("install-card")).toHaveLength(1),

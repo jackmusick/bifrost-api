@@ -69,7 +69,7 @@ test.describe.serial("Per-mapping OAuth", () => {
 		await page.goto(`/integrations/${integrationId}`);
 		await page.getByRole("tab", { name: "Mappings" }).click();
 		await expect(
-			page.getByRole("columnheader", { name: "Connection" }),
+			page.getByRole("list", { name: "Organization mappings" }),
 		).toBeVisible();
 	}
 
@@ -77,12 +77,23 @@ test.describe.serial("Per-mapping OAuth", () => {
 		page,
 	}) => {
 		await openMappings(page);
+		const mappingsPanel = page.getByRole("tabpanel", { name: "Mappings" });
 		await expect(
-			page.getByText(/no data provider configured/i),
+			mappingsPanel.getByText("Organization Mappings"),
+		).toBeVisible();
+		await expect(
+			mappingsPanel.getByRole("searchbox", {
+				name: "Search organization mappings",
+			}),
 		).toBeVisible();
 		await expect(page.getByPlaceholder(/entity id/i).first()).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Connect", exact: true }).first(),
+			page
+				.getByRole("listitem")
+				.filter({
+					has: page.getByRole("heading", { name: organizationName }),
+				})
+				.getByRole("button", { name: "Connect", exact: true }),
 		).toBeVisible();
 	});
 
@@ -113,8 +124,10 @@ test.describe.serial("Per-mapping OAuth", () => {
 		);
 		const popupPromise = page.waitForEvent("popup");
 		await page
-			.getByRole("row")
-			.filter({ hasText: organizationName })
+			.getByRole("listitem")
+			.filter({
+				has: page.getByRole("heading", { name: organizationName }),
+			})
 			.getByRole("button", { name: "Connect", exact: true })
 			.click();
 

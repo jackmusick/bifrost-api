@@ -10,8 +10,11 @@ import {
 } from "lucide-react";
 import {
 	ContextMenuItem,
+	ContextMenuContent,
 	ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import { cn } from "@/lib/utils";
+import { DropdownMenuContent } from "@/components/ui/dropdown-menu";
 
 /**
  * Canonical labels + icons for file/share/folder actions, shared by the tree
@@ -47,10 +50,31 @@ export function EntryMenuItem({
 		<ContextMenuItem
 			variant={destructive ? "destructive" : undefined}
 			onSelect={onSelect}
+			className="min-h-11"
 		>
 			<Icon className="h-4 w-4" /> {meta.label}
 		</ContextMenuItem>
 	);
 }
 
+export function FileContextMenuContent({
+	children,
+	className,
+}: {
+	children: React.ReactNode;
+	className?: string;
+}) {
+	return (
+		<ContextMenuContent
+			className={cn("w-[min(16rem,calc(100vw-1rem))]", className)}
+		>
+			{children}
+		</ContextMenuContent>
+	);
+}
+
 export { ContextMenuSeparator };
+
+export function FileDropdownMenuContent({ className, ...props }: React.ComponentProps<typeof DropdownMenuContent>) {
+	return <DropdownMenuContent {...props} className={cn("w-[min(16rem,calc(100vw-1rem))]", className)} />;
+}

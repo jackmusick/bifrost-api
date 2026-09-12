@@ -5,7 +5,8 @@
  * human-readable text instead of pretending to be controls.
  */
 
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
+import { MarkdownContent } from "@/components/common/MarkdownContent";
 
 import { cn } from "@/lib/utils";
 
@@ -58,68 +59,144 @@ export function DidNarrative({
 	fallback,
 }: DidNarrativeProps) {
 	if (!text || !text.trim()) return <>{fallback}</>;
-	const parts = splitOnMarkers(text);
-	const occurrenceByTool: Record<string, number> = {};
+	const markers: NarrativeContextValue["markers"] = [];
+	// Transform parsed text only: code and real Markdown links remain intact.
+	const activityMarkers = () => (tree: MarkdownNode) => {
+		markers.length = 0;
+		const occurrenceByTool: Record<string, number> = {};
+		const walk = (node: MarkdownNode) => {
+			if (
+				["link", "linkReference", "code", "inlineCode"].includes(
+					node.type,
+				)
+			)
+				return;
+			if (!node.children) return;
+			node.children = node.children.flatMap((child): MarkdownNode[] => {
+				if (child.type !== "text") {
+					walk(child);
+					return [child];
+				}
+				return splitOnMarkers(child.value ?? "").map((part) => {
+					if (part.kind === "text")
+						return { type: "text", value: part.value };
+					const occurrence = occurrenceByTool[part.name] ?? 0;
+					occurrenceByTool[part.name] = occurrence + 1;
+					const id =
+						markers.push({
+							name: part.name,
+							reference:
+								activityReferences?.[part.name]?.[occurrence],
+						}) - 1;
+					return {
+						type: "link",
+						url: `#bifrost-activity-marker-${id}`,
+						children: [{ type: "text", value: part.name }],
+					};
+				});
+			});
+		};
+		walk(tree);
+	};
+	return (
+		<NarrativeContext.Provider
+			value={{ markers, onReferencePreview, onReferenceActivate }}
+		>
+			<MarkdownContent
+				content={text}
+				className={compact ? "text-xs" : undefined}
+				remarkPlugins={[activityMarkers]}
+				components={narrativeComponents}
+			/>
+		</NarrativeContext.Provider>
+	);
+}
+
+interface NarrativeContextValue {
+	markers: Array<{
+		name: string;
+		reference?: RunActivityReferenceIndex[string][number];
+	}>;
+	onReferencePreview?: DidNarrativeProps["onReferencePreview"];
+	onReferenceActivate?: DidNarrativeProps["onReferenceActivate"];
+}
+const NarrativeContext = createContext<NarrativeContextValue>({ markers: [] });
+const narrativeComponents = { a: ActivityReferenceLink };
+
+// A stable component type keeps focus/pointer targets intact when hover updates
+// the surrounding activity highlight.
+function ActivityReferenceLink({
+	href,
+	children,
+}: {
+	href?: string;
+	children?: ReactNode;
+}) {
+	const { markers, onReferencePreview, onReferenceActivate } =
+		useContext(NarrativeContext);
+
+	const match = href?.match(/^#bifrost-activity-marker-(\d+)$/);
+	const marker = match ? markers[Number(match[1])] : undefined;
+	const name = marker?.name;
+	if (!name)
+		return (
+			<a
+				href={href}
+				className="text-primary underline underline-offset-2"
+			>
+				{children}
+			</a>
+		);
+	const delegated = !!delegationTarget(name);
+	const reference = marker?.reference;
+	const label = reference?.label ?? humanizeToolReference(name);
+
+	if (!reference || !onReferenceActivate) {
+		return (
+			<span
+				key={name}
+				data-slot="activity-reference-label"
+				className={cn(
+					"inline-flex items-center rounded-[var(--bf-radius-control)] border border-border/70 bg-muted/60 px-2 py-1 font-medium text-foreground/80",
+					delegated &&
+						"border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)]",
+				)}
+			>
+				{label}
+			</span>
+		);
+	}
 
 	return (
-		<div
+		<a
+			key={name}
+			href={`#${activityDomId(reference.activityId)}`}
+			data-slot="activity-reference"
+			data-activity-reference-id={reference.activityId}
+			aria-label={`Show ${label} in Activity`}
+			onMouseEnter={() => onReferencePreview?.(reference.activityId)}
+			onMouseLeave={() => onReferencePreview?.(null)}
+			onFocus={() => onReferencePreview?.(reference.activityId)}
+			onBlur={() => onReferencePreview?.(null)}
+			onClick={(event) => {
+				event.preventDefault();
+				onReferenceActivate(reference.activityId);
+			}}
 			className={cn(
-				"whitespace-pre-wrap break-words leading-relaxed",
-				compact ? "text-xs" : "text-sm",
+				"mx-0.5 inline-flex min-h-11 cursor-pointer items-center rounded-[var(--bf-radius-control)] px-2 py-1.5 align-baseline text-[0.92em] font-medium outline-none ring-1 transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+				delegated
+					? "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)] ring-[var(--bf-info)]/20 hover:bg-[var(--bf-info-soft)]"
+					: "border-[var(--bf-info)]/20 bg-[var(--bf-info-soft)] text-[var(--bf-info)] ring-[var(--bf-info)]/20 hover:bg-[var(--bf-info-soft)]/80",
 			)}
 		>
-			{parts.map((part, index) => {
-				if (part.kind === "text")
-					return <span key={index}>{part.value}</span>;
-				const delegated = !!delegationTarget(part.name);
-				const occurrence = occurrenceByTool[part.name] ?? 0;
-				occurrenceByTool[part.name] = occurrence + 1;
-				const reference = activityReferences?.[part.name]?.[occurrence];
-				const label =
-					reference?.label ?? humanizeToolReference(part.name);
-
-				if (!reference || !onReferenceActivate) {
-					return (
-						<span
-							key={index}
-							data-slot="activity-reference-label"
-							className="font-medium text-foreground/80"
-						>
-							{label}
-						</span>
-					);
-				}
-
-				return (
-					<a
-						key={index}
-						href={`#${activityDomId(reference.activityId)}`}
-						data-slot="activity-reference"
-						data-activity-reference-id={reference.activityId}
-						aria-label={`Show ${label} in Activity`}
-						onMouseEnter={() =>
-							onReferencePreview?.(reference.activityId)
-						}
-						onMouseLeave={() => onReferencePreview?.(null)}
-						onFocus={() =>
-							onReferencePreview?.(reference.activityId)
-						}
-						onBlur={() => onReferencePreview?.(null)}
-						onClick={(event) => {
-							event.preventDefault();
-							onReferenceActivate(reference.activityId);
-						}}
-						className={cn(
-							"mx-0.5 inline-flex cursor-pointer rounded-md px-1.5 py-0.5 align-baseline text-[0.9em] font-medium outline-none transition-[background-color,box-shadow] duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-							delegated
-								? "bg-violet-500/12 text-violet-700 ring-1 ring-violet-500/20 hover:bg-violet-500/20 dark:text-violet-300"
-								: "bg-blue-500/10 text-blue-700 ring-1 ring-blue-500/15 hover:bg-blue-500/20 dark:text-blue-300",
-						)}
-					>
-						{label}
-					</a>
-				);
-			})}
-		</div>
+			{label}
+		</a>
 	);
+}
+
+interface MarkdownNode {
+	type: string;
+	value?: string;
+	url?: string;
+	children?: MarkdownNode[];
 }

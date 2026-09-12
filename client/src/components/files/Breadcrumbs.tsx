@@ -1,83 +1,109 @@
-import { Fragment } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, MoreHorizontal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 interface BreadcrumbsProps {
-	/** Label for the scope root (e.g. "Global" or an org name). */
 	scopeLabel: string;
-	/** Current location/share, or null when at the shares root. */
+	/** Solution views navigate within a share and omit the organization root. */
+	includeScopeRoot?: boolean;
 	location: string | null;
-	/** Path segments under the location. */
 	segments: string[];
-	/**
-	 * Navigate to a depth: -1 = shares root, 0 = location root, n = after the
-	 * nth path segment.
-	 */
+	/** -1: scope root; 0: share root; n: after the nth path segment. */
 	onNavigate: (depth: number) => void;
-}
-
-function Crumb({
-	label,
-	onClick,
-	isCurrent,
-}: {
-	label: string;
-	onClick: () => void;
-	isCurrent: boolean;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			title={label}
-			className={
-				"max-w-[12rem] truncate rounded px-1 text-sm hover:bg-muted " +
-				(isCurrent
-					? "font-medium text-foreground"
-					: "text-muted-foreground")
-			}
-		>
-			{label}
-		</button>
-	);
 }
 
 export function Breadcrumbs({
 	scopeLabel,
+	includeScopeRoot = true,
 	location,
 	segments,
 	onNavigate,
 }: BreadcrumbsProps) {
-	const lastDepth = location === null ? -1 : segments.length;
+	const mobile = useMediaQuery("(max-width: 1023px)");
+	const crumbs = [
+		...(includeScopeRoot ? [{ label: scopeLabel, depth: -1 }] : []),
+		...(location === null
+			? []
+			: [
+					{ label: location, depth: 0 },
+					...segments.map((label, index) => ({
+						label,
+						depth: index + 1,
+					})),
+				]),
+	];
+	if (crumbs.length === 0) return null;
+	const current = crumbs[crumbs.length - 1];
+	const collapse = mobile ? crumbs.length > 1 : crumbs.length > 5;
+	const visible = collapse ? [current] : crumbs;
 	return (
-		<nav
-			aria-label="Breadcrumb"
-			className="flex min-w-0 flex-wrap items-center gap-0.5"
-		>
-			<Crumb
-				label={scopeLabel}
-				onClick={() => onNavigate(-1)}
-				isCurrent={lastDepth === -1}
-			/>
-			{location !== null && (
-				<Fragment>
-					<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-					<Crumb
-						label={location}
-						onClick={() => onNavigate(0)}
-						isCurrent={lastDepth === 0}
-					/>
-				</Fragment>
-			)}
-			{segments.map((segment, index) => (
-				<Fragment key={`${segment}-${index}`}>
-					<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-					<Crumb
-						label={segment}
-						onClick={() => onNavigate(index + 1)}
-						isCurrent={lastDepth === index + 1}
-					/>
-				</Fragment>
-			))}
+		<nav aria-label="Breadcrumb" className="min-w-0 flex-1 overflow-hidden">
+			<ol className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto overscroll-x-contain whitespace-nowrap">
+				{collapse && (
+					<li className="flex shrink-0 items-center gap-1">
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon-lg"
+									aria-label="Parent locations"
+								>
+									<MoreHorizontal aria-hidden="true" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								align="start"
+								className="max-h-[var(--radix-dropdown-menu-content-available-height)] max-w-[calc(100vw-2rem)] overflow-y-auto"
+							>
+								{crumbs.slice(0, -1).map((crumb) => (
+									<DropdownMenuItem
+										key={crumb.depth}
+										className="min-h-11 whitespace-normal [overflow-wrap:anywhere]"
+										onSelect={() => onNavigate(crumb.depth)}
+									>
+										{crumb.label}
+									</DropdownMenuItem>
+								))}
+							</DropdownMenuContent>
+						</DropdownMenu>
+						<ChevronRight
+							aria-hidden="true"
+							className="size-3 text-muted-foreground"
+						/>
+					</li>
+				)}
+				{visible.map((crumb, index) => (
+					<li
+						key={crumb.depth}
+						className={`flex min-w-0 items-center gap-1 ${collapse ? "flex-1" : "shrink-0"}`}
+					>
+						{index > 0 && (
+							<ChevronRight
+								aria-hidden="true"
+								className="size-3 shrink-0 text-muted-foreground"
+							/>
+						)}
+						<button
+							type="button"
+							aria-current={
+								crumb.depth === current.depth
+									? "location"
+									: undefined
+							}
+							onClick={() => onNavigate(crumb.depth)}
+							className={`min-h-9 max-w-[16rem] truncate rounded-[var(--bf-radius-control)] px-2 py-1.5 text-left text-sm transition-colors duration-(--bf-motion-feedback) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none sm:max-w-[22rem] ${collapse ? "min-w-0 flex-1" : ""} ${crumb.depth === current.depth ? "font-medium text-foreground" : "text-muted-foreground"}`}
+						>
+							{crumb.label}
+						</button>
+					</li>
+				))}
+			</ol>
 		</nav>
 	);
 }

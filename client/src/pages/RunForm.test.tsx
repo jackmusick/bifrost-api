@@ -1,31 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 
-const { mockFormRenderer, embedClaims } = vi.hoisted(() => ({
-	mockFormRenderer: vi.fn((_props: unknown) => <div>Rendered Form</div>),
-	embedClaims: {
-		current: { embed: true, form_id: "form-1", grant: "public" },
-	},
-}));
+const { mockFormRenderer, embedClaims, mockUseFormRuntime, mockUseAuth } =
+	vi.hoisted(() => ({
+		mockFormRenderer: vi.fn((_props: unknown) => <div>Rendered Form</div>),
+		embedClaims: {
+			current: { embed: true, form_id: "form-1", grant: "public" },
+		},
+		mockUseFormRuntime: vi.fn(),
+		mockUseAuth: vi.fn(),
+	}));
 
 vi.mock("@/hooks/useForms", () => ({
-	useFormRuntime: () => ({
-		data: {
-			id: "form-1",
-			name: "Customer Intake",
-			description: "Tell us what you need",
-			is_active: true,
-		},
-		isLoading: false,
-		error: null,
-	}),
+	useFormRuntime: () => mockUseFormRuntime(),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({
-		isPlatformAdmin: false,
-		hasRole: (role: string) => role === "EmbedUser",
-	}),
+	useAuth: () => mockUseAuth(),
 }));
 
 vi.mock("@/lib/auth-token", () => ({
@@ -44,6 +35,20 @@ beforeEach(() => {
 		form_id: "form-1",
 		grant: "public",
 	};
+	mockUseFormRuntime.mockReturnValue({
+		data: {
+			id: "form-1",
+			name: "Customer Intake",
+			description: "Tell us what you need",
+			is_active: true,
+		},
+		isLoading: false,
+		error: null,
+	});
+	mockUseAuth.mockReturnValue({
+		isPlatformAdmin: false,
+		hasRole: (role: string) => role === "EmbedUser",
+	});
 	mockFormRenderer.mockClear();
 });
 
@@ -93,4 +98,103 @@ describe("RunForm embedded presentation", () => {
 			}),
 		);
 	});
+});
+
+describe("RunForm non-embedded controls", () => {
+	it("uses 44px controls in the normal runtime header", () => {
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: false,
+			hasRole: () => false,
+		});
+
+		renderWithProviders(<RunForm />, {
+			initialEntries: ["/forms/form-1"],
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Back to Forms" }),
+		).toHaveAttribute("data-size", "icon-lg");
+	});
+
+	it("uses 44px controls in the error and inactive states", () => {
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: false,
+			hasRole: () => false,
+		});
+		mockUseFormRuntime.mockReturnValue({
+			data: null,
+			isLoading: false,
+			error: new Error("boom"),
+		});
+
+		const { unmount } = renderWithProviders(<RunForm />, {
+			initialEntries: ["/forms/form-1"],
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Back to Forms" }),
+		).toHaveAttribute("data-size", "lg");
+
+		unmount();
+		mockUseFormRuntime.mockReturnValue({
+			data: {
+				id: "form-1",
+				name: "Customer Intake",
+				description: "Tell us what you need",
+				is_active: false,
+			},
+			isLoading: false,
+			error: null,
+		});
+
+		renderWithProviders(<RunForm />, {
+			initialEntries: ["/forms/form-1"],
+		});
+
+		expect(
+			screen.getByRole("button", { name: "Back to Forms" }),
+		).toHaveAttribute("data-size", "lg");
+	});
+});
+
+it("retries an embedded load failure without exposing app navigation", async () => {
+	const refetch = vi.fn();
+	mockUseFormRuntime.mockReturnValue({
+		data: null,
+		isLoading: false,
+		error: new Error("Unavailable"),
+		isFetching: false,
+		refetch,
+	});
+	const { user } = renderWithProviders(<RunForm />);
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Could not load this form. Try again.",
+	);
+	expect(
+		screen.queryByRole("button", { name: "Back to Forms" }),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Retry form" }));
+	expect(refetch).toHaveBeenCalledOnce();
+});
+
+it("keeps the runtime mounted while a cached form refresh fails and retries", async () => {
+	const refetch = vi.fn();
+	const result = {
+		...mockUseFormRuntime(),
+		error: new Error("Refresh failed"),
+		isFetching: false,
+		refetch,
+	};
+	mockUseFormRuntime.mockReturnValue(result);
+	const { user, rerender } = renderWithProviders(<RunForm />);
+	expect(screen.getByText("Rendered Form")).toBeVisible();
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Your entries are preserved.",
+	);
+	await user.click(screen.getByRole("button", { name: "Retry form" }));
+	expect(refetch).toHaveBeenCalledOnce();
+	mockUseFormRuntime.mockReturnValue({ ...result, isFetching: true });
+	rerender(<RunForm />);
+	expect(screen.getByRole("button", { name: "Retrying…" })).toBeDisabled();
+	expect(screen.getByText("Rendered Form")).toBeVisible();
 });

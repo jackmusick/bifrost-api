@@ -1,7 +1,8 @@
+import { Workflows } from "./Workflows";
 /**
  * Tests for the Workflows page — focused on the SolutionManagedBadge
  * affordance: managed workflows show the shared admin-only badge and hide the
- * "Edit organization scope" control; non-managed workflows keep it.
+ * "Edit" control; non-managed workflows keep it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -9,6 +10,7 @@ import { renderWithProviders, screen, within } from "@/test-utils";
 
 const mockUseWorkflowsFiltered = vi.fn();
 const mockUseWorkflowsMetadata = vi.fn();
+const mockUseIsDesktop = vi.fn();
 vi.mock("@/hooks/useWorkflows", () => ({
 	useWorkflowsFiltered: () => mockUseWorkflowsFiltered(),
 	useWorkflowsMetadata: () => mockUseWorkflowsMetadata(),
@@ -28,11 +30,25 @@ vi.mock("@/hooks/useOrganizations", () => ({
 }));
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-	useIsDesktop: () => true,
+	useIsDesktop: () => mockUseIsDesktop(),
 }));
 
 vi.mock("@/components/workflows/WorkflowSidebar", () => ({
-	WorkflowSidebar: () => null,
+	WorkflowSidebar: ({
+		className,
+		onClose,
+	}: {
+		className?: string;
+		onClose?: () => void;
+	}) => (
+		<aside data-testid="workflow-sidebar" className={className}>
+			{onClose && (
+				<button type="button" onClick={onClose}>
+					Close sidebar
+				</button>
+			)}
+		</aside>
+	),
 }));
 vi.mock("@/components/workflows/WorkflowEditDialog", () => ({
 	WorkflowEditDialog: () => null,
@@ -40,11 +56,11 @@ vi.mock("@/components/workflows/WorkflowEditDialog", () => ({
 vi.mock("@/components/workflows/OrphanedWorkflowDialog", () => ({
 	OrphanedWorkflowDialog: () => null,
 }));
-vi.mock("@/components/search/SearchBox", () => ({ SearchBox: () => null }));
 vi.mock("@/components/forms/OrganizationSelect", () => ({
 	OrganizationSelect: () => null,
 }));
-vi.mock("@/services/fileService", () => ({ fileService: {} }));
+const mockReadFile = vi.fn();
+vi.mock("@/services/fileService", () => ({ fileService: { readFile: (...args: unknown[]) => mockReadFile(...args) } }));
 
 function makeWorkflow(overrides: Partial<Record<string, unknown>> = {}) {
 	return {
@@ -63,6 +79,7 @@ function makeWorkflow(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
+	mockUseIsDesktop.mockReturnValue(true);
 	mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
 	mockUseWorkflowsMetadata.mockReturnValue({ data: { workflows: [] } });
 	mockUseWorkflowsFiltered.mockReturnValue({
@@ -73,7 +90,6 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-	const { Workflows } = await import("./Workflows");
 	return renderWithProviders(<Workflows />);
 }
 
@@ -91,11 +107,16 @@ describe("Workflows — solution-managed badge (grid view)", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		await renderPage();
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: "managed_wf actions" }),
+		);
 		const badge = screen.getByTestId("solution-managed-badge");
 		expect(badge).toHaveAttribute("href", "/solutions/s1");
 		expect(
-			screen.queryByRole("button", { name: /edit organization scope/i }),
+			screen.queryByRole("menuitem", {
+				name: /^edit$/i,
+			}),
 		).not.toBeInTheDocument();
 	});
 
@@ -105,12 +126,15 @@ describe("Workflows — solution-managed badge (grid view)", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		await renderPage();
+		const { user } = await renderPage();
+		await user.click(
+			screen.getByRole("button", { name: "sync_tickets actions" }),
+		);
 		expect(
 			screen.queryByTestId("solution-managed-badge"),
 		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole("button", { name: /edit organization scope/i }),
+			screen.getByRole("menuitem", { name: /^edit$/i }),
 		).toBeInTheDocument();
 	});
 });
@@ -128,7 +152,7 @@ describe("Workflows — solution-managed badge (table view)", () => {
 	}
 
 	it("shows the badge and hides the scope-edit control on a managed row", async () => {
-		await renderTable([
+		const user = await renderTable([
 			makeWorkflow({
 				id: "m",
 				name: "managed_wf",
@@ -136,27 +160,171 @@ describe("Workflows — solution-managed badge (table view)", () => {
 				solution_id: "s1",
 			}),
 		]);
+		await user.click(
+			screen.getByRole("button", { name: "managed_wf actions" }),
+		);
 		const table = document.querySelector("table")!;
 		expect(
 			within(table).getByTestId("solution-managed-badge"),
 		).toHaveAttribute("href", "/solutions/s1");
 		expect(
-			within(table).queryByRole("button", {
-				name: /edit organization scope/i,
+			screen.queryByRole("menuitem", {
+				name: /^edit$/i,
 			}),
 		).not.toBeInTheDocument();
 	});
 
 	it("shows the scope-edit control and no badge on a non-managed row", async () => {
-		await renderTable([makeWorkflow()]);
+		const user = await renderTable([makeWorkflow()]);
+		await user.click(
+			screen.getByRole("button", { name: "sync_tickets actions" }),
+		);
 		const table = document.querySelector("table")!;
 		expect(
 			within(table).queryByTestId("solution-managed-badge"),
 		).not.toBeInTheDocument();
 		expect(
-			within(table).getByRole("button", {
-				name: /edit organization scope/i,
+			screen.getByRole("menuitem", {
+				name: /^edit$/i,
 			}),
 		).toBeInTheDocument();
 	});
+});
+
+describe("Workflows — mobile filters shell", () => {
+	it("shows an expandable full-width filter panel above the list on mobile", async () => {
+		mockUseIsDesktop.mockReturnValue(false);
+		mockUseWorkflowsFiltered.mockReturnValue({
+			data: [makeWorkflow()],
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+
+		const { user } = await renderPage();
+
+		const showFilters = screen.getByRole("button", {
+			name: /show filters/i,
+		});
+		expect(showFilters).toBeInTheDocument();
+		expect(
+			screen.queryByTestId("workflow-sidebar"),
+		).not.toBeInTheDocument();
+
+		await user.click(showFilters);
+
+		expect(screen.getByTestId("workflow-sidebar")).toHaveClass("w-full");
+	});
+});
+
+describe("Workflows — desktop filter shell", () => {
+	it("keeps the collapsed sidebar control at 44px when the desktop filter panel is closed", async () => {
+		mockUseIsDesktop.mockReturnValue(true);
+		mockUseWorkflowsFiltered.mockReturnValue({
+			data: [makeWorkflow()],
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+
+		const { user } = await renderPage();
+
+		expect(screen.getByTestId("workflow-sidebar")).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Close sidebar" }));
+
+		const showFilters = screen.getByRole("button", {
+			name: /show filters/i,
+		});
+		expect(showFilters).toHaveAttribute("data-size", "icon-lg");
+	});
+});
+
+describe("Workflows read recovery", () => {
+	it("offers retry instead of an empty list when the initial request fails", async () => {
+		const refetch = vi.fn();
+		mockUseWorkflowsFiltered.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			isError: true,
+			isFetching: false,
+			refetch,
+		});
+		const { user } = await renderPage();
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Couldn't load workflows.",
+		);
+		expect(screen.queryByText(/no workflows/i)).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Retry loading" }));
+		expect(refetch).toHaveBeenCalledOnce();
+	});
+
+	it("retains cached records and disables retry while refreshing", async () => {
+		mockUseWorkflowsFiltered.mockReturnValue({
+			data: [makeWorkflow()],
+			isLoading: false,
+			isError: true,
+			isFetching: true,
+			refetch: vi.fn(),
+		});
+		await renderPage();
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"Previously loaded records are shown below.",
+		);
+		expect(screen.getByText("sync_tickets")).toBeVisible();
+		expect(
+			screen.getByRole("button", { name: "Retrying…" }),
+		).toBeDisabled();
+	});
+});
+
+it("explains an empty type filter and lets users clear it", async () => {
+	mockUseWorkflowsFiltered.mockReturnValue({
+		data: [],
+		isLoading: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+	const { user } = await renderPage();
+	await user.click(screen.getByRole("radio", { name: "Tools" }));
+	expect(screen.getByText("1 filter applied")).toBeVisible();
+	expect(
+		screen.getByRole("heading", {
+			name: "No workflows match your filters",
+		}),
+	).toBeVisible();
+	expect(
+		screen.queryByRole("button", { name: "Open editor" }),
+	).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Clear filters" }));
+	expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute(
+		"aria-checked",
+		"true",
+	);
+	expect(screen.queryByText("1 filter applied")).not.toBeInTheDocument();
+	expect(
+		screen.getByRole("heading", { name: "No workflows available" }),
+	).toBeVisible();
+});
+
+it("opens metadata for the selected workflow ID when names repeat", async () => {
+	mockUseWorkflowsFiltered.mockReturnValue({ data: [makeWorkflow()], isLoading: false, refetch: vi.fn() });
+	mockUseWorkflowsMetadata.mockReturnValue({ data: { workflows: [
+		{ id: "other-workflow", name: "sync_tickets", relative_file_path: "other.py" },
+		{ id: "wf-1", name: "sync_tickets", relative_file_path: "selected.py" },
+	] } });
+	mockReadFile.mockRejectedValue(new Error("Synthetic read failure"));
+	const { user } = await renderPage();
+	await user.click(screen.getByRole("button", { name: "sync_tickets actions" }));
+	await user.click(screen.getByRole("menuitem", { name: "Open in editor" }));
+	expect(mockReadFile).toHaveBeenCalledWith("selected.py");
+});
+
+
+it("finds the edited display name and excludes unrelated workflows", async () => {
+ mockUseWorkflowsFiltered.mockReturnValue({
+  data: [makeWorkflow({ display_name: "Customer onboarding" }), makeWorkflow({ id: "wf-2", name: "archive_logs", display_name: "Archive logs" })],
+  isLoading: false, refetch: vi.fn(),
+ });
+ const { user } = await renderPage();
+ await user.type(screen.getByRole("textbox", { name: "Search by name, description, or category..." }), "Customer onboarding");
+ await vi.waitFor(() => expect(screen.queryByRole("button", { name: "archive_logs actions" })).not.toBeInTheDocument());
+ expect(screen.getByRole("button", { name: "sync_tickets actions" })).toBeInTheDocument();
 });

@@ -104,6 +104,7 @@ class IntegrationsRepository(BaseRepository[Integration]):
         """
         integration = Integration(
             name=data.name,
+            description=data.description,
             entity_id=data.entity_id,
             entity_id_name=data.entity_id_name,
         )
@@ -215,6 +216,8 @@ class IntegrationsRepository(BaseRepository[Integration]):
         # Update only provided fields
         if data.name is not None:
             integration.name = data.name
+        if "description" in data.model_fields_set:
+            integration.description = data.description
         if data.list_entities_data_provider_id is not None:
             integration.list_entities_data_provider_id = (
                 data.list_entities_data_provider_id

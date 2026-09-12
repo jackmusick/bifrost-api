@@ -256,6 +256,84 @@ def _call_rest_capturing_params() -> tuple[AsyncMock, list[dict]]:
 
 
 @pytest.mark.asyncio
+async def test_create_integration_forwards_description() -> None:
+    """create_integration includes description in DTO assembly and REST payload."""
+    from src.services.mcp_server.tools.integrations import create_integration
+
+    ctx = _make_mcp_context()
+    assembled_body = {
+        "name": "mcp-unit-integration",
+        "description": "Shown on admin integration cards",
+    }
+
+    with (
+        patch(
+            "src.services.mcp_server.tools.integrations._assemble_integration_body",
+            AsyncMock(return_value=assembled_body),
+        ) as assemble_mock,
+        patch(
+            "src.services.mcp_server.tools.integrations.call_rest",
+            AsyncMock(return_value=(201, {"id": "integration-id", **assembled_body})),
+        ) as call_rest_mock,
+    ):
+        await create_integration(
+            ctx,
+            name="mcp-unit-integration",
+            description="Shown on admin integration cards",
+        )
+
+    fields = assemble_mock.await_args.kwargs
+    assert fields["model_name"] == "IntegrationCreate"
+    assert assemble_mock.await_args.args[1]["description"] == (
+        "Shown on admin integration cards"
+    )
+    assert call_rest_mock.await_args.kwargs["json_body"] == assembled_body
+
+
+@pytest.mark.asyncio
+async def test_update_integration_forwards_description_when_provided() -> None:
+    """update_integration forwards a provided description through the REST bridge."""
+    from src.services.mcp_server.tools.integrations import update_integration
+
+    class _RestClient:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    ctx = _make_mcp_context()
+    integration_id = "11111111-2222-3333-4444-555555555555"
+    assembled_body = {"description": "Updated card description"}
+
+    with (
+        patch(
+            "src.services.mcp_server.tools.integrations.rest_client",
+            MagicMock(return_value=_RestClient()),
+        ),
+        patch(
+            "src.services.mcp_server.tools.integrations._assemble_integration_body",
+            AsyncMock(return_value=assembled_body),
+        ) as assemble_mock,
+        patch(
+            "src.services.mcp_server.tools.integrations.call_rest",
+            AsyncMock(return_value=(200, {"id": integration_id, **assembled_body})),
+        ) as call_rest_mock,
+    ):
+        await update_integration(
+            ctx,
+            integration_ref=integration_id,
+            description="Updated card description",
+        )
+
+    fields = assemble_mock.await_args.args[1]
+    assert assemble_mock.await_args.kwargs["model_name"] == "IntegrationUpdate"
+    assert fields["description"] == "Updated card description"
+    assert call_rest_mock.await_args.args[2] == f"/api/integrations/{integration_id}"
+    assert call_rest_mock.await_args.kwargs["json_body"] == assembled_body
+
+
+@pytest.mark.asyncio
 async def test_file_policy_solution_scope_forwarded_list() -> None:
     """list_file_policies forwards ?solution= to the REST endpoint."""
     from src.services.mcp_server.tools.files import list_file_policies

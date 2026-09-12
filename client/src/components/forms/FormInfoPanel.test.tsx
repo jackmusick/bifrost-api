@@ -10,7 +10,9 @@ import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen } from "@/test-utils";
 import { FormInfoPanel } from "./FormInfoPanel";
 
-function renderPanel(overrides: Partial<Parameters<typeof FormInfoPanel>[0]> = {}) {
+function renderPanel(
+	overrides: Partial<Parameters<typeof FormInfoPanel>[0]> = {},
+) {
 	const props = {
 		formName: "",
 		setFormName: vi.fn(),
@@ -38,7 +40,9 @@ describe("FormInfoPanel", () => {
 		expect(screen.getByLabelText(/linked workflow/i)).toHaveValue(
 			"user_onboarding",
 		);
-		expect(screen.getByLabelText(/description/i)).toHaveValue("Welcome form");
+		expect(screen.getByLabelText(/description/i)).toHaveValue(
+			"Welcome form",
+		);
 	});
 
 	it("calls setFormName as the user types into Form Name", async () => {
@@ -88,4 +92,32 @@ describe("FormInfoPanel", () => {
 
 		expect(props.setIsGlobal).toHaveBeenCalledWith(true);
 	});
+});
+
+it("does not submit a surrounding form when scope changes", async () => {
+	const onSubmit = vi.fn((event) => event.preventDefault());
+	const setIsGlobal = vi.fn();
+	const { user } = renderWithProviders(
+		<form onSubmit={onSubmit}>
+			<FormInfoPanel
+				formName="Form"
+				setFormName={() => {}}
+				formDescription=""
+				setFormDescription={() => {}}
+				linkedWorkflow="workflow"
+				setLinkedWorkflow={() => {}}
+				isGlobal
+				setIsGlobal={setIsGlobal}
+			/>
+		</form>,
+	);
+	await user.click(
+		screen.getByRole("button", { name: /Organization-Specific/ }),
+	);
+	expect(setIsGlobal).toHaveBeenCalledWith(false);
+	expect(onSubmit).not.toHaveBeenCalled();
+	expect(screen.getByRole("button", { name: /Global/ })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
 });

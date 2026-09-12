@@ -13,7 +13,11 @@ from pydantic import BaseModel, Field
 
 from src.core.auth import CurrentSuperuser
 from src.core.db_deps import DbSession
-from src.services.dependency_graph import DependencyGraphService
+from src.models import DependencyAvailabilityRequest, DependencyAvailabilityResponse
+from src.services.dependency_graph import (
+    DependencyGraphService,
+    compute_relationship_availability,
+)
 
 
 router = APIRouter(prefix="/api/dependencies", tags=["Dependencies"])
@@ -40,9 +44,7 @@ class GraphEdgeResponse(BaseModel):
 
     source: str = Field(..., description="Source node ID")
     target: str = Field(..., description="Target node ID")
-    relationship: str = Field(
-        ..., description="Relationship type (uses, used_by)"
-    )
+    relationship: str = Field(..., description="Relationship type (uses, used_by)")
 
 
 class DependencyGraphResponse(BaseModel):
@@ -125,3 +127,20 @@ async def get_dependency_graph(
         ],
         root_id=graph.root_id,
     )
+
+
+@router.post("/availability", response_model=DependencyAvailabilityResponse)
+async def get_dependency_availability(
+    request: DependencyAvailabilityRequest,
+    db: DbSession,
+    user: CurrentSuperuser,
+) -> DependencyAvailabilityResponse:
+    """Return whether each requested entity has dependency graph relationships."""
+    availability = await compute_relationship_availability(
+        db,
+        workflow_ids=request.workflow_ids,
+        form_ids=request.form_ids,
+        app_ids=request.app_ids,
+        agent_ids=request.agent_ids,
+    )
+    return DependencyAvailabilityResponse(has_relationships=availability)

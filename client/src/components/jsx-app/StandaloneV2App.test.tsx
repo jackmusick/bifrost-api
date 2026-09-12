@@ -142,6 +142,23 @@ describe("StandaloneV2App", () => {
 		expect(stylesheet.href).not.toContain("?");
 	});
 
+	it("shows opening status while the standalone bundle is bootstrapping", async () => {
+		localStorage.setItem("bifrost_access_token", "tok-1");
+		render(<StandaloneV2App {...props("booting")} />);
+
+		expect(
+			screen.getByRole("status", { name: "Loading application…" }),
+		).toBeInTheDocument();
+
+		await finishModuleLoad(
+			"booting",
+			vi.fn(() => vi.fn()),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+		);
+	});
+
 	it("passes isolated bootstrap to mount and calls its teardown", async () => {
 		localStorage.setItem("bifrost_access_token", "tok-1");
 		const teardown = vi.fn();
@@ -318,7 +335,13 @@ describe("StandaloneV2App", () => {
 		act(() => script.dispatchEvent(new Event("error")));
 
 		expect(
-			await screen.findByText(/Failed to load the application entry/i),
+			await screen.findByRole("heading", { name: "Bundle Load Error" }),
+		).toBeInTheDocument();
+		expect(screen.getByLabelText("Bundle error details")).toHaveTextContent(
+			/Failed to load the application entry/i,
+		);
+		expect(
+			screen.getByRole("button", { name: "Reload app" }),
 		).toBeInTheDocument();
 		expect(mockAuthFetch).toHaveBeenCalledTimes(1);
 	});
