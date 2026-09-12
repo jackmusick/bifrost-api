@@ -391,16 +391,16 @@ class TestDocumentRepositoryIntegration:
         deep_page, total = await doc_repo.query(
             DocumentQuery(
                 document_id_prefix=target_prefix,
-                after_document_id=target_ids[7],
+                after_document_id=middle_page[-1].id,
                 document_ids=requested_ids,
                 where={"tenant": "target"},
-                limit=2,
+                limit=3,
                 skip_count=True,
             ),
             extra_where=allow_policy,
         )
         assert total == -1
-        assert [doc.id for doc in deep_page] == allowed_target_ids[7:9]
+        assert [doc.id for doc in deep_page] == allowed_target_ids[6:9]
 
         final_page, total = await doc_repo.query(
             DocumentQuery(
@@ -415,6 +415,13 @@ class TestDocumentRepositoryIntegration:
         )
         assert total == -1
         assert [doc.id for doc in final_page] == allowed_target_ids[9:]
+        paged_ids = [
+            doc.id
+            for page in [first_page, middle_page, deep_page, final_page]
+            for doc in page
+        ]
+        assert paged_ids == allowed_target_ids
+        assert len(paged_ids) == len(set(paged_ids))
 
         empty_page, total = await doc_repo.query(
             DocumentQuery(
