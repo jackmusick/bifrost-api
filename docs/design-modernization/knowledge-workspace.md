@@ -53,3 +53,13 @@ Refinement checks: 13 scoped component tests, desktop/mobile browser checks for
 namespace search and whole-row selection, visible Save controls, and no page
 horizontal overflow; scoped lint and TypeScript. The persisted Knowledge
 acceptance spec is also rerun; broader suites are outside this refinement.
+
+Refresh feedback lives in the toolbar icon beside Select; it spins only while
+refreshing and respects reduced motion. Background refresh retains rows and does
+not insert a text/status row. On larger screens the embedded Markdown editor
+shares remaining height with the collapsed Metadata control; expanding Metadata
+reveals a bounded scroll region. Save/Cancel remain fixed below the body.
+Checked with 13 scoped Knowledge/editor tests, TypeScript, scoped lint, and live
+desktop/mobile checks including collapsed Metadata visibility without outer-body
+scrolling and expanded metadata content. Full E2E was not repeated for these
+local feedback/layout changes.

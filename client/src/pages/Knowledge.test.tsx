@@ -231,6 +231,36 @@ describe("Knowledge", () => {
 		);
 	});
 
+	it("keeps rows visible and shows refresh progress only in the toolbar", async () => {
+		const { user } = renderWithProviders(<Knowledge />);
+		await screen.findByRole("button", { name: "support-01" });
+		let finish!: (response: Response) => void;
+		mockAuthFetch.mockImplementation((url: string) =>
+			url.includes("/documents")
+				? new Promise<Response>((resolve) => {
+						finish = resolve;
+					})
+				: Promise.resolve(new Response(JSON.stringify(namespaces))),
+		);
+		await user.click(screen.getByRole("button", { name: "Refresh" }));
+		expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute(
+			"aria-busy",
+			"true",
+		);
+		expect(
+			screen.getByRole("button", { name: "support-01" }),
+		).toBeVisible();
+		expect(
+			screen.queryByText(/Updating documents/),
+		).not.toBeInTheDocument();
+		await act(async () => finish(new Response(JSON.stringify(makeDocs()))));
+		await waitFor(() =>
+			expect(
+				screen.getByRole("button", { name: "Refresh" }),
+			).toHaveAttribute("aria-busy", "false"),
+		);
+	});
+
 	it("searches namespaces and filters documents using the selected namespace", async () => {
 		const { user } = renderWithProviders(<Knowledge />);
 		await screen.findByRole("button", { name: "support-01" });
@@ -367,10 +397,7 @@ describe("Knowledge", () => {
 		});
 		await user.click(checkbox);
 		fail = true;
-		await user.click(
-			screen.getByRole("button", { name: "Knowledge actions" }),
-		);
-		await user.click(screen.getByRole("menuitem", { name: "Refresh" }));
+		await user.click(screen.getByRole("button", { name: "Refresh" }));
 		await screen.findByText("Documents could not be loaded");
 		expect(checkbox).toHaveAttribute("aria-pressed", "true");
 		expect(

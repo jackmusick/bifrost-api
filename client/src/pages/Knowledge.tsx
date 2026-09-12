@@ -13,7 +13,6 @@ import {
 	ArrowRightLeft,
 	Download,
 	FileText,
-	Loader2,
 	Plus,
 	RefreshCw,
 	Upload,
@@ -153,32 +152,48 @@ function KnowledgeToolbarActions({
 					)}
 				</>
 			)}
-			<RecordActionsMenu label="Knowledge actions">
-				<DropdownMenuItem
-					onSelect={onRefresh}
-					disabled={busy || isRefreshing}
-				>
-					<RefreshCw className="size-4" />
-					Refresh
-				</DropdownMenuItem>
-				{isPlatformAdmin && (
-					<>
-						<DropdownMenuItem
-							onSelect={onExport}
-							disabled={busy || isExporting}
-						>
-							<Download className="size-4" />
-							{selectedCount > 0
-								? `Export (${selectedCount})`
-								: "Export"}
-						</DropdownMenuItem>
-						<DropdownMenuItem onSelect={onImport} disabled={busy}>
-							<Upload className="size-4" />
-							Import
-						</DropdownMenuItem>
-					</>
-				)}
-			</RecordActionsMenu>
+			<Button
+				variant="ghost"
+				size="icon"
+				aria-label="Refresh"
+				aria-busy={isRefreshing}
+				title="Refresh"
+				disabled={busy || isRefreshing}
+				onClick={onRefresh}
+			>
+				<RefreshCw
+					aria-hidden="true"
+					className={cn(
+						"size-4",
+						isRefreshing &&
+							"animate-spin motion-reduce:animate-none",
+					)}
+				/>
+			</Button>
+			{isPlatformAdmin && (
+				<RecordActionsMenu label="Knowledge actions">
+					{isPlatformAdmin && (
+						<>
+							<DropdownMenuItem
+								onSelect={onExport}
+								disabled={busy || isExporting}
+							>
+								<Download className="size-4" />
+								{selectedCount > 0
+									? `Export (${selectedCount})`
+									: "Export"}
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								onSelect={onImport}
+								disabled={busy}
+							>
+								<Upload className="size-4" />
+								Import
+							</DropdownMenuItem>
+						</>
+					)}
+				</RecordActionsMenu>
+			)}
 
 			<Button
 				className="h-10"
@@ -560,15 +575,6 @@ export function Knowledge() {
 							</Button>
 						</AlertDescription>
 					</Alert>
-				)}
-				{documentQuery.isFetching && !isInitialLoading && (
-					<p
-						role="status"
-						className="flex shrink-0 items-center gap-2 border-b border-border/70 px-3 py-2 text-sm text-muted-foreground"
-					>
-						<Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-						Updating documents...
-					</p>
 				)}
 
 				<div

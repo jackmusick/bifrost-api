@@ -81,7 +81,7 @@ interface DocumentFull {
 function MetadataSection({ metadata }: { metadata: Record<string, unknown> }) {
 	const [open, setOpen] = useState(false);
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
+		<Collapsible open={open} onOpenChange={setOpen} className="shrink-0">
 			<CollapsibleTrigger className="flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none">
 				{open ? (
 					<ChevronDown className="h-4 w-4" />
@@ -90,7 +90,7 @@ function MetadataSection({ metadata }: { metadata: Record<string, unknown> }) {
 				)}
 				Metadata
 			</CollapsibleTrigger>
-			<CollapsibleContent className="mt-2">
+			<CollapsibleContent className="mt-2 max-h-[40dvh] overflow-auto">
 				<VariablesTreeView data={metadata} />
 			</CollapsibleContent>
 		</Collapsible>
@@ -428,11 +428,11 @@ function KnowledgeDocumentSession({
 				<div
 					role="region"
 					aria-label="Document settings"
-					className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6"
+					className={`flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6 ${embedded ? "lg:flex lg:flex-col" : ""}`}
 				>
 					<fieldset
 						disabled={isSaving}
-						className="flex min-w-0 flex-col gap-4"
+						className={`flex min-w-0 flex-col gap-4 ${embedded ? "lg:min-h-0 lg:flex-1" : ""}`}
 					>
 						{/* Scope selector - shown at top for platform admins */}
 						{isPlatformAdmin && (
@@ -483,7 +483,9 @@ function KnowledgeDocumentSession({
 						)}
 
 						{/* Editor */}
-						<div className="min-h-[380px] h-[50dvh] shrink-0 overflow-hidden rounded-[var(--bf-radius-control)] border border-border">
+						<div
+							className={`min-h-[380px] h-[50dvh] shrink-0 overflow-hidden rounded-[var(--bf-radius-control)] border border-border ${embedded ? "lg:min-h-40 lg:h-auto lg:flex-1 lg:shrink" : ""}`}
+						>
 							<TiptapEditor
 								ariaLabel="Document content"
 								readOnly={isSaving}
