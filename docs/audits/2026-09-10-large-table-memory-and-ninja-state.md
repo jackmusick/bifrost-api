@@ -145,16 +145,18 @@ Changes in the proposal:
 - derive dwell qualification from `baseline_ip` rather than persisted
   `stationary`;
 - replace 200-row `tables.upsert_batch()` calls with at most 1,000-row
-  `tables.bulk_upsert()` calls;
+  SDK `tables.bulk_upsert()` calls;
 - use full-replacement semantics so removed keys actually leave existing rows;
-- use the set-based, count-only API path, avoiding per-row writes, realtime
-  publication, and echoed document collections;
+- use the canonical set-based, count-only `POST /documents/batch` path through
+  the SDK, avoiding per-row writes, realtime publication, and echoed document
+  collections;
 - return compact state row/query counts instead of per-page payload diagnostics.
 
 The observed execution actors (`jack@gocovi.com` and `michael@gocovi.com`) are
-active superusers, satisfying the current `tables.bulk_upsert()` privilege
-boundary. Before any approved deployment, verify that this remains true, then
-re-read the source version and deploy only with the current opaque version:
+active superusers, satisfying the current SDK `tables.bulk_upsert()` privilege
+boundary on the canonical batch document route. Before any approved deployment,
+verify that this remains true, then re-read the source version and deploy only
+with the current opaque version:
 
 ```bash
 BIFROST_API_URL=https://bifrost.gocovi.com \
@@ -191,7 +193,8 @@ pause, but it is not the root cause fixed by removing request-path collection.
 
 Recommended follow-up, kept out of #721's implementation scope:
 
-- immediately move aggregate writes to bounded `tables.bulk_upsert()` calls;
+- immediately move aggregate writes to bounded SDK `tables.bulk_upsert()` calls
+  over the canonical `/documents/batch` route;
 - coalesce concurrent rebuilds by client so only one authoritative rebuild runs
   for a client generation;
 - then replace full aggregate reconstruction with an incremental rebuild of the

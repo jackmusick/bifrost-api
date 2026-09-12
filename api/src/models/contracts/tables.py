@@ -208,37 +208,46 @@ class DocumentBatchItem(BaseModel):
 class DocumentBatchCreate(BaseModel):
     """Input for inserting or upserting multiple documents."""
 
-    documents: list[DocumentBatchItem] = Field(..., description="Documents to insert or upsert")
+    documents: list[DocumentBatchItem] = Field(
+        ...,
+        max_length=1000,
+        description="Documents to insert or upsert. Maximum 1000 rows per request.",
+    )
     upsert: bool = Field(
         default=False,
         description="If true, upsert documents with an id instead of inserting.",
     )
-
-
-class DocumentBulkUpsertItem(BaseModel):
-    """A single explicit-id document for the privileged bulk upsert endpoint."""
-
-    id: str = Field(..., min_length=1, max_length=255, description="Document ID to upsert")
-    data: dict[str, Any] = Field(..., description="Replacement document data")
-    created_by: str | None = Field(
+    write_mode: Literal["insert", "merge_upsert", "replace_upsert"] | None = Field(
         default=None,
-        description="Override attribution for inserted rows. Platform-admin callers only.",
+        description=(
+            "Batch write behavior. Defaults to insert unless legacy upsert=true is supplied, "
+            "which maps to merge_upsert."
+        ),
     )
-    updated_by: str | None = Field(
-        default=None,
-        description="Override attribution for inserted and updated rows. Platform-admin callers only.",
+    return_documents: bool = Field(
+        default=True,
+        description="If true, include written documents in the response.",
     )
 
+    @property
+    def effective_write_mode(self) -> Literal["insert", "merge_upsert", "replace_upsert"]:
+        if self.write_mode is not None:
+            return self.write_mode
+        if self.upsert:
+            return "merge_upsert"
+        return "insert"
 
-class DocumentBulkUpsertRequest(BaseModel):
-    """Input for set-based, explicit-id bulk upsert."""
+    @model_validator(mode="after")
+    def _validate_write_mode(self) -> "DocumentBatchCreate":
+        if self.upsert and self.write_mode not in (None, "merge_upsert"):
+            raise ValueError("upsert=true is only compatible with write_mode=merge_upsert")
 
-    documents: list[DocumentBulkUpsertItem] = Field(
-        ...,
-        min_length=1,
-        max_length=1000,
-        description="Documents to upsert. Maximum 1000 rows per request.",
-    )
+        if self.write_mode in ("merge_upsert", "replace_upsert"):
+            for document in self.documents:
+                if not document.id:
+                    raise ValueError("explicit upsert write modes require every document to include a nonempty id")
+
+        return self
 
 
 class DocumentBatchCreateResponse(BaseModel):
@@ -260,12 +269,6 @@ class DocumentBatchUpsertResponse(BaseModel):
 
     upserted: int
     errors: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class DocumentBulkUpsertResponse(BaseModel):
-    """Count-only response for privileged bulk upsert."""
-
-    count: int
 
 
 class DocumentBatchDeleteRequest(BaseModel):

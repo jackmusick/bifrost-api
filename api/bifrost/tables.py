@@ -53,6 +53,11 @@ def _has_solution_context() -> bool:
     return bool(getattr(ctx, "solution_id", None)) if ctx is not None else False
 
 
+def _validate_batch_document_limit(documents: list[dict[str, Any]]) -> None:
+    if len(documents) > 1000:
+        raise ValueError("table batch writes accept at most 1000 documents")
+
+
 async def _ensure_table_exists(table: str, scope: str | None) -> None:
     """Create the table if it doesn't already exist (auto-create-on-insert).
 
@@ -528,10 +533,10 @@ class tables:
         """
         Bulk upsert explicit-id documents with full replacement semantics.
 
-        This privileged ingestion method uses the count-only
-        ``POST /documents/bulk-upsert`` route. Each document must have
-        ``id`` and ``data`` keys. The server enforces a maximum of 1000 rows
-        per request and rejects duplicate IDs.
+        This privileged ingestion method uses the canonical count-only
+        ``POST /documents/batch`` route with replacement upsert semantics. Each
+        document must have ``id`` and ``data`` keys. The server rejects
+        duplicate IDs.
 
         Args:
             table: Table name or UUID.
@@ -546,6 +551,7 @@ class tables:
         Returns:
             BulkUpsertResult: Count of rows inserted or updated.
         """
+        _validate_batch_document_limit(documents)
         ctx = _current_context()
         if created_by is None and ctx is not None and getattr(ctx, "user_id", None) is not None:
             created_by = str(ctx.user_id)
@@ -563,8 +569,12 @@ class tables:
             items.append(item)
 
         client = get_client()
-        url = f"/api/tables/{table}/documents/bulk-upsert{_scope_query(effective_scope)}"
-        body = {"documents": items}
+        url = f"/api/tables/{table}/documents/batch{_scope_query(effective_scope)}"
+        body = {
+            "documents": items,
+            "write_mode": "replace_upsert",
+            "return_documents": False,
+        }
         attempts = max(0, conflict_retries) + 1
         ensured_table = False
         response = None
@@ -578,7 +588,8 @@ class tables:
                 break
         assert response is not None
         raise_for_status_with_detail(response)
-        return BulkUpsertResult.model_validate(response.json())
+        body = response.json()
+        return BulkUpsertResult(count=body["inserted"])
 
     @staticmethod
     async def _batch_write(
@@ -595,6 +606,7 @@ class tables:
         override is applied per-item so the engine can attribute writes to
         the workflow's calling user.
         """
+        _validate_batch_document_limit(documents)
         ctx = _current_context()
         if created_by is None and ctx is not None and getattr(ctx, "user_id", None) is not None:
             created_by = str(ctx.user_id)

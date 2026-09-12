@@ -115,6 +115,7 @@ class FakeClient:
         ("upsert", ("customers", "doc-id", {"name": "Acme"}), {}),
         ("insert_batch", ("customers", [{"name": "Acme"}]), {}),
         ("upsert_batch", ("customers", [{"id": "doc-id", "data": {"name": "Acme"}}]), {}),
+        ("bulk_upsert", ("customers", [{"id": "doc-id", "data": {"name": "Acme"}}]), {}),
     ],
 )
 @pytest.mark.asyncio
@@ -143,6 +144,7 @@ async def test_solution_context_does_not_auto_create_after_404(
         ("upsert", ("customers", "doc-id", {"name": "Acme"}), {}),
         ("insert_batch", ("customers", [{"name": "Acme"}]), {}),
         ("upsert_batch", ("customers", [{"id": "doc-id", "data": {"name": "Acme"}}]), {}),
+        ("bulk_upsert", ("customers", [{"id": "doc-id", "data": {"name": "Acme"}}]), {}),
     ],
 )
 @pytest.mark.asyncio
