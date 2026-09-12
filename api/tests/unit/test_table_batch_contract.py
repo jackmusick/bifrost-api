@@ -25,6 +25,19 @@ def test_legacy_upsert_flag_maps_to_merge_upsert():
     assert payload.effective_write_mode == "merge_upsert"
 
 
+def test_legacy_upsert_flag_allows_rows_without_ids():
+    payload = DocumentBatchCreate(
+        documents=[
+            {"id": "row-1", "data": {"value": 1}},
+            {"data": {"value": 2}},
+        ],
+        upsert=True,
+    )
+
+    assert payload.effective_write_mode == "merge_upsert"
+    assert payload.documents[1].id is None
+
+
 @pytest.mark.parametrize("write_mode", ["insert", "merge_upsert", "replace_upsert"])
 def test_explicit_write_mode_controls_effective_write_mode(write_mode: str):
     payload = DocumentBatchCreate(
@@ -50,7 +63,6 @@ def test_upsert_flag_rejects_explicit_non_merge_write_modes(write_mode: str):
 @pytest.mark.parametrize(
     ("kwargs", "documents"),
     [
-        ({"upsert": True}, [{"data": {"value": 1}}]),
         ({"write_mode": "merge_upsert"}, [{"data": {"value": 1}}]),
         ({"write_mode": "replace_upsert"}, [{"data": {"value": 1}}]),
         ({"write_mode": "merge_upsert"}, [{"id": "", "data": {"value": 1}}]),

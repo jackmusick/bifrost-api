@@ -242,10 +242,10 @@ class DocumentBatchCreate(BaseModel):
         if self.upsert and self.write_mode not in (None, "merge_upsert"):
             raise ValueError("upsert=true is only compatible with write_mode=merge_upsert")
 
-        if self.effective_write_mode in ("merge_upsert", "replace_upsert"):
+        if self.write_mode in ("merge_upsert", "replace_upsert"):
             for document in self.documents:
                 if not document.id:
-                    raise ValueError("upsert write modes require every document to include a nonempty id")
+                    raise ValueError("explicit upsert write modes require every document to include a nonempty id")
 
         return self
 
