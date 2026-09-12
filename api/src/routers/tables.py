@@ -648,7 +648,7 @@ async def _assert_solution_write_targets_owned_table(ctx: Context, table: Table)
     )
 
 
-def _assert_explicit_scope_targets_table(
+async def _assert_explicit_scope_targets_table(
     ctx: Context,
     table: Table,
     scope: str | None,
@@ -656,7 +656,13 @@ def _assert_explicit_scope_targets_table(
     if scope is None:
         return
     target_org_id = _resolve_target_org_safe(ctx, scope)
-    if table.organization_id == target_org_id:
+    exact_table = await TableRepository(
+        ctx.db,
+        target_org_id,
+        is_superuser=ctx.user.is_superuser,
+        is_external=ctx.user.is_external,
+    ).get(id=table.id, organization_id=target_org_id)
+    if exact_table is not None:
         return
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -1360,7 +1366,7 @@ async def batch_documents(
 ) -> DocumentBatchCreateResponse:
     """Insert, merge-upsert, or replace-upsert multiple documents."""
     table = await get_table_or_404(ctx, table_id, scope=scope)
-    _assert_explicit_scope_targets_table(ctx, table, scope)
+    await _assert_explicit_scope_targets_table(ctx, table, scope)
     await _assert_solution_write_targets_owned_table(ctx, table)
     policies = await load_resolved_table_policies(table, ctx.db)
     await preresolve_for_policies(
