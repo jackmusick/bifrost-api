@@ -59,10 +59,6 @@ env:
   REGISTRY: ghcr.io
   API_IMAGE: gobifrost/bifrost-api
   CLIENT_IMAGE: gobifrost/bifrost-client
-  # Legacy image names under jackmusick — kept for dual-publish during namespace
-  # migration window. Remove after 2 stable releases or 60 days post-transfer.
-  LEGACY_API_IMAGE: jackmusick/bifrost-api
-  LEGACY_CLIENT_IMAGE: jackmusick/bifrost-client
 
 permissions:
   contents: read
@@ -632,33 +628,6 @@ jobs:
           verify_tags "${{ env.CLIENT_IMAGE }}" "${{ steps.candidate.outputs.client_digest }}" \
             "${{ steps.version.outputs.version }}" dev "sha-${{ steps.version.outputs.short_sha }}"
 
-      # ---------------------------------------------------------------------------
-      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
-      # This keeps Keel-polling clusters that pin the old image name converging
-      # during the migration window. Sunset: remove after 2 stable releases or
-      # 60 days post-transfer to gobifrost, whichever comes first.
-      # ---------------------------------------------------------------------------
-      - name: Dual-publish dev images to legacy jackmusick namespace
-        # Map secret to env var so job-level if-condition can test it
-        # (secrets cannot be referenced directly in job if-conditions).
-        env:
-          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
-        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
-        run: |
-          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
-
-          docker buildx imagetools create \
-            --tag "ghcr.io/${{ env.LEGACY_API_IMAGE }}:${{ steps.version.outputs.version }}" \
-            --tag "ghcr.io/${{ env.LEGACY_API_IMAGE }}:dev" \
-            --tag "ghcr.io/${{ env.LEGACY_API_IMAGE }}:sha-${{ steps.version.outputs.short_sha }}" \
-            "ghcr.io/${{ env.API_IMAGE }}@${{ steps.candidate.outputs.api_digest }}"
-          docker buildx imagetools create \
-            --tag "ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}:${{ steps.version.outputs.version }}" \
-            --tag "ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}:dev" \
-            --tag "ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}:sha-${{ steps.version.outputs.short_sha }}" \
-            "ghcr.io/${{ env.CLIENT_IMAGE }}@${{ steps.candidate.outputs.client_digest }}"
-
-          docker logout ghcr.io
 
   # =============================================================================
   # Deploy Dry Run - Manual trigger only (workflow_dispatch from any branch).
@@ -959,23 +928,6 @@ jobs:
           subject-digest: ${{ steps.build-api.outputs.digest }}
           push-to-registry: true
 
-      # ---------------------------------------------------------------------------
-      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
-      # Sunset: remove after 2 stable releases or 60 days post-transfer.
-      # ---------------------------------------------------------------------------
-      - name: Dual-publish API release image to legacy jackmusick namespace
-        env:
-          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
-        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
-        run: |
-          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
-          for tag in $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' '); do
-            legacy_tag=$(echo "$tag" | sed "s|ghcr.io/${{ env.API_IMAGE }}|ghcr.io/${{ env.LEGACY_API_IMAGE }}|")
-            docker pull "$tag"
-            docker tag  "$tag" "$legacy_tag"
-            docker push "$legacy_tag"
-          done
-          docker logout ghcr.io
 
   # =============================================================================
   # Build Client Image - Only on version tags, after tests pass
@@ -1065,23 +1017,6 @@ jobs:
           subject-digest: ${{ steps.build-client.outputs.digest }}
           push-to-registry: true
 
-      # ---------------------------------------------------------------------------
-      # Transitional dual-publish to legacy ghcr.io/jackmusick/* namespace.
-      # Sunset: remove after 2 stable releases or 60 days post-transfer.
-      # ---------------------------------------------------------------------------
-      - name: Dual-publish client release image to legacy jackmusick namespace
-        env:
-          GHCR_LEGACY_TOKEN: ${{ secrets.GHCR_LEGACY_TOKEN }}
-        if: ${{ env.GHCR_LEGACY_TOKEN != '' }}
-        run: |
-          echo "$GHCR_LEGACY_TOKEN" | docker login ghcr.io -u jackmusick --password-stdin
-          for tag in $(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' '); do
-            legacy_tag=$(echo "$tag" | sed "s|ghcr.io/${{ env.CLIENT_IMAGE }}|ghcr.io/${{ env.LEGACY_CLIENT_IMAGE }}|")
-            docker pull "$tag"
-            docker tag  "$tag" "$legacy_tag"
-            docker push "$legacy_tag"
-          done
-          docker logout ghcr.io
 
   # =============================================================================
   # Create GitHub Release - Only on version tags, after images are built.
