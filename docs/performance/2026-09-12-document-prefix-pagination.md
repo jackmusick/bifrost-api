@@ -13,15 +13,16 @@ document ID prefix, independent of unrelated documents.
 - PostgreSQL: `16.13 (Debian 16.13-1.pgdg12+1)`
 - Locale: `lc_collate=en_US.UTF-8`, `lc_ctype=en_US.UTF-8`
 - Unrelated documents: `2,000,000`
-- Unrelated logical tables: `8` at `250,000` documents each
-- Large target group: `20,024` documents, including `20,000` under `tenant-03|drive|`
+- Same-table unrelated documents: `1,600,000` under UUID-shaped non-target prefixes
+- Other-table unrelated documents: `400,000` across `8` logical tables at `50,000` documents each
+- Large table total: `1,620,024` documents, including `20,000` under `11111111-1111-4111-8111-111111111111|drive|`
 - Small target group: `50` documents
 - Escaped/Unicode target rows: literal `%`, `_`, `/`, backslash, composed
   `U+00E9`, and decomposed `e + U+0301`
-- Index sizes after load: `documents_pkey=266 MB`, `ix_documents_table_id_id_c=266 MB`
+- Index sizes after load: `documents_pkey=320 MB`, `ix_documents_table_id_id_c=320 MB`
 
 The representative machine-readable plan artifact is
-`docs/performance/2026-09-12-document-prefix-pagination-plans.json`.
+`docs/performance/2026-09-12-document-prefix-query-plans.json`.
 
 ## Measured Plans
 
@@ -32,16 +33,35 @@ Each representative query used the actual app shape: `table_id = ?`,
 
 | Page | Rows | Time | Shared blocks | Plan |
 | --- | ---: | ---: | ---: | --- |
-| First 20k prefix page | 500 | 10.328 ms | 599 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> top-N Sort |
-| Deep page after `item-19499` | 500 | 0.430 ms | 22 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> Sort |
-| Final empty page after `item-19999` | 0 | 0.075 ms | 7 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> Sort |
+| First 20k prefix page | 500 | 10.901 ms | 735 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> top-N Sort |
+| Deep page after `item-19499` | 500 | 0.540 ms | 26 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> Sort |
+| Final empty page after `item-19999` | 0 | 0.055 ms | 7 | Bitmap Index Scan on `ix_documents_table_id_id_c` -> Bitmap Heap Scan -> Sort |
 
 The first page locally chose a bounded bitmap scan plus top-N sort. Earlier
 cold-cache runs observed the same shape around 11-19 ms and about 726 root
 shared blocks. This is a legitimate PostgreSQL cost choice, not a regression:
 the index condition still contains the app lower bound and PostgreSQL's
 internally generated LIKE range bounds, for example
-`id >= 'tenant-03|drive|'` and `id < 'tenant-03|drive}'`.
+`id >= '11111111-1111-4111-8111-111111111111|drive|'` and
+`id < '11111111-1111-4111-8111-111111111111|drive}'`.
+
+## Local Old-Shape Comparison
+
+On the same `en_US.UTF-8` dataset, bounded `EXPLAIN ANALYZE` was also captured
+for the old query shape: database-default `id >= ...`, escaped `LIKE`, optional
+database-default cursor, and database-default `ORDER BY id`, without the
+C-collated expression contract in the app query.
+
+| Page | Old time / blocks | Fixed time / blocks | Local plan difference |
+| --- | ---: | ---: | --- |
+| First 20k prefix page | 40.879 ms / 735 | 10.901 ms / 735 | both bounded bitmap paths; fixed avoids default-collation comparison work |
+| Deep page after `item-19499` | 28.165 ms / 735 | 0.540 ms / 26 | old cursor remained a filter over 20k rows; fixed cursor is in the C index condition |
+| Final empty page after `item-19999` | 33.291 ms / 735 | 0.055 ms / 7 | old cursor filtered all 20k rows; fixed proves empty through the index range |
+
+The old-plan ratio is local. These old-shape measurements run after the new
+index exists, so PostgreSQL can still use `ix_documents_table_id_id_c` for
+compatible prefix bounds. The production original was EXPLAIN-only evidence,
+not an `EXPLAIN ANALYZE` run against production.
 
 As a research-only diagnostic, `SET enable_bitmapscan=off` on the deep-page
 query produced an ordered `Index Scan` on `ix_documents_table_id_id_c` at
@@ -60,6 +80,7 @@ The performance test verifies:
 - first, middle, deep, final-empty, nonexistent, escaped wildcard, backslash,
   and composed/decomposed Unicode prefix cases return correct page sizes;
 - representative plans use `ix_documents_table_id_id_c`;
+- no relation-wide scan or relation-wide sort appears;
 - no `Seq Scan` or `Gather Merge` appears;
 - if `Sort` appears, it must be fed by a bounded `Bitmap Index Scan` on
   `ix_documents_table_id_id_c`;
@@ -95,9 +116,11 @@ https://www.postgresql.org/docs/current/sql-createindex.html
 - Roll back app code before rolling back the index. The old app code can run
   with the extra index; new app code without the index can regress to expensive
   prefix scans.
-- Mixed-version in-flight pagination may observe different physical query plans
-  across page requests. Cursor semantics remain based on document ID order, but
-  deploy during a low-traffic window if users are running very long table scans.
+- Avoid mixed-version page sequences. Old app pods order and compare using the
+  database-default `en_US` collation, while new app pods use `COLLATE "C"` for
+  prefix, cursor, and ordering. Switching versions mid-traversal can miss or
+  repeat rows across cursor pages. Drain/pause long scans during rollout or
+  route a traversal consistently to one app version.
 - Do not change planner GUCs in production for this feature. The
   `enable_bitmapscan=off` measurement was diagnostic only.
 

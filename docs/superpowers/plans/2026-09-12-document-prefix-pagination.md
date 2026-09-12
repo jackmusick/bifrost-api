@@ -85,7 +85,7 @@ Use set-based `generate_series` inserts for at least two million documents acros
 
 - [ ] **Step 3: Exercise all page positions with bounded plans**
 
-Set a local 2.5-second statement timeout. Capture `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for first, middle, deep, final, empty, nonexistent, wildcard-containing, and Unicode prefixes. Assert `ix_documents_table_id_id_c` is used, no sequential scan or sort appears, and buffers remain bounded independently of unrelated rows.
+Set a local 2.5-second statement timeout. Capture `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for first, middle, deep, final, empty, nonexistent, wildcard-containing, and Unicode prefixes. Assert `ix_documents_table_id_id_c` is used, no relation-wide scan or relation-wide sort appears, and buffers remain bounded independently of unrelated rows. PostgreSQL may legitimately choose a bounded `Bitmap Index Scan` on `ix_documents_table_id_id_c` followed by a top-N/in-memory `Sort`; that is acceptable only when the sort is fed by bounded index output with PostgreSQL-generated lower/upper LIKE prefix bounds in `Index Cond`.
 
 - [ ] **Step 4: Exercise a forced generic prepared plan**
 

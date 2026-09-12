@@ -86,6 +86,14 @@ def _assert_prefix_index_plan(
         assert any(node["Node Type"] == "Bitmap Index Scan" for node in index_nodes)
 
 
+def _assert_legacy_plan(plan: dict, *, max_shared_blocks: int = 5_000) -> None:
+    node_types = _node_types(plan)
+
+    assert "Seq Scan" not in node_types
+    assert "Gather Merge" not in node_types
+    assert _shared_blocks(plan) <= max_shared_blocks
+
+
 async def _explain_analyze_json(
     db_session: AsyncSession,
     sql: str,
@@ -126,6 +134,32 @@ async def _explain_repository_prefix_query(
     )
     explained = await _explain_analyze_json(db_session, sql, {})
     return [document.id for document in documents], explained
+
+
+async def _explain_legacy_prefix_query(
+    db_session: AsyncSession,
+    table: Table,
+    *,
+    prefix: str,
+    after_document_id: str | None,
+    limit: int,
+) -> dict:
+    cursor_predicate = (
+        ""
+        if after_document_id is None
+        else f"AND id > '{after_document_id}'"
+    )
+    sql = f"""
+        SELECT table_id, id, data, created_at, updated_at, created_by, updated_by
+        FROM documents
+        WHERE table_id = '{table.id}'::uuid
+            AND id >= '{prefix}'
+            AND id LIKE '{prefix}%%' ESCAPE '/'
+            {cursor_predicate}
+        ORDER BY id
+        LIMIT {limit} OFFSET 0
+    """
+    return await _explain_analyze_json(db_session, sql, {})
 
 
 async def _fetch_page(
@@ -221,6 +255,9 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
     db_session: AsyncSession,
 ) -> None:
     """Prefix keyset plans stay bounded with millions of unrelated documents."""
+    target_prefix = "11111111-1111-4111-8111-111111111111|drive|"
+    small_prefix = "22222222-2222-4222-8222-222222222222|drive|"
+    missing_prefix = "33333333-3333-4333-8333-333333333333|drive|"
     org = Organization(
         id=uuid4(),
         name=f"Document prefix scale {uuid4().hex[:8]}",
@@ -257,14 +294,37 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             """
             INSERT INTO documents (table_id, id, data, created_by, updated_by)
             SELECT
-                CAST(table_ids[(item % array_length(table_ids, 1)) + 1] AS uuid),
-                'tenant-' || lpad((item % 32)::text, 2, '0')
-                    || '|noise-table-' || lpad((item % 8)::text, 2, '0')
+                CAST(:table_id AS uuid),
+                lpad(to_hex(item % 1048576), 8, '0')
+                    || '-aaaa-4aaa-8aaa-'
+                    || lpad(to_hex(item % 281474976710655), 12, '0')
+                    || '|noise-same-table-'
+                    || lpad((item % 64)::text, 2, '0')
                     || '|item-' || lpad(item::text, 7, '0'),
-                jsonb_build_object('kind', 'noise', 'item', item),
+                jsonb_build_object('kind', 'same-table-noise', 'item', item),
                 'test@example.com',
                 'test@example.com'
-            FROM generate_series(1, 2000000) AS item
+            FROM generate_series(1, 1600000) AS item
+            """
+        ),
+        {"table_id": str(large_table.id)},
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO documents (table_id, id, data, created_by, updated_by)
+            SELECT
+                CAST(table_ids[(item % array_length(table_ids, 1)) + 1] AS uuid),
+                lpad(to_hex(item % 1048576), 8, '0')
+                    || '-bbbb-4bbb-8bbb-'
+                    || lpad(to_hex(item % 281474976710655), 12, '0')
+                    || '|noise-other-table-'
+                    || lpad((item % 8)::text, 2, '0')
+                    || '|item-' || lpad(item::text, 7, '0'),
+                jsonb_build_object('kind', 'other-table-noise', 'item', item),
+                'test@example.com',
+                'test@example.com'
+            FROM generate_series(1, 400000) AS item
             CROSS JOIN (SELECT CAST(:table_ids AS text[]) AS table_ids) AS ids
             """
         ),
@@ -276,14 +336,14 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             INSERT INTO documents (table_id, id, data, created_by, updated_by)
             SELECT
                 CAST(:table_id AS uuid),
-                'tenant-03|drive|item-' || lpad(item::text, 5, '0'),
+                :target_prefix || 'item-' || lpad(item::text, 5, '0'),
                 jsonb_build_object('kind', 'large', 'item', item),
                 'test@example.com',
                 'test@example.com'
             FROM generate_series(0, 19999) AS item
             """
         ),
-        {"table_id": str(large_table.id)},
+        {"table_id": str(large_table.id), "target_prefix": target_prefix},
     )
     await db_session.execute(
         text(
@@ -291,14 +351,14 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             INSERT INTO documents (table_id, id, data, created_by, updated_by)
             SELECT
                 CAST(:table_id AS uuid),
-                'tenant-small|drive|item-' || lpad(item::text, 2, '0'),
+                :small_prefix || 'item-' || lpad(item::text, 2, '0'),
                 jsonb_build_object('kind', 'small', 'item', item),
                 'test@example.com',
                 'test@example.com'
             FROM generate_series(0, 49) AS item
             """
         ),
-        {"table_id": str(small_table.id)},
+        {"table_id": str(small_table.id), "small_prefix": small_prefix},
     )
     await db_session.execute(
         insert(Document),
@@ -329,18 +389,18 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
     await _assert_complete_prefix(
         db_session,
         large_table,
-        prefix="tenant-03|drive|",
+        prefix=target_prefix,
         expected_ids=(
-            f"tenant-03|drive|item-{item:05d}" for item in range(20_000)
+            f"{target_prefix}item-{item:05d}" for item in range(20_000)
         ),
         limit=777,
     )
     await _assert_complete_prefix(
         db_session,
         small_table,
-        prefix="tenant-small|drive|",
+        prefix=small_prefix,
         expected_ids=(
-            f"tenant-small|drive|item-{item:02d}" for item in range(50)
+            f"{small_prefix}item-{item:02d}" for item in range(50)
         ),
         limit=17,
     )
@@ -363,44 +423,44 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
     assert await _fetch_page(
         db_session,
         large_table,
-        prefix="tenant-03|drive|",
-        after_document_id="tenant-03|drive|item-19999",
+        prefix=target_prefix,
+        after_document_id=f"{target_prefix}item-19999",
         limit=500,
     ) == []
     assert await _fetch_page(
         db_session,
         large_table,
-        prefix="tenant-does-not-exist|",
+        prefix=missing_prefix,
         limit=500,
     ) == []
 
     plan_cases = [
-        ("first", None, "tenant-03|drive|", None, 500, 500),
+        ("first", None, target_prefix, None, 500, 500),
         (
             "middle",
-            "tenant-03|drive|item-09999",
-            "tenant-03|drive|",
+            f"{target_prefix}item-09999",
+            target_prefix,
             None,
             500,
             500,
         ),
         (
             "deep",
-            "tenant-03|drive|item-19499",
-            "tenant-03|drive|",
+            f"{target_prefix}item-19499",
+            target_prefix,
             None,
             500,
             500,
         ),
         (
             "final-empty",
-            "tenant-03|drive|item-19999",
-            "tenant-03|drive|",
+            f"{target_prefix}item-19999",
+            target_prefix,
             None,
             500,
             0,
         ),
-        ("nonexistent", None, "tenant-does-not-exist|", None, 500, 0),
+        ("nonexistent", None, missing_prefix, None, 500, 0),
         (
             "escaped-composed",
             None,
@@ -436,10 +496,34 @@ async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
             like_lower=like_lower,
         )
 
+    legacy_first = await _explain_legacy_prefix_query(
+        db_session,
+        large_table,
+        prefix=target_prefix,
+        after_document_id=None,
+        limit=500,
+    )
+    legacy_deep = await _explain_legacy_prefix_query(
+        db_session,
+        large_table,
+        prefix=target_prefix,
+        after_document_id=f"{target_prefix}item-19499",
+        limit=500,
+    )
+    legacy_final = await _explain_legacy_prefix_query(
+        db_session,
+        large_table,
+        prefix=target_prefix,
+        after_document_id=f"{target_prefix}item-19999",
+        limit=500,
+    )
+    for legacy_plan in (legacy_first, legacy_deep, legacy_final):
+        _assert_legacy_plan(legacy_plan["Plan"])
+
     small_document_ids = await _fetch_page(
         db_session,
         small_table,
-        prefix="tenant-small|drive|",
+        prefix=small_prefix,
         limit=500,
     )
     assert len(small_document_ids) == 50

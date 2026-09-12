@@ -1,0 +1,144 @@
+{
+  "captured_at": "2026-09-12",
+  "worktree": "/home/jack/GitHub/bifrost/.worktrees/731-document-prefix-index",
+  "test_stack_project": "bifrost-test-93ff02f4",
+  "postgres": {
+    "version": "16.13 (Debian 16.13-1.pgdg12+1)",
+    "lc_collate": "en_US.UTF-8",
+    "lc_ctype": "en_US.UTF-8"
+  },
+  "dataset": {
+    "total_documents": 2020074,
+    "large_table_documents": 1620024,
+    "same_table_unrelated_documents": 1600000,
+    "target_prefix_documents": 20000,
+    "escaped_unicode_documents": 24,
+    "other_table_unrelated_documents": 400000,
+    "other_unrelated_logical_tables": 8,
+    "small_target_documents": 50,
+    "target_prefix": "11111111-1111-4111-8111-111111111111|drive|",
+    "index_sizes": {
+      "documents_pkey": "320 MB",
+      "ix_documents_table_id_id_c": "320 MB"
+    }
+  },
+  "caveats": [
+    "Plans are local Docker test-stack measurements, not production hardware measurements.",
+    "The local old-query measurements run after the new index exists, so the planner can still use ix_documents_table_id_id_c for compatible prefix bounds; the production original was EXPLAIN-only evidence.",
+    "Sort is acceptable only when fed by bounded ix_documents_table_id_id_c bitmap output."
+  ],
+  "representative_plans": [
+    {
+      "name": "fixed_first_20k_prefix_page",
+      "query_shape": "C-collated id lower bound, literal escaped LIKE, C-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 10.901,
+      "shared_blocks": {"hit": 498, "read": 237, "total": 735},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "top-N heapsort", "space_kb": 153},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 20000,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text))"
+      }
+    },
+    {
+      "name": "fixed_deep_20k_prefix_page",
+      "query_shape": "C-collated id lower bound, literal escaped LIKE, C-collated cursor, C-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 0.540,
+      "shared_blocks": {"hit": 25, "read": 1, "total": 26},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "quicksort", "space_kb": 153},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 500,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text) AND ((id)::text > '11111111-1111-4111-8111-111111111111|drive|item-19499'::text))"
+      }
+    },
+    {
+      "name": "fixed_final_empty_20k_prefix_page",
+      "query_shape": "C-collated id lower bound, literal escaped LIKE, C-collated cursor, C-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 0,
+      "execution_time_ms": 0.055,
+      "shared_blocks": {"hit": 7, "read": 0, "total": 7},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "quicksort", "space_kb": 25},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 0,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text) AND ((id)::text > '11111111-1111-4111-8111-111111111111|drive|item-19999'::text))"
+      }
+    },
+    {
+      "name": "old_first_20k_prefix_page_local",
+      "query_shape": "default-collated id lower bound, escaped LIKE, default-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 40.879,
+      "shared_blocks": {"hit": 735, "read": 0, "total": 735},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "top-N heapsort", "space_kb": 153},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 20000,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text))"
+      }
+    },
+    {
+      "name": "old_deep_20k_prefix_page_local",
+      "query_shape": "default-collated id lower bound, escaped LIKE, default-collated cursor, default-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 28.165,
+      "shared_blocks": {"hit": 735, "read": 0, "total": 735},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "quicksort", "space_kb": 153},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 20000,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text))",
+        "rows_removed_by_filter": 19500
+      }
+    },
+    {
+      "name": "old_final_empty_20k_prefix_page_local",
+      "query_shape": "default-collated id lower bound, escaped LIKE, default-collated cursor, default-collated ORDER BY",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 0,
+      "execution_time_ms": 33.291,
+      "shared_blocks": {"hit": 735, "read": 0, "total": 735},
+      "node_types": ["Limit", "Sort", "Bitmap Heap Scan", "Bitmap Index Scan"],
+      "sort": {"method": "quicksort", "space_kb": 25},
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 20000,
+        "condition": "((table_id = 'f7ff2a4b-1797-402f-a954-1cc5fab9ee81'::uuid) AND ((id)::text >= '11111111-1111-4111-8111-111111111111|drive|'::text) AND ((id)::text < '11111111-1111-4111-8111-111111111111|drive}'::text))",
+        "rows_removed_by_filter": 20000
+      }
+    }
+  ],
+  "local_before_after_summary": {
+    "first_page": {
+      "old_ms": 40.879,
+      "fixed_ms": 10.901,
+      "old_shared_blocks": 735,
+      "fixed_shared_blocks": 735
+    },
+    "deep_page": {
+      "old_ms": 28.165,
+      "fixed_ms": 0.540,
+      "old_shared_blocks": 735,
+      "fixed_shared_blocks": 26
+    },
+    "final_empty_page": {
+      "old_ms": 33.291,
+      "fixed_ms": 0.055,
+      "old_shared_blocks": 735,
+      "fixed_shared_blocks": 7
+    }
+  }
+}
