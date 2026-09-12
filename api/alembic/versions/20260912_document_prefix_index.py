@@ -7,7 +7,8 @@ Document-ID prefix pages intentionally use two predicates: a C-collated lower
 bound to seek into the target table/prefix region and a literal LIKE check to
 keep the result at the exact prefix boundary. This index must be deployed
 before the query code that depends on it so PostgreSQL can satisfy both the
-seek and the ORDER BY without a separate sort.
+prefix bounds and cursor seek selectively. PostgreSQL may scan it in order or
+choose a bounded bitmap scan followed by a small sort.
 
 The index is created concurrently so normal DML remains available while
 PostgreSQL performs its two table scans. Lock acquisition is bounded to 5s and

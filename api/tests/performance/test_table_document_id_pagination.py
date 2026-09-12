@@ -771,7 +771,7 @@ async def test_document_cursor_only_statement_keeps_default_id_order(
 @pytest.mark.asyncio
 @pytest.mark.slow
 @pytest.mark.timeout(120)
-async def test_document_id_keyset_query_uses_composite_index_without_sort(
+async def test_document_id_keyset_query_can_use_ordered_c_collated_index_scan(
     db_session: AsyncSession,
 ) -> None:
     """A production-shaped tenant page seeks through the C-collated index."""
