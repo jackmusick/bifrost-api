@@ -1392,7 +1392,7 @@ async def delete_solution(
             await SolutionSourceArtifactStorage(solution_id).delete()
             builder = SolutionAppBuilder()
             for app_id in app_ids:
-                await builder.delete_dist(app_id)
+                await builder.delete_all_app_artifacts(app_id)
 
             # Declared-location file bytes live outside the _solutions/{id}/
             # prefix (at {location}/{id}/{path}) and are not covered by the

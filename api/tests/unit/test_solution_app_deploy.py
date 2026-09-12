@@ -61,6 +61,9 @@ def _stub_app_build(monkeypatch):
     async def _fake_delete_deployment(self, app_id, deployment_id):
         return None
 
+    async def _fake_delete_all_app_artifacts(self, app_id):
+        uploaded.pop(str(app_id), None)
+
     monkeypatch.setattr(app_build.SolutionAppBuilder, "compile_dist", _fake_compile)
     monkeypatch.setattr(app_build.SolutionAppBuilder, "upload_dist", _fake_upload, raising=False)
     monkeypatch.setattr(
@@ -76,6 +79,12 @@ def _stub_app_build(monkeypatch):
         app_build.SolutionAppBuilder,
         "delete_deployment",
         _fake_delete_deployment,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        app_build.SolutionAppBuilder,
+        "delete_all_app_artifacts",
+        _fake_delete_all_app_artifacts,
         raising=False,
     )
     return uploaded
@@ -499,6 +508,97 @@ class TestSolutionAppDeploy:
 
         assert deleted == [(app_id, old_deployment)]
 
+    async def test_activation_failure_deletes_new_uploads_and_preserves_old_pointers(
+        self, db_session, monkeypatch
+    ):
+        from src.services.solutions import app_build
+        from src.services.solutions.deploy import SolutionFinalizeIncomplete
+
+        db = db_session
+        sol = await self._install(db)
+        other_sol = await self._install(db)
+        manifest_ids = [uuid.uuid4(), uuid.uuid4()]
+        app_ids = [solution_entity_id(sol.id, mid) for mid in manifest_ids]
+        old_deployments = [uuid.uuid4(), uuid.uuid4()]
+        for app_id, old_deployment, idx in zip(app_ids, old_deployments, range(2)):
+            db.add(
+                Application(
+                    id=app_id,
+                    name=f"App {idx}",
+                    slug=f"app-{idx}-{uuid.uuid4().hex[:8]}",
+                    repo_path=f"apps/app-{idx}",
+                    app_model="standalone_v2",
+                    solution_id=sol.id,
+                    active_deployment_id=old_deployment,
+                )
+            )
+        await db.flush()
+
+        uploaded: list[tuple[uuid.UUID, uuid.UUID]] = []
+        deleted: list[tuple[uuid.UUID, uuid.UUID]] = []
+
+        async def _record_upload(self, uploaded_app_id, deployment_id, dist):
+            uploaded.append((uploaded_app_id, deployment_id))
+
+        async def _record_delete(self, deleted_app_id, deployment_id):
+            deleted.append((deleted_app_id, deployment_id))
+
+        class _ActivationContext:
+            async def __aenter__(self):
+                for app_id in app_ids:
+                    await db.execute(
+                        Application.__table__.update()
+                        .where(Application.id == app_id)
+                        .values(solution_id=other_sol.id)
+                    )
+                await db.flush()
+                return db
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        def _activation_context():
+            return _ActivationContext()
+
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "upload_deployment",
+            _record_upload,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "delete_deployment",
+            _record_delete,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.services.solutions.deploy._FINALIZE_RETRIES",
+            1,
+        )
+        monkeypatch.setattr(
+            "src.services.solutions.deploy._solution_app_activation_db_context",
+            _activation_context,
+        )
+
+        result = await SolutionDeployer(db).deploy(
+            SolutionBundle(
+                solution=sol,
+                apps=[
+                    _app_entry(str(manifest_ids[0]), f"a-{uuid.uuid4().hex[:6]}"),
+                    _app_entry(str(manifest_ids[1]), f"b-{uuid.uuid4().hex[:6]}"),
+                ],
+            )
+        )
+        await db.flush()
+        with pytest.raises(SolutionFinalizeIncomplete):
+            await result.finalize_s3()
+
+        assert deleted == uploaded
+        for app_id, old_deployment in zip(app_ids, old_deployments):
+            app = await db.get(Application, app_id)
+            assert app.active_deployment_id == old_deployment
+
     async def test_inline_v1_solution_app_is_rejected(self, db_session, _stub_app_build):
         """Codex #11: a Solution app must be standalone_v2. An inline_v1 app
         (the legacy default when app_model is omitted) has no working deploy path
@@ -536,11 +636,33 @@ class TestSolutionAppDeploy:
             await SolutionDeployer(db).deploy(SolutionBundle(solution=sol, apps=[bare]))
 
     async def test_redeploy_without_app_removes_for_this_install(
-        self, db_session, _stub_app_build
+        self, db_session, _stub_app_build, monkeypatch
     ):
+        from src.services.solutions import app_build
+
         db = db_session
         sol = await self._install(db)
         app_id = str(uuid.uuid4())
+        artifact_deletes: list[uuid.UUID] = []
+
+        async def _delete_all(self, deleted_app_id):
+            artifact_deletes.append(deleted_app_id)
+
+        async def _legacy_delete(self, deleted_app_id):
+            raise AssertionError("stale Solution app cleanup must delete all artifacts")
+
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "delete_all_app_artifacts",
+            _delete_all,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            app_build.SolutionAppBuilder,
+            "delete_dist",
+            _legacy_delete,
+            raising=False,
+        )
 
         await SolutionDeployer(db).deploy(
             SolutionBundle(solution=sol, apps=[_app_entry(app_id, "dash")])
@@ -554,6 +676,8 @@ class TestSolutionAppDeploy:
 
         assert await db.get(Application, expected_id) is None
         assert result.apps_deleted == 1
+        await result.finalize_s3()
+        assert artifact_deletes == [expected_id]
 
     async def test_repo_app_id_collision_raises_conflict(self, db_session, _stub_app_build):
         db = db_session

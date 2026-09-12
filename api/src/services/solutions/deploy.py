@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4, uuid5
 
 from pydantic import ValidationError
@@ -58,6 +58,9 @@ from src.services.sync_ops import Upsert
 from shared.logo_processing import ProcessedLogo, process_logo
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from src.services.application_sdk_status import CurrentApplicationSdkMetadata
 
 def _decode_logo(
     label: str, b64: str | None, content_type: str | None
@@ -223,7 +226,7 @@ class CompiledSolutionAppDeployment:
     expected_old_deployment_id: UUID | None
     superseded_deployment_id: UUID | None
     dist: dict[str, bytes]
-    sdk_metadata: Any | None = None
+    sdk_metadata: CurrentApplicationSdkMetadata | None = None
     source_built: bool = False
 
 
@@ -1311,7 +1314,20 @@ class SolutionDeployer:
             await builder.upload_deployment(
                 item.app_id, item.deployment_id, item.dist
             )
-        await self._activate_compiled_dists(compiled)
+        try:
+            await self._activate_compiled_dists(compiled)
+        except Exception:
+            for item in compiled:
+                try:
+                    await builder.delete_deployment(item.app_id, item.deployment_id)
+                except Exception:  # noqa: BLE001 - best-effort cleanup before retry
+                    logger.warning(
+                        "failed to delete unactivated app deployment %s for app %s",
+                        item.deployment_id,
+                        item.app_id,
+                        exc_info=True,
+                    )
+            raise
         for item in compiled:
             old = item.superseded_deployment_id
             if old is not None and old != item.deployment_id:
@@ -1404,7 +1420,7 @@ class SolutionDeployer:
             return
         builder = SolutionAppBuilder()
         for app_id in app_ids:
-            await builder.delete_dist(app_id)
+            await builder.delete_all_app_artifacts(app_id)
 
     async def _write_bundle_files(
         self, install_id: UUID, solution_files: list[Any], file_mode: str

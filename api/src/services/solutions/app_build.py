@@ -279,3 +279,25 @@ class SolutionAppBuilder:
                     Bucket=self._bucket,
                     Key=self._dist_key(app_id, rel, deployment_id=deployment_id),
                 )
+
+    async def delete_all_app_artifacts(self, app_id: UUID | str) -> None:
+        """Delete every artifact under ``_apps/{app_id}/``.
+
+        Used when the app row itself is removed. This clears both the legacy
+        unversioned dist prefix and every immutable versioned deployment.
+        """
+        prefix = f"{APPS_PREFIX}{app_id}/"
+        token = None
+        async with self._client() as c:
+            while True:
+                kwargs: dict = {"Bucket": self._bucket, "Prefix": prefix}
+                if token:
+                    kwargs["ContinuationToken"] = token
+                resp = await c.list_objects_v2(**kwargs)
+                for obj in resp.get("Contents", []):
+                    key = obj.get("Key")
+                    if key:
+                        await c.delete_object(Bucket=self._bucket, Key=key)
+                if not resp.get("IsTruncated"):
+                    break
+                token = resp.get("NextContinuationToken")
