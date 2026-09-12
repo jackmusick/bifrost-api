@@ -6,6 +6,7 @@ let lastOnEvent:
   | ((evt: Record<string, unknown>) => void)
   | null = null;
 let lastOnReconnect: (() => void) | null = null;
+let onEvents: Array<(evt: Record<string, unknown>) => void> = [];
 
 vi.mock("./ws-client", () => ({
   subscribeToTable: (
@@ -16,10 +17,11 @@ vi.mock("./ws-client", () => ({
   ) => {
     lastOnEvent = cb;
     lastOnReconnect = onReconnect ?? null;
+    onEvents.push(cb);
     subscribeMock(_tableId, _filter, cb);
     return () => {
-      lastOnEvent = null;
-      lastOnReconnect = null;
+      if (lastOnEvent === cb) lastOnEvent = null;
+      if (lastOnReconnect === onReconnect) lastOnReconnect = null;
     };
   },
 }));
@@ -57,6 +59,7 @@ describe("useInfiniteTable", () => {
     subscribeMock.mockClear();
     lastOnEvent = null;
     lastOnReconnect = null;
+    onEvents = [];
   });
 
   it("loads the first page with skip_count omitted (server returns count)", async () => {
@@ -207,6 +210,117 @@ describe("useInfiniteTable", () => {
     });
 
     await waitFor(() => expect(result.current.rows[0]?.id).toBe("trailing"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let invalidations during the trailing refresh create another trailing refresh", async () => {
+    const firstRefresh = deferredPage(["first"], 1);
+    const trailingRefresh = deferredPage(["trailing"], 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(trailingRefresh.promise)
+      .mockResolvedValueOnce(makePage(["later"], 1));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() =>
+      useInfiniteTable("t1", { pageSize: 10 }),
+    );
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("initial"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      firstRefresh.resolve();
+      await firstRefresh.promise;
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await act(async () => {
+      trailingRefresh.resolve();
+      await trailingRefresh.promise;
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("trailing"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("later"));
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("resets invalidation coalescing after a rejected refresh", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce(makePage(["recovered"], 1));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() =>
+      useInfiniteTable("t1", { pageSize: 10 }),
+    );
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("initial"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() =>
+      expect(result.current.error?.message).toBe("temporary failure"),
+    );
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("recovered"));
+    expect(result.current.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("ignores stale invalidation refresh results after query changes", async () => {
+    const staleRefresh = deferredPage(["stale"], 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["old-scope"], 1))
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockResolvedValueOnce(makePage(["new-scope"], 1, "tbl-new"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result, rerender } = renderHook(
+      ({ scope }: { scope: string }) =>
+        useInfiniteTable("t1", { pageSize: 10, scope }),
+      { initialProps: { scope: "org-a" } },
+    );
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("old-scope"));
+    const oldOnEvent = onEvents[0];
+
+    act(() => {
+      oldOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    rerender({ scope: "org-b" });
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("new-scope"));
+
+    await act(async () => {
+      staleRefresh.resolve();
+      await staleRefresh.promise;
+    });
+
+    expect(result.current.rows[0]?.id).toBe("new-scope");
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
