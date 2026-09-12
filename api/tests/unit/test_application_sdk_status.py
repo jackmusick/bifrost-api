@@ -34,9 +34,31 @@ def test_sdk_status_matrix() -> None:
 
     assert application_sdk_status(_app(app_model="inline_v1"), current) == "not_applicable"
     assert application_sdk_status(_app(sdk_fingerprint=None), current) == "unknown"
-    assert application_sdk_status(_app(sdk_fingerprint="current-fp"), current) == "current"
     assert (
-        application_sdk_status(_app(sdk_fingerprint="older-fp"), current)
+        application_sdk_status(
+            _app(sdk_fingerprint="older-fp", sdk_built_at=None),
+            current,
+        )
+        == "unknown"
+    )
+    assert (
+        application_sdk_status(
+            _app(
+                sdk_fingerprint="current-fp",
+                sdk_built_at=datetime(2026, 9, 12, tzinfo=timezone.utc),
+            ),
+            current,
+        )
+        == "current"
+    )
+    assert (
+        application_sdk_status(
+            _app(
+                sdk_fingerprint="older-fp",
+                sdk_built_at=datetime(2026, 9, 12, tzinfo=timezone.utc),
+            ),
+            current,
+        )
         == "update_available"
     )
 

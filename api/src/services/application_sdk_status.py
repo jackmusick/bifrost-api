@@ -48,7 +48,11 @@ def application_sdk_status(
 ) -> ApplicationSdkStatus:
     if application.app_model == "inline_v1":
         return "not_applicable"
-    if not application.sdk_fingerprint or not current.fingerprint:
+    if (
+        not application.sdk_fingerprint
+        or application.sdk_built_at is None
+        or not current.fingerprint
+    ):
         return "unknown"
     if application.sdk_fingerprint == current.fingerprint:
         return "current"
