@@ -173,26 +173,22 @@ function KnowledgeToolbarActions({
 			</Button>
 			{isPlatformAdmin && (
 				<RecordActionsMenu label="Knowledge actions">
-					{isPlatformAdmin && (
-						<>
-							<DropdownMenuItem
-								onSelect={onExport}
-								disabled={busy || isExporting}
-							>
-								<Download className="size-4" />
-								{selectedCount > 0
-									? `Export (${selectedCount})`
-									: "Export"}
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								onSelect={onImport}
-								disabled={busy}
-							>
-								<Upload className="size-4" />
-								Import
-							</DropdownMenuItem>
-						</>
-					)}
+					<DropdownMenuItem
+						onSelect={onExport}
+						disabled={busy || isExporting}
+					>
+						<Download className="size-4" />
+						{selectedCount > 0
+							? `Export (${selectedCount})`
+							: "Export"}
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						onSelect={onImport}
+						disabled={busy}
+					>
+						<Upload className="size-4" />
+						Import
+					</DropdownMenuItem>
 				</RecordActionsMenu>
 			)}
 

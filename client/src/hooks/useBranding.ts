@@ -57,7 +57,7 @@ export async function getBranding(): Promise<BrandingSettings_API | null> {
 
 	if (error) {
 		throw new Error(
-			typeof error === "object" && error !== null && "message" in error
+			typeof error === "object" && "message" in error
 				? (error as { message?: string }).message ||
 						"Failed to load branding"
 				: "Failed to load branding",
@@ -79,7 +79,7 @@ export async function updateBranding(
 
 	if (error) {
 		throw new Error(
-			typeof error === "object" && error !== null && "message" in error
+			typeof error === "object" && "message" in error
 				? (error as { message?: string }).message ||
 						"Failed to update branding"
 				: "Failed to update branding",

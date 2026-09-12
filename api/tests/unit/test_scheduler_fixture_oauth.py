@@ -154,3 +154,26 @@ def test_refresh_token_exchange_still_uses_existing_contract():
         assert payload["access_token"] == "scheduler-fixture-access-refreshed"
         assert payload["refresh_token"] == "scheduler-fixture-refresh"
         assert payload["scope"] == "fixture.read"
+
+
+def test_authorize_rejects_redirect_header_line_breaks():
+    for server in serve_fixture():
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        for line_break in ("\r", "\n", "\r\n"):
+            query = urlencode({
+                "client_id": "scheduler-fixture-client",
+                "response_type": "code",
+                "state": "opaque-state",
+                "redirect_uri": f"http://client/{line_break}X-Injected: value/api/mcp/oauth/callback",
+                "code_challenge": "challenge",
+                "code_challenge_method": "S256",
+            })
+            try:
+                build_opener(NoRedirect).open(f"{base_url}/oauth/authorize?{query}", timeout=5)
+            except HTTPError as exc:
+                assert exc.code == 400
+                assert exc.headers.get("X-Injected") is None
+                assert exc.headers.get("Location") is None
+                assert json.loads(exc.read()) == {"error": "invalid_request"}
+            else:
+                raise AssertionError("fixture accepted a redirect with a header line break")

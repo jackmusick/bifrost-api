@@ -764,12 +764,12 @@ it("retains the execution when refreshing its run fails", async () => {
 	);
 });
 
-it("loads the stored note and sends edited text with a verdict", async () => {
+it.each(["run-1", "__proto__", "constructor"])("loads and edits the stored note for run key %s", async (runId) => {
 	mockUseAgentRun.mockReturnValue({
-		data: makeRun({ verdict_note: "Stored review", verdict: "down" }),
+		data: makeRun({ id: runId, verdict_note: "Stored review", verdict: "down" }),
 		isLoading: false,
 	});
-	const { user } = await renderPage();
+	const { user } = await renderPage(`/agents/agent-1/runs/${runId}`);
 	const input = screen.getByRole("textbox", { name: "Review note" });
 	expect(input).toHaveValue("Stored review");
 	await user.clear(input);

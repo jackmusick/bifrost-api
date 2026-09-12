@@ -10,8 +10,7 @@ import {
 	DataTableRow,
 } from "@/components/ui/data-table";
 import type { SchedulerTaskStatus } from "@/services/schedulerDiagnostics";
-function formatBytes(value: number | null | undefined) {
-	if (value == null) return "Not limited";
+function formatBytes(value: number) {
 	const units = ["B", "KiB", "MiB", "GiB", "TiB"];
 	let amount = value;
 	let unit = 0;

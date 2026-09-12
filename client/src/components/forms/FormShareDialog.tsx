@@ -224,7 +224,7 @@ function FormShareDialogSession({
 					setRestrictionRetryFocus(current => current + 1);
 					return;
 				}
-				if (saved && sessionActive.current && originEditVersion.current === version) {
+				if (originEditVersion.current === version) {
 					setConfirmationView("edit");
 					onOpenChange(false);
 				}

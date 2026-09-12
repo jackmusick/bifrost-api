@@ -324,11 +324,11 @@ export function AgentRunDetailPage() {
 	useAgentRunUpdates({ agentId: owningAgentId });
 
 	const verdict = ((run?.verdict as Verdict | undefined) ?? null) as Verdict;
-	const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-	const note = runId ? (noteDrafts[runId] ?? run?.verdict_note ?? "") : "";
+	const [noteDrafts, setNoteDrafts] = useState<ReadonlyMap<string, string>>(() => new Map());
+	const note = runId ? (noteDrafts.get(runId) ?? run?.verdict_note ?? "") : "";
 	const setNote = (value: string) => {
 		if (runId)
-			setNoteDrafts((previous) => ({ ...previous, [runId]: value }));
+			setNoteDrafts((previous) => new Map(previous).set(runId, value));
 	};
 	const verdictBusy = useRef(false);
 	const [savingVerdict, setSavingVerdict] = useState(false);
@@ -399,10 +399,9 @@ export function AgentRunDetailPage() {
 		setSavingVerdict(true);
 		setVerdictFailure(null);
 		const onSuccess = () => {
-			setNoteDrafts((previous) => ({
-				...previous,
-				[runId]: next === null ? "" : note,
-			}));
+			setNoteDrafts((previous) =>
+				new Map(previous).set(runId, next === null ? "" : note),
+			);
 			invalidateRun();
 			void queryClient.invalidateQueries({
 				queryKey: ["agent-runs-infinite"],

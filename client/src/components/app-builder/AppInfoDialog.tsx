@@ -192,7 +192,7 @@ export function AppInfoDialog({
 					"authenticated",
 				role_ids: existingApp.role_ids ?? [],
 			});
-		} else if (!isEditing && open) {
+		} else if (!isEditing) {
 			form.reset({
 				name: "",
 				slug: "",

@@ -206,6 +206,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _redirect(self, location: str) -> None:
+        if "\r" in location or "\n" in location:
+            self._json(400, {"error": "invalid_request"})
+            return
         self.send_response(302)
         self.send_header("Location", location)
         self.send_header("Content-Length", "0")

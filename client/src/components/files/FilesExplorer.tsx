@@ -526,51 +526,45 @@ export function FilesExplorer({
 				)}
 				{!install && (
 					<div className="flex min-w-0 flex-1 basis-64 items-stretch gap-3 pl-4">
-						{!install && (
-							<Tabs
-								value={view}
-								onValueChange={(value) => {
-									setView(value as "browse" | "policies");
-									setDetailOpen(false);
-									setTestOpen(false);
-									setPolicyOpen(false);
-								}}
-								className="flex min-w-0 items-center py-2"
+						<Tabs
+							value={view}
+							onValueChange={(value) => {
+								setView(value as "browse" | "policies");
+								setDetailOpen(false);
+								setTestOpen(false);
+								setPolicyOpen(false);
+							}}
+							className="flex min-w-0 items-center py-2"
+						>
+							<TabsList
+								variant="line"
+								aria-label="Files workspace"
 							>
-								<TabsList
-									variant="line"
-									aria-label="Files workspace"
+								<TabsTrigger
+									value="browse"
+									className="min-h-11"
 								>
-									<TabsTrigger
-										value="browse"
-										className="min-h-11"
-									>
-										<FolderOpen className="size-4" />
-										Files
-									</TabsTrigger>
-									<TabsTrigger
-										value="policies"
-										className="min-h-11"
-									>
-										<ShieldCheck className="size-4" />
-										Access Policies
-									</TabsTrigger>
-								</TabsList>
-							</Tabs>
-						)}
-						{!install && (
-							<WorkspacePrimaryAction
-								type="button"
-								aria-label="New Share"
-								className="ml-auto"
-								onClick={() => setNewShareOpen(true)}
-							>
-								<Plus className="size-4" />
-								<span className="hidden sm:inline">
-									New Share
-								</span>
-							</WorkspacePrimaryAction>
-						)}
+									<FolderOpen className="size-4" />
+									Files
+								</TabsTrigger>
+								<TabsTrigger
+									value="policies"
+									className="min-h-11"
+								>
+									<ShieldCheck className="size-4" />
+									Access Policies
+								</TabsTrigger>
+							</TabsList>
+						</Tabs>
+						<WorkspacePrimaryAction
+							type="button"
+							aria-label="New Share"
+							className="ml-auto"
+							onClick={() => setNewShareOpen(true)}
+						>
+							<Plus className="size-4" />
+							<span className="hidden sm:inline">New Share</span>
+						</WorkspacePrimaryAction>
 					</div>
 				)}
 			</header>

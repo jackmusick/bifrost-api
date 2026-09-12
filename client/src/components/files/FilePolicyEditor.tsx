@@ -220,7 +220,8 @@ export function FilePolicyEditor({
 				value: rule.name,
 				label: readableRuleName(rule.name),
 				description:
-					rule.description ?? "Shared rule from the Shared Rule Library",
+					rule.description ??
+					"Shared rule from the Shared Rule Library",
 			})),
 		[rules],
 	);
@@ -490,7 +491,6 @@ function summarizePredicate(when: unknown) {
 	if (when === null || when === undefined) return "Applies to everyone.";
 	if (
 		typeof when === "object" &&
-		when !== null &&
 		"user" in when &&
 		(when as { user?: unknown }).user === "is_platform_admin"
 	) {
@@ -498,7 +498,6 @@ function summarizePredicate(when: unknown) {
 	}
 	if (
 		typeof when === "object" &&
-		when !== null &&
 		"call" in when &&
 		(when as { call?: unknown }).call === "has_role"
 	) {
@@ -509,7 +508,6 @@ function summarizePredicate(when: unknown) {
 	}
 	if (
 		typeof when === "object" &&
-		when !== null &&
 		"eq" in when &&
 		JSON.stringify((when as { eq?: unknown }).eq) ===
 			JSON.stringify([{ file: "created_by" }, { user: "user_id" }])
