@@ -55,7 +55,7 @@ def _has_solution_context() -> bool:
 
 def _validate_batch_document_limit(documents: list[dict[str, Any]]) -> None:
     if len(documents) > 1000:
-        raise ValueError("batch writes support at most 1000 documents per request")
+        raise ValueError("table batch writes accept at most 1000 documents")
 
 
 async def _ensure_table_exists(table: str, scope: str | None) -> None:

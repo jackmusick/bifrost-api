@@ -276,9 +276,10 @@ async def test_tables_batch_writes_reject_more_than_1000_before_http(method_name
     monkeypatch.setattr(module, "get_client", lambda: client)
     documents = [{"id": f"doc-{index}", "data": {"index": index}} for index in range(1001)]
 
-    with pytest.raises(ValueError, match="batch writes support at most 1000 documents"):
+    with pytest.raises(ValueError) as exc:
         await getattr(tables, method_name)("customers", documents)
 
+    assert str(exc.value) == "table batch writes accept at most 1000 documents"
     client.post.assert_not_called()
 
 
