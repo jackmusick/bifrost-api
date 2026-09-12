@@ -85,8 +85,8 @@ async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkey
         await router.batch_documents(
             "bulk_race",
             body,
-            ctx,
-            user,
+            ctx=ctx,
+            scope=None,
         )
 
     assert exc_info.value.status_code == 409
@@ -177,7 +177,7 @@ async def test_batch_documents_publishes_successes_in_submission_order(monkeypat
         ]
     )
 
-    response = await router.batch_documents("batch_events", body, ctx)
+    response = await router.batch_documents("batch_events", body, ctx=ctx, scope=None)
 
     assert [doc.id for doc in response.documents] == ["alpha", "beta"]
     assert [event["action"] for event in published] == ["insert", "update"]
