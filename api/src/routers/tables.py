@@ -26,6 +26,7 @@ from shared.policies.probe import (
     compile_read_filter,
     evaluate_action,
 )
+from shared.table_batch_writes import _row_from_doc
 from src.core.auth import Context, CurrentSuperuser
 from src.core.principal import UserPrincipal
 from src.core.constants import SYSTEM_USER_UUID
@@ -103,27 +104,6 @@ def _resolve_attribution(
     created_by = body_created_by or caller
     updated_by = body_updated_by or body_created_by or caller
     return (created_by, updated_by)
-
-
-def _row_from_doc(doc: Document) -> dict[str, Any]:
-    """Flatten a Document ORM row into the dict shape the evaluator expects.
-
-    Column-mapped fields (id, created_by, updated_by, created_at, updated_at,
-    table_id) are placed at the top level alongside the JSONB `data` keys, so
-    `{"row": "any_field"}` resolves consistently for both kinds of references.
-    UUIDs are stringified to match what `_resolve_user_field` produces, and
-    datetimes are ISO-stringified so the same dict round-trips cleanly through
-    JSON pubsub / `websocket.send_json` without a custom encoder.
-    """
-    return {
-        **(doc.data or {}),
-        "id": doc.id,
-        "table_id": str(doc.table_id),
-        "created_by": doc.created_by,
-        "updated_by": doc.updated_by,
-        "created_at": doc.created_at.isoformat() if doc.created_at is not None else None,
-        "updated_at": doc.updated_at.isoformat() if doc.updated_at is not None else None,
-    }
 
 
 async def _check_action_or_403(
