@@ -101,6 +101,10 @@ export const wireSurface = {
       type: "document_change",
       fields: ["table_id", "action", "row", "row_id", "channel"],
     },
+    tableInvalidatedFrame: {
+      type: "table_invalidated",
+      fields: ["table_id"],
+    },
     fileChangeFrame: {
       type: "file_change",
       fields: ["path", "action", "channel"],
