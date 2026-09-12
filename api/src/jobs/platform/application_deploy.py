@@ -82,8 +82,13 @@ def _read_source_zip(path: Path) -> dict[str, bytes]:
 
 
 def _should_skip_source_path(rel: PurePosixPath) -> bool:
-    first = rel.parts[0]
-    return first in _SOURCE_SKIP_DIRS or first == ".env" or first.startswith(".env.")
+    name = rel.name
+    return (
+        any(part in _SOURCE_SKIP_DIRS for part in rel.parts[:-1])
+        or name in _SOURCE_SKIP_DIRS
+        or name == ".env"
+        or name.startswith(".env.")
+    )
 
 
 def _write_source_zip(path: Path, files: dict[str, bytes]) -> None:
