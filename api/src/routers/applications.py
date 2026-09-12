@@ -59,8 +59,9 @@ from src.services.platform_jobs import (
 )
 from src.services.application_deploy_storage import ApplicationDeployStorage
 from src.services.application_sdk_status import (
+    CurrentApplicationSdkMetadata,
     application_sdk_status,
-    current_sdk_metadata,
+    load_current_sdk_metadata,
     sdk_source_available,
 )
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
@@ -143,11 +144,11 @@ async def application_to_public(
     application: Application,
     repo: "ApplicationRepository",
     *,
+    current_sdk: CurrentApplicationSdkMetadata,
     include_inline_logo: bool = True,
 ) -> ApplicationPublic:
     """Convert Application ORM to ApplicationPublic with role_ids."""
     role_ids = await repo.get_role_ids(application.id)
-    current_sdk = current_sdk_metadata()
     return ApplicationPublic(
         id=application.id,
         name=application.name,
@@ -335,7 +336,12 @@ async def create_application(
 
     try:
         application = await repo.create_application(data, created_by=user.email)
-        response = await application_to_public(application, repo)
+        current_sdk = await load_current_sdk_metadata()
+        response = await application_to_public(
+            application,
+            repo,
+            current_sdk=current_sdk,
+        )
         # The default request-scoped database dependency commits during
         # teardown, after the response may already have been sent.  A caller
         # that immediately uses the returned ID can therefore race that commit
@@ -392,9 +398,15 @@ async def list_applications(
     else:
         applications = await repo.list_applications()
 
+    current_sdk = await load_current_sdk_metadata()
     # Convert each application with role_ids
     public_apps = [
-        await application_to_public(app, repo, include_inline_logo=False)
+        await application_to_public(
+            app,
+            repo,
+            current_sdk=current_sdk,
+            include_inline_logo=False,
+        )
         for app in applications
     ]
 
@@ -423,7 +435,8 @@ async def get_application(
         is_external=user.is_external,
     )
     application = await get_application_or_404(ctx, slug)
-    return await application_to_public(application, repo)
+    current_sdk = await load_current_sdk_metadata()
+    return await application_to_public(application, repo, current_sdk=current_sdk)
 
 
 @router.patch(
@@ -480,7 +493,8 @@ async def update_application(
         entity_id=str(application.id),
     )
 
-    return await application_to_public(application, repo)
+    current_sdk = await load_current_sdk_metadata()
+    return await application_to_public(application, repo, current_sdk=current_sdk)
 
 
 @router.delete(
@@ -846,7 +860,8 @@ async def replace_application_endpoint(
             detail=f"Application '{app_id}' not found",
         )
 
-    return await application_to_public(application, repo)
+    current_sdk = await load_current_sdk_metadata()
+    return await application_to_public(application, repo, current_sdk=current_sdk)
 
 
 @router.post(
@@ -881,9 +896,10 @@ async def swap_application_slugs(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
+    current_sdk = await load_current_sdk_metadata()
     apps = [
-        await application_to_public(app_a, repo),
-        await application_to_public(app_b, repo),
+        await application_to_public(app_a, repo, current_sdk=current_sdk),
+        await application_to_public(app_b, repo, current_sdk=current_sdk),
     ]
     return ApplicationListResponse(applications=apps, total=len(apps))
 
@@ -1155,7 +1171,8 @@ async def rollback_application(
         await ctx.db.flush()
         await ctx.db.refresh(application)
         logger.info(f"Rolled back application {log_safe(app_id)} to version {log_safe(data.version_id)}")
-        return await application_to_public(application, repo)
+        current_sdk = await load_current_sdk_metadata()
+        return await application_to_public(application, repo, current_sdk=current_sdk)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

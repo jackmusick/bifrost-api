@@ -52,6 +52,11 @@ def _pep440ish(version: str) -> str:
     return f"{major}.{minor}.{patch}"
 
 
+def sdk_package_version(version: str) -> str:
+    """Return the exact npm package version stamped into SDK tarballs."""
+    return _pep440ish(version)
+
+
 def _bundle(workdir: Path) -> bytes:
     """Run esbuild over the SDK source, returning the bundled ESM bytes."""
     out = workdir / "index.mjs"
@@ -116,7 +121,7 @@ def build_sdk_tarball(version: str) -> bytes:
     """Produce an npm-installable ``bifrost`` package tarball (gzip), version
     stamped. Layout: ``package/package.json`` (name ``bifrost``, ESM ``module``
     entry, React peer deps) + ``package/dist/index.mjs`` (the bundle)."""
-    pkg_version = _pep440ish(version)
+    pkg_version = sdk_package_version(version)
     bundle = _built_bundle(version)
 
     package_json = {

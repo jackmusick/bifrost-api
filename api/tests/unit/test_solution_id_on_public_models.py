@@ -112,8 +112,19 @@ class _FakeAppRepo:
 @pytest.mark.parametrize("sol_id", [uuid4(), None])
 def test_application_to_public_populates_solution_id(sol_id) -> None:
     from src.routers.applications import application_to_public
+    from src.services.application_sdk_status import CurrentApplicationSdkMetadata
 
-    app = asyncio.run(application_to_public(_FakeAppRow(sol_id), _FakeAppRepo()))
+    app = asyncio.run(
+        application_to_public(
+            _FakeAppRow(sol_id),
+            _FakeAppRepo(),
+            current_sdk=CurrentApplicationSdkMetadata(
+                package_version="1.0.1",
+                fingerprint="current-fp",
+                contract_version=1,
+            ),
+        )
+    )
     assert app.solution_id == sol_id
     assert app.is_solution_managed is (sol_id is not None)
 
@@ -126,22 +137,24 @@ def test_application_to_public_populates_sdk_fields(monkeypatch) -> None:
     app_row.app_model = "standalone_v2"
     app_row.active_deployment_id = uuid4()
 
-    calls = 0
+    monkeypatch.setattr(
+        applications,
+        "load_current_sdk_metadata",
+        lambda: (_ for _ in ()).throw(AssertionError("loader should be caller-owned")),
+    )
 
-    def fake_current_metadata():
-        nonlocal calls
-        calls += 1
-        return CurrentApplicationSdkMetadata(
-            package_version="v1.0.1",
-            fingerprint="current-fp",
-            contract_version=1,
+    app = asyncio.run(
+        applications.application_to_public(
+            app_row,
+            _FakeAppRepo(),
+            current_sdk=CurrentApplicationSdkMetadata(
+                package_version="1.0.1",
+                fingerprint="current-fp",
+                contract_version=1,
+            ),
         )
+    )
 
-    monkeypatch.setattr(applications, "current_sdk_metadata", fake_current_metadata)
-
-    app = asyncio.run(applications.application_to_public(app_row, _FakeAppRepo()))
-
-    assert calls == 1
     assert app.sdk_package_version == "v1.0.0"
     assert app.sdk_fingerprint == "current-fp"
     assert app.sdk_contract_version == 1

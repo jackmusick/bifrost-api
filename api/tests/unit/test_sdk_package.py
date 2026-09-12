@@ -87,6 +87,30 @@ def test_build_sdk_tarball_cached_per_version(monkeypatch):
     assert len(calls) == 1, "builder ran more than once for the same version"
 
 
+def test_sdk_package_version_matches_tarball_package_json(monkeypatch):
+    import src.services.sdk_package as sdkpkg
+
+    sdkpkg.build_sdk_tarball.cache_clear()
+    sdkpkg._built_bundle.cache_clear()
+    monkeypatch.setattr(sdkpkg, "_bundle", lambda workdir: b"//bundle")
+    monkeypatch.setattr(sdkpkg, "sdk_contract_version", lambda: 7)
+
+    try:
+        version = "v1.2-3-gabc1234"
+        data = sdkpkg.build_sdk_tarball(version)
+    finally:
+        sdkpkg.build_sdk_tarball.cache_clear()
+        sdkpkg._built_bundle.cache_clear()
+
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        pkg_file = tar.extractfile("package/package.json")
+        assert pkg_file is not None
+        pkg = json.loads(pkg_file.read())
+
+    assert sdkpkg.sdk_package_version(version) == "1.2.0"
+    assert pkg["version"] == sdkpkg.sdk_package_version(version)
+
+
 @pytest.mark.e2e
 def test_build_sdk_tarball_shape_and_exports():
     if not _ensure_sdk_src():
