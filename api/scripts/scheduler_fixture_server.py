@@ -210,7 +210,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": "invalid_request"})
             return
         self.send_response(302)
-        self.send_header("Location", location)
+        self.send_header("Location", location.replace("\r", "%0D").replace("\n", "%0A"))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
