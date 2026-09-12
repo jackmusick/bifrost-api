@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
+from sqlalchemy import update
+
 from src.core.database import get_db_context
 from src.jobs.platform.base import PlatformJobFailure
 from src.models.orm.applications import Application
@@ -106,13 +108,31 @@ async def rebuild_application_from_source(
                     expected_sdk_built_at=expected_sdk_built_at,
                 )
             old_deployment_id = app.active_deployment_id
-            app.active_deployment_id = deployment_id
-            app.deployed_at = datetime.now(timezone.utc)
-            app.sdk_package_version = sdk_metadata.package_version
-            app.sdk_fingerprint = sdk_metadata.fingerprint
-            app.sdk_contract_version = sdk_metadata.contract_version
-            app.sdk_built_at = app.deployed_at
-            await db.flush()
+            deployed_at = datetime.now(timezone.utc)
+            provenance_values = {
+                "active_deployment_id": deployment_id,
+                "deployed_at": deployed_at,
+                "sdk_package_version": sdk_metadata.package_version,
+                "sdk_fingerprint": sdk_metadata.fingerprint,
+                "sdk_contract_version": sdk_metadata.contract_version,
+                "sdk_built_at": deployed_at,
+            }
+            if app.solution_id is None:
+                for field, value in provenance_values.items():
+                    setattr(app, field, value)
+                await db.flush()
+            else:
+                await _activate_solution_app(
+                    db,
+                    app,
+                    provenance_values=provenance_values,
+                    old_deployment_id=old_deployment_id,
+                    enforce_expected_state=enforce_expected_state,
+                    expected_sdk_package_version=expected_sdk_package_version,
+                    expected_sdk_fingerprint=expected_sdk_fingerprint,
+                    expected_sdk_contract_version=expected_sdk_contract_version,
+                    expected_sdk_built_at=expected_sdk_built_at,
+                )
         activated = True
 
         if old_deployment_id and old_deployment_id != deployment_id:
@@ -168,8 +188,48 @@ async def _get_activation_app(
     get = getattr(db, "get", None)
     if get is None:
         return application
-    app = await get(Application, app_id)
-    return app or application
+    return await get(Application, app_id)
+
+
+async def _activate_solution_app(
+    db,
+    app: Application,
+    *,
+    provenance_values: dict[str, object],
+    old_deployment_id: UUID | None,
+    enforce_expected_state: bool,
+    expected_sdk_package_version: str | None,
+    expected_sdk_fingerprint: str | None,
+    expected_sdk_contract_version: int | None,
+    expected_sdk_built_at: datetime | None,
+) -> None:
+    stmt = (
+        update(Application)
+        .where(
+            Application.id == app.id,
+            Application.solution_id == app.solution_id,
+            Application.active_deployment_id == old_deployment_id,
+        )
+        .values(**provenance_values)
+        .execution_options(synchronize_session=False)
+    )
+    if enforce_expected_state:
+        stmt = stmt.where(
+            Application.sdk_package_version == expected_sdk_package_version,
+            Application.sdk_fingerprint == expected_sdk_fingerprint,
+            Application.sdk_contract_version == expected_sdk_contract_version,
+            Application.sdk_built_at == expected_sdk_built_at,
+        )
+    result = await db.execute(stmt)
+    if result.rowcount != 1:
+        raise PlatformJobFailure(
+            "app_sdk_update_stale" if enforce_expected_state else "app_not_deployable",
+            (
+                "The App deployment changed before the SDK update could activate."
+                if enforce_expected_state
+                else "The App no longer supports standalone V2 builds."
+            ),
+        )
 
 
 def _assert_expected_state(

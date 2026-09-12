@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from src.jobs.platform.base import PlatformJobFailure
 
@@ -263,6 +264,12 @@ async def test_shared_rebuild_does_not_persist_solution_source(
             events.append(("delete_source", (application_id, deployment_id)))
 
     class DB:
+        async def execute(self, _stmt):
+            events.append(("core_update", app.active_deployment_id))
+            app.active_deployment_id = new_id
+            app.sdk_fingerprint = "new-fp"
+            return SimpleNamespace(rowcount=1)
+
         async def flush(self):
             events.append(("flush", app.active_deployment_id))
 
@@ -300,3 +307,272 @@ async def test_shared_rebuild_does_not_persist_solution_source(
     assert app.sdk_fingerprint == "new-fp"
     assert ("delete_dist", (app_id, old_id)) in events
     assert ("delete_source", (app_id, old_id)) not in events
+
+
+@pytest.mark.asyncio
+async def test_shared_rebuild_requires_fresh_activation_row_and_cleans_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.services import application_build
+    from src.services.application_source_resolver import ResolvedApplicationSource
+
+    app_id, old_id, new_id = uuid4(), uuid4(), uuid4()
+    deleted_app = SimpleNamespace(
+        id=app_id,
+        solution_id=None,
+        app_model="standalone_v2",
+        active_deployment_id=old_id,
+        deployed_at=None,
+        sdk_package_version="old",
+        sdk_fingerprint="old-fp",
+        sdk_contract_version=1,
+        sdk_built_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    events: list[tuple[str, object]] = []
+
+    class Builder:
+        def compile_dist(self, *_args):
+            return {"index.html": b"built"}
+
+        async def upload_deployment(self, application_id, deployment_id, _dist):
+            events.append(("upload", (application_id, deployment_id)))
+
+        async def delete_deployment(self, application_id, deployment_id):
+            events.append(("delete_dist", (application_id, deployment_id)))
+
+    class SourceArtifacts:
+        async def write_deployment_source(self, application_id, deployment_id, _path):
+            events.append(("write_source", (application_id, deployment_id)))
+
+        async def delete_deployment_source(self, application_id, deployment_id):
+            events.append(("delete_source", (application_id, deployment_id)))
+
+    class DB:
+        async def get(self, _model, requested_id):
+            assert requested_id == app_id
+            return None
+
+        async def flush(self):
+            raise AssertionError("missing activation row must not be flushed")
+
+    @asynccontextmanager
+    async def db_context():
+        yield DB()
+
+    monkeypatch.setattr(application_build, "SolutionAppBuilder", Builder)
+    monkeypatch.setattr(
+        application_build, "ApplicationSourceArtifactStorage", SourceArtifacts
+    )
+    monkeypatch.setattr(application_build, "get_db_context", lambda: db_context())
+    monkeypatch.setattr(
+        application_build,
+        "current_sdk_metadata",
+        lambda: SimpleNamespace(
+            package_version="1.2.3",
+            fingerprint="new-fp",
+            contract_version=7,
+        ),
+    )
+
+    with pytest.raises(PlatformJobFailure) as exc:
+        await application_build.rebuild_application_from_source(
+            application=deleted_app,
+            deployment_id=new_id,
+            source=ResolvedApplicationSource(
+                files={"package.json": b"{}", "index.html": b"<div id='root'></div>"},
+                dependencies={},
+                source_kind="independent",
+            ),
+        )
+
+    assert exc.value.code == "app_not_deployable"
+    assert deleted_app.active_deployment_id == old_id
+    assert events == [
+        ("upload", (app_id, new_id)),
+        ("write_source", (app_id, new_id)),
+        ("delete_source", (app_id, new_id)),
+        ("delete_dist", (app_id, new_id)),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_shared_rebuild_activates_solution_app_with_core_update(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.models.orm.applications import Application
+    from src.models.orm.solutions import Solution
+    from src.services import application_build
+    from src.services.application_source_resolver import ResolvedApplicationSource
+    from src.services.solutions.guard import install_solution_write_guard
+
+    install_solution_write_guard()
+    app_id, old_id, new_id = uuid4(), uuid4(), uuid4()
+    solution = Solution(id=uuid4(), slug="sdk-solution", name="SDK Solution")
+    db_session.add(solution)
+    await db_session.flush()
+    app = Application(
+        id=app_id,
+        name="Managed App",
+        slug="managed-app",
+        repo_path="apps/managed-app",
+        solution_id=solution.id,
+        app_model="standalone_v2",
+        active_deployment_id=old_id,
+        sdk_package_version="old",
+        sdk_fingerprint="old-fp",
+        sdk_contract_version=1,
+        sdk_built_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    events: list[tuple[str, object]] = []
+
+    class Builder:
+        def compile_dist(self, *_args):
+            return {"index.html": b"built"}
+
+        async def upload_deployment(self, application_id, deployment_id, _dist):
+            events.append(("upload", (application_id, deployment_id)))
+
+        async def delete_deployment(self, application_id, deployment_id):
+            events.append(("delete_dist", (application_id, deployment_id)))
+
+    class SourceArtifacts:
+        async def delete_deployment_source(self, application_id, deployment_id):
+            events.append(("delete_source", (application_id, deployment_id)))
+
+    monkeypatch.setattr(application_build, "SolutionAppBuilder", Builder)
+    monkeypatch.setattr(
+        application_build, "ApplicationSourceArtifactStorage", SourceArtifacts
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db_session
+
+    monkeypatch.setattr(application_build, "get_db_context", lambda: db_context())
+    monkeypatch.setattr(
+        application_build,
+        "current_sdk_metadata",
+        lambda: SimpleNamespace(
+            package_version="1.2.3",
+            fingerprint="new-fp",
+            contract_version=7,
+        ),
+    )
+
+    result = await application_build.rebuild_application_from_source(
+        application_id=app_id,
+        deployment_id=new_id,
+        source=ResolvedApplicationSource(
+            files={"package.json": b"{}", "index.html": b"<div id='root'></div>"},
+            dependencies={},
+            source_kind="solution",
+        ),
+    )
+
+    row = (
+        await db_session.execute(
+            select(Application.active_deployment_id, Application.sdk_fingerprint).where(
+                Application.id == app_id
+            )
+        )
+    ).one()
+    assert result["deployment_id"] == str(new_id)
+    assert row == (new_id, "new-fp")
+    assert ("delete_dist", (app_id, old_id)) in events
+
+
+@pytest.mark.asyncio
+async def test_shared_rebuild_stale_solution_pointer_cleans_new_artifacts(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.models.orm.applications import Application
+    from src.models.orm.solutions import Solution
+    from src.services import application_build
+    from src.services.application_source_resolver import ResolvedApplicationSource
+    from src.services.solutions.guard import install_solution_write_guard
+
+    install_solution_write_guard()
+    app_id, old_id, raced_id, new_id = uuid4(), uuid4(), uuid4(), uuid4()
+    solution = Solution(id=uuid4(), slug="stale-solution", name="Stale Solution")
+    db_session.add(solution)
+    await db_session.flush()
+    app = Application(
+        id=app_id,
+        name="Managed App",
+        slug="stale-managed-app",
+        repo_path="apps/stale-managed-app",
+        solution_id=solution.id,
+        app_model="standalone_v2",
+        active_deployment_id=raced_id,
+        sdk_package_version="old",
+        sdk_fingerprint="old-fp",
+        sdk_contract_version=1,
+        sdk_built_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    db_session.add(app)
+    await db_session.commit()
+
+    events: list[tuple[str, object]] = []
+
+    class Builder:
+        def compile_dist(self, *_args):
+            return {"index.html": b"built"}
+
+        async def upload_deployment(self, application_id, deployment_id, _dist):
+            events.append(("upload", (application_id, deployment_id)))
+
+        async def delete_deployment(self, application_id, deployment_id):
+            events.append(("delete_dist", (application_id, deployment_id)))
+
+    class SourceArtifacts:
+        async def delete_deployment_source(self, application_id, deployment_id):
+            events.append(("delete_source", (application_id, deployment_id)))
+
+    monkeypatch.setattr(application_build, "SolutionAppBuilder", Builder)
+    monkeypatch.setattr(
+        application_build, "ApplicationSourceArtifactStorage", SourceArtifacts
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db_session
+
+    monkeypatch.setattr(application_build, "get_db_context", lambda: db_context())
+    monkeypatch.setattr(
+        application_build,
+        "current_sdk_metadata",
+        lambda: SimpleNamespace(
+            package_version="1.2.3",
+            fingerprint="new-fp",
+            contract_version=7,
+        ),
+    )
+
+    with pytest.raises(PlatformJobFailure) as exc:
+        await application_build.rebuild_application_from_source(
+            application_id=app_id,
+            deployment_id=new_id,
+            source=ResolvedApplicationSource(
+                files={"package.json": b"{}", "index.html": b"<div id='root'></div>"},
+                dependencies={},
+                source_kind="solution",
+            ),
+            expected_active_deployment_id=old_id,
+            expected_sdk_package_version="old",
+            expected_sdk_fingerprint="old-fp",
+            expected_sdk_contract_version=1,
+            expected_sdk_built_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            enforce_expected_state=True,
+        )
+
+    active_id = await db_session.scalar(
+        select(Application.active_deployment_id).where(Application.id == app_id)
+    )
+    assert exc.value.code == "app_sdk_update_stale"
+    assert active_id == raced_id
+    assert ("delete_dist", (app_id, new_id)) in events
