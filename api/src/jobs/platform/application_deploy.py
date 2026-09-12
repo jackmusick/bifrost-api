@@ -6,9 +6,8 @@ import asyncio
 import logging
 import subprocess
 import tempfile
-import zipfile
 from datetime import datetime, timezone
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -23,108 +22,20 @@ from src.jobs.platform.base import (
 from src.models.orm.applications import Application
 from src.services.application_deploy_storage import ApplicationDeployStorage
 from src.services.application_sdk_status import current_sdk_metadata
+from src.services.application_source_archive import (
+    InvalidApplicationSource,
+    prepare_application_source_archive,
+)
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.solutions.app_build import SolutionAppBuilder
 
 logger = logging.getLogger(__name__)
-MAX_EXPANDED_SOURCE_BYTES = 256 * 1024 * 1024
-_SOURCE_SKIP_DIRS = {
-    ".cache",
-    ".git",
-    ".next",
-    ".turbo",
-    ".vite",
-    "build",
-    "coverage",
-    "dist",
-    "node_modules",
-    "out",
-}
 
 
 class ApplicationDeployPayload(BaseModel):
     application_id: UUID
     deployment_id: UUID
     input_sha256: str
-
-
-def _read_source_zip(path: Path) -> dict[str, bytes]:
-    files: dict[str, bytes] = {}
-    seen: set[str] = set()
-    expanded = 0
-    try:
-        archive = zipfile.ZipFile(path)
-    except zipfile.BadZipFile as exc:
-        raise PlatformJobFailure("invalid_app_source", "App source is not a valid zip file.") from exc
-    with archive:
-        for info in archive.infolist():
-            rel = PurePosixPath(info.filename)
-            if info.is_dir():
-                continue
-            if rel.is_absolute() or ".." in rel.parts or not rel.parts:
-                raise PlatformJobFailure(
-                    "invalid_app_source", f"Unsafe path in App source: {info.filename}"
-                )
-            normalized = _normalize_source_path(rel)
-            normalized_name = normalized.as_posix()
-            if normalized_name in seen:
-                raise PlatformJobFailure(
-                    "invalid_app_source",
-                    f"Duplicate path in App source: {normalized_name}",
-                )
-            seen.add(normalized_name)
-            if _should_skip_source_path(normalized):
-                continue
-            expanded += info.file_size
-            if expanded > MAX_EXPANDED_SOURCE_BYTES:
-                raise PlatformJobFailure(
-                    "app_source_too_large",
-                    "Expanded App source exceeds the 256 MiB limit.",
-                )
-            try:
-                files[normalized_name] = archive.read(info)
-            except (zipfile.BadZipFile, RuntimeError) as exc:
-                raise PlatformJobFailure(
-                    "invalid_app_source", "App source is not a valid zip file."
-                ) from exc
-    if "package.json" not in files or "index.html" not in files:
-        raise PlatformJobFailure(
-            "invalid_app_source",
-            "App source must be a Vite project with package.json and index.html at its root.",
-        )
-    return files
-
-
-def _normalize_source_path(rel: PurePosixPath) -> PurePosixPath:
-    parts = [part for part in rel.parts if part not in ("", ".")]
-    if not parts:
-        raise PlatformJobFailure("invalid_app_source", "Unsafe empty path in App source.")
-    return PurePosixPath(*parts)
-
-
-def _should_skip_source_path(rel: PurePosixPath) -> bool:
-    name = rel.name
-    return (
-        any(part in _SOURCE_SKIP_DIRS for part in rel.parts[:-1])
-        or name in _SOURCE_SKIP_DIRS
-        or name == ".env"
-        or name.startswith(".env.")
-    )
-
-
-def _write_source_zip(path: Path, files: dict[str, bytes]) -> None:
-    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in sorted(files):
-            info = zipfile.ZipInfo(name)
-            info.date_time = (1980, 1, 1, 0, 0, 0)
-            info.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(info, files[name])
-
-
-def _prepare_source_archive(source_zip: Path, retained_source_zip: Path) -> dict[str, bytes]:
-    source_files = _read_source_zip(source_zip)
-    _write_source_zip(retained_source_zip, source_files)
-    return source_files
 
 
 async def run_application_deploy(
@@ -143,9 +54,12 @@ async def run_application_deploy(
                 source_zip, expected_sha256=payload.input_sha256
             )
             retained_source_zip = Path(tmp) / "retained-source.zip"
-            source_files = await asyncio.to_thread(
-                _prepare_source_archive, source_zip, retained_source_zip
-            )
+            try:
+                source_files = await asyncio.to_thread(
+                    prepare_application_source_archive, source_zip, retained_source_zip
+                )
+            except InvalidApplicationSource as exc:
+                raise PlatformJobFailure(exc.code, exc.message) from exc
 
             await context.report("Building App", percent=20)
             try:

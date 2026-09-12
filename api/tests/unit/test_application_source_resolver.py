@@ -230,8 +230,13 @@ async def test_solution_preview_runs_through_to_thread_with_exact_archive_path(
 
     await resolver.resolve_application_source(app)
 
-    assert len(to_thread_calls) == 1
-    called_func, called_args = to_thread_calls[0]
+    assert len(to_thread_calls) == 2
+    validate_func, validate_args = to_thread_calls[0]
+    assert validate_func is resolver.validate_solution_source_archive
+    assert len(validate_args) == 1
+    assert isinstance(validate_args[0], Path)
+    assert validate_args[0].name == "source.zip"
+    called_func, called_args = to_thread_calls[1]
     assert called_func is preview_spy
     assert len(called_args) == 1
     assert isinstance(called_args[0], Path)
@@ -278,6 +283,72 @@ async def test_solution_missing_source_artifact_is_typed(
 
 
 @pytest.mark.asyncio
+async def test_solution_oversized_archive_is_rejected_before_preview(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+
+    data = _zip(
+        tmp_path / "solution.zip",
+        {
+            "bifrost.solution.yaml": b"slug: sdk-pack\nname: SDK Pack\n",
+            ".bifrost/apps.yaml": b"apps: {}\n",
+            "apps/target/big.bin": b"x" * 32,
+        },
+    ).read_bytes()
+
+    class Storage:
+        async def copy_to_path(self, path):
+            path.write_bytes(data)
+            return True
+
+    def explode_preview(_path):
+        raise AssertionError("preview must not run after bounded validation fails")
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", lambda _sid: Storage())
+    monkeypatch.setattr(resolver, "preview_zip_path", explode_preview)
+    monkeypatch.setattr(resolver, "SOLUTION_SOURCE_MAX_EXPANDED_BYTES", 31)
+
+    with pytest.raises(resolver.ApplicationSourceUnavailable) as exc:
+        await resolver.resolve_application_source(_app(solution_id=uuid4()))
+
+    _assert_unavailable(exc.value, "solution_source_too_large")
+
+
+@pytest.mark.asyncio
+async def test_solution_archive_member_count_is_rejected_before_preview(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+
+    data = _zip(
+        tmp_path / "solution.zip",
+        {
+            "bifrost.solution.yaml": b"slug: sdk-pack\nname: SDK Pack\n",
+            ".bifrost/apps.yaml": b"apps: {}\n",
+            "apps/target/package.json": b"{}",
+        },
+    ).read_bytes()
+
+    class Storage:
+        async def copy_to_path(self, path):
+            path.write_bytes(data)
+            return True
+
+    def explode_preview(_path):
+        raise AssertionError("preview must not run after member-count validation fails")
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", lambda _sid: Storage())
+    monkeypatch.setattr(resolver, "preview_zip_path", explode_preview)
+    monkeypatch.setattr(resolver, "SOLUTION_SOURCE_MAX_MEMBERS", 2)
+
+    with pytest.raises(resolver.ApplicationSourceUnavailable) as exc:
+        await resolver.resolve_application_source(_app(solution_id=uuid4()))
+
+    _assert_unavailable(exc.value, "solution_source_too_many_files")
+
+
+@pytest.mark.asyncio
 async def test_solution_missing_required_source_files_is_typed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -314,6 +385,39 @@ async def test_solution_missing_required_source_files_is_typed(
             _app(app_id=solution_entity_id(solution_id, manifest_id), solution_id=solution_id)
         )
     _assert_unavailable(exc.value, "source_unavailable")
+
+
+@pytest.mark.asyncio
+async def test_solution_selected_target_app_source_budget_is_enforced(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+
+    solution_id = uuid4()
+    target_manifest_id = uuid4()
+    other_manifest_id = uuid4()
+    data = _workspace_zip(
+        tmp_path / "solution.zip",
+        app_ids=[target_manifest_id, other_manifest_id],
+    )
+
+    class Storage:
+        async def copy_to_path(self, path):
+            path.write_bytes(data)
+            return True
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", lambda _sid: Storage())
+    monkeypatch.setattr(resolver, "APP_SOURCE_MAX_EXPANDED_BYTES", 1)
+
+    with pytest.raises(resolver.ApplicationSourceUnavailable) as exc:
+        await resolver.resolve_application_source(
+            _app(
+                app_id=solution_entity_id(solution_id, target_manifest_id),
+                solution_id=solution_id,
+            )
+        )
+
+    _assert_unavailable(exc.value, "app_source_too_large")
 
 
 @pytest.mark.asyncio
@@ -432,7 +536,7 @@ def test_solution_collector_skips_real_symlink_escape_from_extracted_workspace(
 
 
 @pytest.mark.asyncio
-async def test_resolver_does_not_call_solution_deploy_install_or_write_paths(
+async def test_solution_source_resolution_is_read_only_and_skips_deploy_entrypoints(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from src.services import application_source_resolver as resolver

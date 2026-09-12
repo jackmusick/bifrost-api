@@ -9,10 +9,13 @@ import pytest
 
 from src.jobs.platform.application_deploy import (
     ApplicationDeployPayload,
-    _read_source_zip,
     run_application_deploy,
 )
 from src.jobs.platform.base import PlatformJobFailure
+from src.services.application_source_archive import (
+    InvalidApplicationSource,
+    read_application_source_zip,
+)
 
 
 def _zip(path: Path, files: dict[str, bytes]) -> Path:
@@ -24,8 +27,8 @@ def _zip(path: Path, files: dict[str, bytes]) -> Path:
 
 def test_deploy_source_requires_vite_root(tmp_path: Path) -> None:
     archive = _zip(tmp_path / "source.zip", {"src/main.tsx": b"export {}"})
-    with pytest.raises(PlatformJobFailure, match="package.json and index.html"):
-        _read_source_zip(archive)
+    with pytest.raises(InvalidApplicationSource, match="package.json and index.html"):
+        read_application_source_zip(archive)
 
 
 def test_deploy_source_is_read_without_persisting_a_tree(tmp_path: Path) -> None:
@@ -33,7 +36,7 @@ def test_deploy_source_is_read_without_persisting_a_tree(tmp_path: Path) -> None
         tmp_path / "source.zip",
         {"package.json": b"{}", "index.html": b"<div id='root'>", "src/main.tsx": b"x"},
     )
-    assert _read_source_zip(archive)["src/main.tsx"] == b"x"
+    assert read_application_source_zip(archive)["src/main.tsx"] == b"x"
     assert not (tmp_path / "src").exists()
 
 
@@ -64,7 +67,7 @@ def test_deploy_source_is_sanitized_for_build_and_retention(tmp_path: Path) -> N
         },
     )
 
-    files = _read_source_zip(archive)
+    files = read_application_source_zip(archive)
 
     assert sorted(files) == ["index.html", "package.json", "src/main.tsx"]
 
@@ -72,8 +75,8 @@ def test_deploy_source_is_sanitized_for_build_and_retention(tmp_path: Path) -> N
 def test_deploy_source_rejects_traversal(tmp_path: Path) -> None:
     archive = _zip(tmp_path / "source.zip", {"package.json": b"{}", "../x": b"bad"})
 
-    with pytest.raises(PlatformJobFailure, match="Unsafe path"):
-        _read_source_zip(archive)
+    with pytest.raises(InvalidApplicationSource, match="Unsafe path"):
+        read_application_source_zip(archive)
 
 
 def test_deploy_source_rejects_duplicate_normalized_members(tmp_path: Path) -> None:
@@ -84,8 +87,8 @@ def test_deploy_source_rejects_duplicate_normalized_members(tmp_path: Path) -> N
         zf.writestr("src/./main.tsx", b"first")
         zf.writestr("src/main.tsx", b"second")
 
-    with pytest.raises(PlatformJobFailure, match="Duplicate path"):
-        _read_source_zip(archive)
+    with pytest.raises(InvalidApplicationSource, match="Duplicate path"):
+        read_application_source_zip(archive)
 
 
 @pytest.mark.parametrize(
@@ -117,10 +120,10 @@ def test_deploy_source_translates_member_read_errors(
         def read(self, _info):
             raise read_error
 
-    monkeypatch.setattr("src.jobs.platform.application_deploy.zipfile.ZipFile", Archive)
+    monkeypatch.setattr("src.services.application_source_archive.zipfile.ZipFile", Archive)
 
-    with pytest.raises(PlatformJobFailure, match="valid zip file"):
-        _read_source_zip(tmp_path / "source.zip")
+    with pytest.raises(InvalidApplicationSource, match="valid zip file"):
+        read_application_source_zip(tmp_path / "source.zip")
 
 
 @pytest.mark.asyncio
@@ -256,7 +259,7 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
     assert events.index(("flush", new_id)) < events.index(
         ("delete_artifact", (app_id, old_id))
     )
-    assert events.index(("to_thread", "_prepare_source_archive")) < events.index(
+    assert events.index(("to_thread", "prepare_application_source_archive")) < events.index(
         ("compile", app_id)
     )
 

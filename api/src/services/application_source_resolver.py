@@ -12,9 +12,20 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from src.jobs.platform.application_deploy import _read_source_zip
-from src.jobs.platform.base import PlatformJobFailure
+import click
+from botocore.exceptions import ClientError
+
 from src.models.orm.applications import Application
+from src.services.application_source_archive import (
+    APP_SOURCE_MAX_EXPANDED_BYTES,
+    SOLUTION_SOURCE_MAX_EXPANDED_BYTES,
+    SOLUTION_SOURCE_MAX_MEMBERS,
+    InvalidApplicationSource,
+    enforce_application_source_budget,
+    read_application_source_zip,
+    require_vite_source_files,
+    validate_solution_source_archive,
+)
 from src.services.application_source_artifact import ApplicationSourceArtifactStorage
 from src.services.solutions.deploy import solution_entity_id
 from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
@@ -66,7 +77,7 @@ async def _resolve_independent_source(
                 "Retained App source artifact is missing.",
             ) from exc
         except Exception as exc:
-            if _looks_like_missing_object(exc):
+            if _is_missing_object_error(exc):
                 raise ApplicationSourceUnavailable(
                     "source_unavailable",
                     "Retained App source artifact is missing.",
@@ -74,9 +85,9 @@ async def _resolve_independent_source(
             raise
 
         try:
-            files = await asyncio.to_thread(_read_source_zip, source_zip)
-        except PlatformJobFailure as exc:
-            raise ApplicationSourceUnavailable("invalid_source", str(exc)) from exc
+            files = await asyncio.to_thread(read_application_source_zip, source_zip)
+        except InvalidApplicationSource as exc:
+            raise ApplicationSourceUnavailable(_resolver_code(exc.code), exc.message) from exc
 
     return ResolvedApplicationSource(
         files=files,
@@ -99,7 +110,7 @@ async def _resolve_solution_source(application: Application) -> ResolvedApplicat
         try:
             exists = await storage.copy_to_path(source_zip)
         except Exception as exc:
-            if _looks_like_missing_object(exc):
+            if _is_missing_object_error(exc):
                 raise ApplicationSourceUnavailable(
                     "source_unavailable",
                     "Retained Solution source artifact is missing.",
@@ -112,16 +123,19 @@ async def _resolve_solution_source(application: Application) -> ResolvedApplicat
             )
 
         try:
+            await asyncio.to_thread(
+                validate_solution_source_archive,
+                source_zip,
+                max_members=SOLUTION_SOURCE_MAX_MEMBERS,
+                max_expanded_bytes=SOLUTION_SOURCE_MAX_EXPANDED_BYTES,
+            )
             preview = await asyncio.to_thread(preview_zip_path, source_zip)
-        except (ValueError, zipfile.BadZipFile) as exc:
+        except InvalidApplicationSource as exc:
+            raise ApplicationSourceUnavailable(_resolver_code(exc.code), exc.message) from exc
+        except (ValueError, zipfile.BadZipFile, click.ClickException) as exc:
             raise ApplicationSourceUnavailable(
                 "invalid_source",
                 f"Retained Solution source artifact is invalid: {exc}",
-            ) from exc
-        except Exception as exc:
-            raise ApplicationSourceUnavailable(
-                "invalid_source",
-                f"Retained Solution source artifact could not be parsed: {exc}",
             ) from exc
 
     for manifest_app in preview.apps:
@@ -137,6 +151,15 @@ async def _resolve_solution_source(application: Application) -> ResolvedApplicat
                 "source_unavailable",
                 "Solution App source is missing package.json or index.html.",
             )
+        try:
+            require_vite_source_files(files)
+            enforce_application_source_budget(
+                files, max_expanded_bytes=APP_SOURCE_MAX_EXPANDED_BYTES
+            )
+        except InvalidApplicationSource as exc:
+            raise ApplicationSourceUnavailable(
+                _resolver_code(exc.code), exc.message
+            ) from exc
         return ResolvedApplicationSource(
             files=files,
             dependencies=dict(manifest_app.get("dependencies") or {}),
@@ -171,6 +194,17 @@ def _solution_app_files(manifest_app: dict) -> dict[str, bytes]:
     return files
 
 
-def _looks_like_missing_object(exc: Exception) -> bool:
+def _resolver_code(code: str) -> str:
+    return (
+        "invalid_source"
+        if code in {"invalid_app_source", "invalid_solution_source"}
+        else code
+    )
+
+
+def _is_missing_object_error(exc: Exception) -> bool:
+    if isinstance(exc, ClientError):
+        error = exc.response.get("Error", {})
+        return error.get("Code") in {"NoSuchKey", "404", "NotFound", "Not Found"}
     text = f"{type(exc).__name__}: {exc}"
-    return "NoSuchKey" in text or "404" in text or "Not Found" in text
+    return "NoSuchKey" in text
