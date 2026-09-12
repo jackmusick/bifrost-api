@@ -208,11 +208,46 @@ class DocumentBatchItem(BaseModel):
 class DocumentBatchCreate(BaseModel):
     """Input for inserting or upserting multiple documents."""
 
-    documents: list[DocumentBatchItem] = Field(..., description="Documents to insert or upsert")
+    documents: list[DocumentBatchItem] = Field(
+        ...,
+        max_length=1000,
+        description="Documents to insert or upsert. Maximum 1000 rows per request.",
+    )
     upsert: bool = Field(
         default=False,
         description="If true, upsert documents with an id instead of inserting.",
     )
+    write_mode: Literal["insert", "merge_upsert", "replace_upsert"] | None = Field(
+        default=None,
+        description=(
+            "Batch write behavior. Defaults to insert unless legacy upsert=true is supplied, "
+            "which maps to merge_upsert."
+        ),
+    )
+    return_documents: bool = Field(
+        default=True,
+        description="If true, include written documents in the response.",
+    )
+
+    @property
+    def effective_write_mode(self) -> Literal["insert", "merge_upsert", "replace_upsert"]:
+        if self.write_mode is not None:
+            return self.write_mode
+        if self.upsert:
+            return "merge_upsert"
+        return "insert"
+
+    @model_validator(mode="after")
+    def _validate_write_mode(self) -> "DocumentBatchCreate":
+        if self.upsert and self.write_mode not in (None, "merge_upsert"):
+            raise ValueError("upsert=true is only compatible with write_mode=merge_upsert")
+
+        if self.effective_write_mode in ("merge_upsert", "replace_upsert"):
+            for document in self.documents:
+                if not document.id:
+                    raise ValueError("upsert write modes require every document to include a nonempty id")
+
+        return self
 
 
 class DocumentBulkUpsertItem(BaseModel):
