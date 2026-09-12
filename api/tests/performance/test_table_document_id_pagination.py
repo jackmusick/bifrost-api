@@ -48,10 +48,11 @@ def _child_nodes(plan: dict) -> list[dict]:
 
 
 def _shared_blocks(plan: dict) -> int:
-    return sum(
-        int(node.get("Shared Hit Blocks", 0))
-        + int(node.get("Shared Read Blocks", 0))
-        for node in _plan_nodes(plan)
+    # PostgreSQL reports cumulative buffer usage on every plan node. The root
+    # therefore already represents the whole statement; summing the tree
+    # counts the same buffers again at each ancestor.
+    return int(plan.get("Shared Hit Blocks", 0)) + int(
+        plan.get("Shared Read Blocks", 0)
     )
 
 
