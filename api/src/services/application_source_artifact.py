@@ -82,6 +82,7 @@ class ApplicationSourceArtifactStorage:
 
     async def delete_application_artifacts(self, app_id: UUID | str) -> None:
         prefix = self.application_prefix(app_id)
+        keys: list[str] = []
         async with self._storage.get_client() as s3:
             token = None
             while True:
@@ -92,7 +93,9 @@ class ApplicationSourceArtifactStorage:
                 for obj in response.get("Contents", []):
                     key = obj.get("Key")
                     if key:
-                        await s3.delete_object(Bucket=self._bucket, Key=key)
+                        keys.append(key)
                 if not response.get("IsTruncated"):
                     break
                 token = response.get("NextContinuationToken")
+            for key in keys:
+                await s3.delete_object(Bucket=self._bucket, Key=key)

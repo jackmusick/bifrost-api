@@ -76,6 +76,53 @@ def test_deploy_source_rejects_traversal(tmp_path: Path) -> None:
         _read_source_zip(archive)
 
 
+def test_deploy_source_rejects_duplicate_normalized_members(tmp_path: Path) -> None:
+    archive = tmp_path / "source.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("package.json", b"{}")
+        zf.writestr("index.html", b"<div id='root'>")
+        zf.writestr("src/./main.tsx", b"first")
+        zf.writestr("src/main.tsx", b"second")
+
+    with pytest.raises(PlatformJobFailure, match="Duplicate path"):
+        _read_source_zip(archive)
+
+
+@pytest.mark.parametrize(
+    "read_error", [RuntimeError("read failed"), zipfile.BadZipFile("bad crc")]
+)
+def test_deploy_source_translates_member_read_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_error: Exception
+) -> None:
+    class Info:
+        filename = "package.json"
+        file_size = 2
+
+        def is_dir(self) -> bool:
+            return False
+
+    class Archive:
+        def __init__(self, _path):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def infolist(self):
+            return [Info()]
+
+        def read(self, _info):
+            raise read_error
+
+    monkeypatch.setattr("src.jobs.platform.application_deploy.zipfile.ZipFile", Archive)
+
+    with pytest.raises(PlatformJobFailure, match="valid zip file"):
+        _read_source_zip(tmp_path / "source.zip")
+
+
 @pytest.mark.asyncio
 async def test_deploy_atomically_activates_then_removes_old_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -148,6 +195,12 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
         async def report(self, message: str, *, percent: int):
             events.append(("report", (message, percent)))
 
+    real_to_thread = __import__("asyncio").to_thread
+
+    async def tracked_to_thread(func, *args, **kwargs):
+        events.append(("to_thread", getattr(func, "__name__", type(func).__name__)))
+        return await real_to_thread(func, *args, **kwargs)
+
     monkeypatch.setattr(
         "src.jobs.platform.application_deploy.ApplicationDeployStorage", Storage
     )
@@ -168,6 +221,9 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
             fingerprint="current-fp",
             contract_version=7,
         ),
+    )
+    monkeypatch.setattr(
+        "src.jobs.platform.application_deploy.asyncio.to_thread", tracked_to_thread
     )
 
     result = await run_application_deploy(
@@ -199,6 +255,9 @@ async def test_deploy_atomically_activates_then_removes_old_artifact(
     )
     assert events.index(("flush", new_id)) < events.index(
         ("delete_artifact", (app_id, old_id))
+    )
+    assert events.index(("to_thread", "_prepare_source_archive")) < events.index(
+        ("compile", app_id)
     )
 
 

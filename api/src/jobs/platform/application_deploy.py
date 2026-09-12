@@ -50,6 +50,7 @@ class ApplicationDeployPayload(BaseModel):
 
 def _read_source_zip(path: Path) -> dict[str, bytes]:
     files: dict[str, bytes] = {}
+    seen: set[str] = set()
     expanded = 0
     try:
         archive = zipfile.ZipFile(path)
@@ -64,7 +65,15 @@ def _read_source_zip(path: Path) -> dict[str, bytes]:
                 raise PlatformJobFailure(
                     "invalid_app_source", f"Unsafe path in App source: {info.filename}"
                 )
-            if _should_skip_source_path(rel):
+            normalized = _normalize_source_path(rel)
+            normalized_name = normalized.as_posix()
+            if normalized_name in seen:
+                raise PlatformJobFailure(
+                    "invalid_app_source",
+                    f"Duplicate path in App source: {normalized_name}",
+                )
+            seen.add(normalized_name)
+            if _should_skip_source_path(normalized):
                 continue
             expanded += info.file_size
             if expanded > MAX_EXPANDED_SOURCE_BYTES:
@@ -72,13 +81,25 @@ def _read_source_zip(path: Path) -> dict[str, bytes]:
                     "app_source_too_large",
                     "Expanded App source exceeds the 256 MiB limit.",
                 )
-            files[rel.as_posix()] = archive.read(info)
+            try:
+                files[normalized_name] = archive.read(info)
+            except (zipfile.BadZipFile, RuntimeError) as exc:
+                raise PlatformJobFailure(
+                    "invalid_app_source", "App source is not a valid zip file."
+                ) from exc
     if "package.json" not in files or "index.html" not in files:
         raise PlatformJobFailure(
             "invalid_app_source",
             "App source must be a Vite project with package.json and index.html at its root.",
         )
     return files
+
+
+def _normalize_source_path(rel: PurePosixPath) -> PurePosixPath:
+    parts = [part for part in rel.parts if part not in ("", ".")]
+    if not parts:
+        raise PlatformJobFailure("invalid_app_source", "Unsafe empty path in App source.")
+    return PurePosixPath(*parts)
 
 
 def _should_skip_source_path(rel: PurePosixPath) -> bool:
@@ -100,6 +121,12 @@ def _write_source_zip(path: Path, files: dict[str, bytes]) -> None:
             archive.writestr(info, files[name])
 
 
+def _prepare_source_archive(source_zip: Path, retained_source_zip: Path) -> dict[str, bytes]:
+    source_files = _read_source_zip(source_zip)
+    _write_source_zip(retained_source_zip, source_files)
+    return source_files
+
+
 async def run_application_deploy(
     context: PlatformJobContext, payload: ApplicationDeployPayload
 ) -> dict[str, str]:
@@ -115,9 +142,10 @@ async def run_application_deploy(
             await storage.copy_to_path(
                 source_zip, expected_sha256=payload.input_sha256
             )
-            source_files = _read_source_zip(source_zip)
             retained_source_zip = Path(tmp) / "retained-source.zip"
-            _write_source_zip(retained_source_zip, source_files)
+            source_files = await asyncio.to_thread(
+                _prepare_source_archive, source_zip, retained_source_zip
+            )
 
             await context.report("Building App", percent=20)
             try:

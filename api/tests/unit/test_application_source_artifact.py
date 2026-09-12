@@ -32,6 +32,8 @@ class MemoryS3:
     def __init__(self):
         self.objects: dict[str, bytes] = {}
         self.deleted: list[str] = []
+        self.page_size: int | None = None
+        self.seen_tokens: list[str | None] = []
 
     async def put_object(self, *, Bucket, Key, Body, ContentType=None):
         self.objects[Key] = Body
@@ -47,8 +49,24 @@ class MemoryS3:
 
     async def list_objects_v2(self, **kwargs):
         prefix = kwargs["Prefix"]
+        token = kwargs.get("ContinuationToken")
+        self.seen_tokens.append(token)
         keys = sorted(key for key in self.objects if key.startswith(prefix))
-        return {"Contents": [{"Key": key} for key in keys], "IsTruncated": False}
+        offset = int(token) if token else 0
+        if self.page_size is None:
+            page = keys[offset:]
+            next_offset = len(keys)
+        else:
+            page = keys[offset : offset + self.page_size]
+            next_offset = offset + self.page_size
+        truncated = next_offset < len(keys)
+        response = {
+            "Contents": [{"Key": key} for key in page],
+            "IsTruncated": truncated,
+        }
+        if truncated:
+            response["NextContinuationToken"] = str(next_offset)
+        return response
 
 
 @pytest.fixture
@@ -142,3 +160,21 @@ async def test_source_artifact_deletes_all_artifacts_for_app_prefix(source_stora
         f"_application_artifacts/{app_id}/deployments/{second}/source.zip",
         ]
     )
+
+
+@pytest.mark.asyncio
+async def test_source_artifact_delete_application_artifacts_paginates(source_storage) -> None:
+    storage, memory = source_storage
+    app_id = uuid4()
+    retained_keys = [
+        f"_application_artifacts/{app_id}/deployments/{uuid4()}/source.zip"
+        for _ in range(3)
+    ]
+    memory.objects = {key: str(index).encode() for index, key in enumerate(retained_keys)}
+    memory.page_size = 1
+
+    await storage.delete_application_artifacts(app_id)
+
+    assert memory.objects == {}
+    assert sorted(memory.deleted) == sorted(retained_keys)
+    assert memory.seen_tokens == [None, "1", "2"]
