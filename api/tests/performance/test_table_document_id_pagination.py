@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import re
 from uuid import uuid4
 
@@ -20,6 +21,528 @@ def _plan_nodes(plan: dict):
     yield plan
     for child in plan.get("Plans", []):
         yield from _plan_nodes(child)
+
+
+def _canonical_locale(value: str) -> str:
+    return value.lower().replace("-", "")
+
+
+def _node_types(plan: dict) -> set[str]:
+    return {node["Node Type"] for node in _plan_nodes(plan)}
+
+
+def _index_scan_nodes(plan: dict, index_name: str) -> list[dict]:
+    return [
+        node
+        for node in _plan_nodes(plan)
+        if node["Node Type"] in {"Index Scan", "Index Only Scan", "Bitmap Index Scan"}
+        and node.get("Index Name") == index_name
+    ]
+
+
+def _child_nodes(plan: dict) -> list[dict]:
+    children = []
+    for node in _plan_nodes(plan):
+        children.extend(node.get("Plans", []))
+    return children
+
+
+def _shared_blocks(plan: dict) -> int:
+    return sum(
+        int(node.get("Shared Hit Blocks", 0))
+        + int(node.get("Shared Read Blocks", 0))
+        for node in _plan_nodes(plan)
+    )
+
+
+def _assert_prefix_index_plan(
+    plan: dict,
+    *,
+    prefix: str,
+    like_lower: str | None = None,
+    max_shared_blocks: int = 3_000,
+    max_index_rows: int = 25_000,
+) -> None:
+    node_types = _node_types(plan)
+    index_nodes = _index_scan_nodes(plan, "ix_documents_table_id_id_c")
+
+    assert "Seq Scan" not in node_types
+    assert "Gather Merge" not in node_types
+    assert index_nodes
+    assert _shared_blocks(plan) <= max_shared_blocks
+
+    index_conditions = "\n".join(
+        node.get("Index Cond", "") for node in index_nodes
+    )
+    rendered_prefix = prefix.replace("\\", "\\\\").replace("%", "%%")
+    rendered_like_lower = (like_lower or prefix).replace("\\", "\\\\")
+    assert f"(id)::text >= '{rendered_prefix}'::text" in index_conditions
+    assert f"(id)::text >= '{rendered_like_lower}'::text" in index_conditions
+    assert re.search(r"\(id\)::text < '[^']+'::text", index_conditions)
+    assert all(node["Actual Rows"] <= max_index_rows for node in index_nodes)
+
+    if "Sort" in node_types:
+        assert any(node["Node Type"] == "Bitmap Heap Scan" for node in _child_nodes(plan))
+        assert any(node["Node Type"] == "Bitmap Index Scan" for node in index_nodes)
+
+
+async def _explain_analyze_json(
+    db_session: AsyncSession,
+    sql: str,
+    params: dict[str, object],
+) -> dict:
+    await db_session.execute(text("SET LOCAL statement_timeout = '2500ms'"))
+    result = await db_session.execute(
+        text(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {sql}"),
+        params,
+    )
+    return result.scalar_one()[0]
+
+
+async def _explain_repository_prefix_query(
+    db_session: AsyncSession,
+    table: Table,
+    query: DocumentQuery,
+) -> tuple[list[str], dict]:
+    captured = []
+
+    def capture_statement(orm_execute_state):
+        if orm_execute_state.is_select:
+            captured.append(orm_execute_state.statement)
+
+    event.listen(db_session.sync_session, "do_orm_execute", capture_statement)
+    try:
+        documents, total = await DocumentRepository(db_session, table).query(query)
+    finally:
+        event.remove(db_session.sync_session, "do_orm_execute", capture_statement)
+
+    assert total == -1
+    assert len(captured) == 1
+    sql = str(
+        captured[0].compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    explained = await _explain_analyze_json(db_session, sql, {})
+    return [document.id for document in documents], explained
+
+
+async def _fetch_page(
+    db_session: AsyncSession,
+    table: Table,
+    *,
+    prefix: str,
+    after_document_id: str | None = None,
+    limit: int = 500,
+) -> list[str]:
+    documents, total = await DocumentRepository(db_session, table).query(
+        DocumentQuery(
+            document_id_prefix=prefix,
+            after_document_id=after_document_id,
+            skip_count=True,
+            limit=limit,
+        )
+    )
+
+    assert total == -1
+    return [document.id for document in documents]
+
+
+async def _walk_prefix(
+    db_session: AsyncSession,
+    table: Table,
+    *,
+    prefix: str,
+    limit: int,
+) -> list[str]:
+    document_ids: list[str] = []
+    cursor: str | None = None
+
+    while True:
+        page = await _fetch_page(
+            db_session,
+            table,
+            prefix=prefix,
+            after_document_id=cursor,
+            limit=limit,
+        )
+        if not page:
+            return document_ids
+
+        assert not set(document_ids).intersection(page)
+        document_ids.extend(page)
+        cursor = page[-1]
+
+
+async def _assert_complete_prefix(
+    db_session: AsyncSession,
+    table: Table,
+    *,
+    prefix: str,
+    expected_ids: Iterable[str],
+    limit: int,
+) -> None:
+    expected = list(expected_ids)
+    actual = await _walk_prefix(db_session, table, prefix=prefix, limit=limit)
+
+    assert actual == expected
+    assert len(actual) == len(set(actual))
+
+
+@pytest.mark.asyncio
+async def test_performance_database_uses_en_us_utf8_locale(
+    db_session: AsyncSession,
+) -> None:
+    """Document prefix evidence is captured against the production locale."""
+    result = await db_session.execute(
+        text(
+            """
+            SELECT
+                current_setting('server_version') AS server_version,
+                datcollate AS lc_collate,
+                datctype AS lc_ctype
+            FROM pg_database
+            WHERE datname = current_database()
+            """,
+        )
+    )
+
+    row = result.mappings().one()
+
+    assert _canonical_locale(row["lc_collate"]) == "en_us.utf8"
+    assert _canonical_locale(row["lc_ctype"]) == "en_us.utf8"
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+@pytest.mark.timeout(1800)
+async def test_document_id_prefix_pages_stay_index_bounded_at_realistic_scale(
+    db_session: AsyncSession,
+) -> None:
+    """Prefix keyset plans stay bounded with millions of unrelated documents."""
+    org = Organization(
+        id=uuid4(),
+        name=f"Document prefix scale {uuid4().hex[:8]}",
+        domain=f"document-prefix-scale-{uuid4().hex[:8]}.example.com",
+        created_by="test@example.com",
+    )
+    large_table = Table(
+        id=uuid4(),
+        name=f"document_prefix_large_{uuid4().hex[:8]}",
+        organization_id=org.id,
+        created_by="test@example.com",
+    )
+    small_table = Table(
+        id=uuid4(),
+        name=f"document_prefix_small_{uuid4().hex[:8]}",
+        organization_id=org.id,
+        created_by="test@example.com",
+    )
+    unrelated_tables = [
+        Table(
+            id=uuid4(),
+            name=f"document_prefix_noise_{idx}_{uuid4().hex[:8]}",
+            organization_id=org.id,
+            created_by="test@example.com",
+        )
+        for idx in range(8)
+    ]
+    db_session.add_all([org, large_table, small_table, *unrelated_tables])
+    await db_session.flush()
+
+    unrelated_table_ids = [str(table.id) for table in unrelated_tables]
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO documents (table_id, id, data, created_by, updated_by)
+            SELECT
+                CAST(table_ids[(item % array_length(table_ids, 1)) + 1] AS uuid),
+                'tenant-' || lpad((item % 32)::text, 2, '0')
+                    || '|noise-table-' || lpad((item % 8)::text, 2, '0')
+                    || '|item-' || lpad(item::text, 7, '0'),
+                jsonb_build_object('kind', 'noise', 'item', item),
+                'test@example.com',
+                'test@example.com'
+            FROM generate_series(1, 2000000) AS item
+            CROSS JOIN (SELECT CAST(:table_ids AS text[]) AS table_ids) AS ids
+            """
+        ),
+        {"table_ids": unrelated_table_ids},
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO documents (table_id, id, data, created_by, updated_by)
+            SELECT
+                CAST(:table_id AS uuid),
+                'tenant-03|drive|item-' || lpad(item::text, 5, '0'),
+                jsonb_build_object('kind', 'large', 'item', item),
+                'test@example.com',
+                'test@example.com'
+            FROM generate_series(0, 19999) AS item
+            """
+        ),
+        {"table_id": str(large_table.id)},
+    )
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO documents (table_id, id, data, created_by, updated_by)
+            SELECT
+                CAST(:table_id AS uuid),
+                'tenant-small|drive|item-' || lpad(item::text, 2, '0'),
+                jsonb_build_object('kind', 'small', 'item', item),
+                'test@example.com',
+                'test@example.com'
+            FROM generate_series(0, 49) AS item
+            """
+        ),
+        {"table_id": str(small_table.id)},
+    )
+    await db_session.execute(
+        insert(Document),
+        [
+            {
+                "table_id": large_table.id,
+                "id": f"tenant%_A/folder\\caf\u00e9/{item:02d}",
+                "data": {"kind": "escaped", "item": item},
+                "created_by": "test@example.com",
+                "updated_by": "test@example.com",
+            }
+            for item in range(12)
+        ]
+        + [
+            {
+                "table_id": large_table.id,
+                "id": f"tenant%_A/folder\\cafe\u0301/{item:02d}",
+                "data": {"kind": "escaped-decomposed", "item": item},
+                "created_by": "test@example.com",
+                "updated_by": "test@example.com",
+            }
+            for item in range(12)
+        ],
+    )
+    await db_session.commit()
+    await db_session.execute(text("ANALYZE documents"))
+
+    await _assert_complete_prefix(
+        db_session,
+        large_table,
+        prefix="tenant-03|drive|",
+        expected_ids=(
+            f"tenant-03|drive|item-{item:05d}" for item in range(20_000)
+        ),
+        limit=777,
+    )
+    await _assert_complete_prefix(
+        db_session,
+        small_table,
+        prefix="tenant-small|drive|",
+        expected_ids=(
+            f"tenant-small|drive|item-{item:02d}" for item in range(50)
+        ),
+        limit=17,
+    )
+    await _assert_complete_prefix(
+        db_session,
+        large_table,
+        prefix="tenant%_A/folder\\caf\u00e9/",
+        expected_ids=(f"tenant%_A/folder\\caf\u00e9/{item:02d}" for item in range(12)),
+        limit=5,
+    )
+    await _assert_complete_prefix(
+        db_session,
+        large_table,
+        prefix="tenant%_A/folder\\cafe\u0301/",
+        expected_ids=(
+            f"tenant%_A/folder\\cafe\u0301/{item:02d}" for item in range(12)
+        ),
+        limit=5,
+    )
+    assert await _fetch_page(
+        db_session,
+        large_table,
+        prefix="tenant-03|drive|",
+        after_document_id="tenant-03|drive|item-19999",
+        limit=500,
+    ) == []
+    assert await _fetch_page(
+        db_session,
+        large_table,
+        prefix="tenant-does-not-exist|",
+        limit=500,
+    ) == []
+
+    plan_cases = [
+        ("first", None, "tenant-03|drive|", None, 500, 500),
+        (
+            "middle",
+            "tenant-03|drive|item-09999",
+            "tenant-03|drive|",
+            None,
+            500,
+            500,
+        ),
+        (
+            "deep",
+            "tenant-03|drive|item-19499",
+            "tenant-03|drive|",
+            None,
+            500,
+            500,
+        ),
+        (
+            "final-empty",
+            "tenant-03|drive|item-19999",
+            "tenant-03|drive|",
+            None,
+            500,
+            0,
+        ),
+        ("nonexistent", None, "tenant-does-not-exist|", None, 500, 0),
+        (
+            "escaped-composed",
+            None,
+            "tenant%_A/folder\\caf\u00e9/",
+            "tenant%",
+            20,
+            12,
+        ),
+        (
+            "escaped-decomposed",
+            None,
+            "tenant%_A/folder\\cafe\u0301/",
+            "tenant%",
+            20,
+            12,
+        ),
+    ]
+    for _name, cursor, prefix, like_lower, limit, expected_count in plan_cases:
+        document_ids, explained = await _explain_repository_prefix_query(
+            db_session,
+            large_table,
+            DocumentQuery(
+                document_id_prefix=prefix,
+                after_document_id=cursor,
+                skip_count=True,
+                limit=limit,
+            ),
+        )
+        assert len(document_ids) == expected_count
+        _assert_prefix_index_plan(
+            explained["Plan"],
+            prefix=prefix,
+            like_lower=like_lower,
+        )
+
+    small_document_ids = await _fetch_page(
+        db_session,
+        small_table,
+        prefix="tenant-small|drive|",
+        limit=500,
+    )
+    assert len(small_document_ids) == 50
+
+
+@pytest.mark.asyncio
+@pytest.mark.slow
+@pytest.mark.timeout(300)
+async def test_document_id_prefix_generic_plan_keeps_literal_prefix_bounds(
+    db_session: AsyncSession,
+) -> None:
+    """A generic plan can parameterize table/cursor/limit and still range-seek."""
+    org = Organization(
+        id=uuid4(),
+        name=f"Document prefix generic {uuid4().hex[:8]}",
+        domain=f"document-prefix-generic-{uuid4().hex[:8]}.example.com",
+        created_by="test@example.com",
+    )
+    table = Table(
+        id=uuid4(),
+        name=f"document_prefix_generic_{uuid4().hex[:8]}",
+        organization_id=org.id,
+        created_by="test@example.com",
+    )
+    db_session.add_all([org, table])
+    await db_session.flush()
+    await db_session.execute(
+        text(
+            """
+            INSERT INTO documents (table_id, id, data, created_by, updated_by)
+            SELECT
+                CAST(:table_id AS uuid),
+                'tenant-03|drive|item-' || lpad(item::text, 5, '0'),
+                jsonb_build_object('item', item),
+                'test@example.com',
+                'test@example.com'
+            FROM generate_series(0, 999) AS item
+            """
+        ),
+        {"table_id": str(table.id)},
+    )
+    await db_session.commit()
+    await db_session.execute(text("ANALYZE documents"))
+
+    await db_session.execute(text("SET LOCAL statement_timeout = '2500ms'"))
+    await db_session.execute(text("SET LOCAL plan_cache_mode = force_generic_plan"))
+    await db_session.execute(
+        text(
+            """
+            PREPARE document_prefix_generic_page(uuid, text, integer) AS
+            SELECT table_id, id, data, created_at, updated_at, created_by, updated_by
+            FROM documents
+            WHERE table_id = $1
+                AND id COLLATE "C" >= 'tenant-03|drive|'
+                AND id COLLATE "C" LIKE 'tenant-03|drive|%' ESCAPE '/'
+                AND id COLLATE "C" > $2
+            ORDER BY id COLLATE "C"
+            LIMIT $3
+            """
+        )
+    )
+
+    first_plan = (
+        await db_session.execute(
+            text(
+                f"""
+                EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+                EXECUTE document_prefix_generic_page(
+                    '{table.id}'::uuid,
+                    'tenant-03|drive|',
+                    50
+                )
+                """
+            )
+        )
+    ).scalar_one()[0]
+    final_plan = (
+        await db_session.execute(
+            text(
+                f"""
+                EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+                EXECUTE document_prefix_generic_page(
+                    '{table.id}'::uuid,
+                    'tenant-03|drive|item-00999',
+                    50
+                )
+                """
+            )
+        )
+    ).scalar_one()[0]
+
+    for explained in (first_plan, final_plan):
+        plan = explained["Plan"]
+        _assert_prefix_index_plan(plan, prefix="tenant-03|drive|")
+        index_conditions = "\n".join(
+            node.get("Index Cond", "") for node in _plan_nodes(plan)
+        )
+        assert re.search(r"\(id\)::text >= 'tenant-03\|drive\|'::text", index_conditions)
+        assert re.search(r"\(id\)::text < 'tenant-03\|drive}'::text", index_conditions)
+        assert "table_id = $1" in index_conditions
+        assert re.search(r"\(id\)::text > \$2", index_conditions)
+
+    await db_session.execute(text("DEALLOCATE document_prefix_generic_page"))
 
 
 @pytest.mark.asyncio

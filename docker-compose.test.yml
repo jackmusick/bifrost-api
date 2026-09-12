@@ -23,6 +23,7 @@ services:
       POSTGRES_DB: bifrost_test
       POSTGRES_USER: bifrost
       POSTGRES_PASSWORD: bifrost_test
+      POSTGRES_INITDB_ARGS: --locale=en_US.UTF-8
     # No ports exposed - all access via Docker network
     tmpfs:
       - /var/lib/postgresql/data  # Ephemeral storage - fresh each run

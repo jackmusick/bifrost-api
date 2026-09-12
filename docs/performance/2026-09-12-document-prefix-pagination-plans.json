@@ -1,0 +1,125 @@
+{
+  "captured_at": "2026-09-12",
+  "worktree": "/home/jack/GitHub/bifrost/.worktrees/731-document-prefix-index",
+  "test_stack_project": "bifrost-test-93ff02f4",
+  "postgres": {
+    "version": "16.13 (Debian 16.13-1.pgdg12+1)",
+    "lc_collate": "en_US.UTF-8",
+    "lc_ctype": "en_US.UTF-8"
+  },
+  "dataset": {
+    "unrelated_documents": 2000000,
+    "unrelated_logical_tables": 8,
+    "large_target_documents": 20024,
+    "large_target_prefix_documents": 20000,
+    "small_target_documents": 50,
+    "index_sizes": {
+      "documents_pkey": "266 MB",
+      "ix_documents_table_id_id_c": "266 MB"
+    }
+  },
+  "representative_plans": [
+    {
+      "name": "first_20k_prefix_page",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 10.328,
+      "shared_blocks": {
+        "hit": 4,
+        "read": 595,
+        "total": 599
+      },
+      "node_types": [
+        "Limit",
+        "Sort",
+        "Bitmap Heap Scan",
+        "Bitmap Index Scan"
+      ],
+      "sort": {
+        "method": "top-N heapsort",
+        "space_kb": 153
+      },
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 20000,
+        "condition": "((table_id = 'e2bf52cf-7b9a-471d-a9ca-ed646baecc43'::uuid) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text < 'tenant-03|drive}'::text))"
+      }
+    },
+    {
+      "name": "deep_20k_prefix_page",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 500,
+      "execution_time_ms": 0.430,
+      "shared_blocks": {
+        "hit": 21,
+        "read": 1,
+        "total": 22
+      },
+      "node_types": [
+        "Limit",
+        "Sort",
+        "Bitmap Heap Scan",
+        "Bitmap Index Scan"
+      ],
+      "sort": {
+        "method": "quicksort",
+        "space_kb": 153
+      },
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 500,
+        "condition": "((table_id = 'e2bf52cf-7b9a-471d-a9ca-ed646baecc43'::uuid) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text < 'tenant-03|drive}'::text) AND ((id)::text > 'tenant-03|drive|item-19499'::text))"
+      }
+    },
+    {
+      "name": "final_empty_20k_prefix_page",
+      "statement_timeout_ms": 2500,
+      "actual_rows": 0,
+      "execution_time_ms": 0.075,
+      "shared_blocks": {
+        "hit": 7,
+        "read": 0,
+        "total": 7
+      },
+      "node_types": [
+        "Limit",
+        "Sort",
+        "Bitmap Heap Scan",
+        "Bitmap Index Scan"
+      ],
+      "sort": {
+        "method": "quicksort",
+        "space_kb": 25
+      },
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 0,
+        "condition": "((table_id = 'e2bf52cf-7b9a-471d-a9ca-ed646baecc43'::uuid) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text < 'tenant-03|drive}'::text) AND ((id)::text > 'tenant-03|drive|item-19999'::text))"
+      }
+    },
+    {
+      "name": "research_only_bitmapscan_disabled_deep_page",
+      "statement_timeout_ms": 2500,
+      "settings": {
+        "enable_bitmapscan": "off"
+      },
+      "actual_rows": 500,
+      "execution_time_ms": 0.216,
+      "shared_blocks": {
+        "hit": 19,
+        "read": 0,
+        "total": 19
+      },
+      "node_types": [
+        "Limit",
+        "Index Scan"
+      ],
+      "index": {
+        "name": "ix_documents_table_id_id_c",
+        "actual_rows": 500,
+        "condition": "((table_id = 'e2bf52cf-7b9a-471d-a9ca-ed646baecc43'::uuid) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text >= 'tenant-03|drive|'::text) AND ((id)::text < 'tenant-03|drive}'::text) AND ((id)::text > 'tenant-03|drive|item-19499'::text))"
+      },
+      "shipped": false
+    }
+  ]
+}
