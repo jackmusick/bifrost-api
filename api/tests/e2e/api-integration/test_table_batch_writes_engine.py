@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -97,6 +97,16 @@ def row(index: int, doc_id: str, data: dict, actor: str = "writer") -> BatchWrit
     )
 
 
+def generated_row(index: int, data: dict, actor: str = "writer") -> BatchWriteRow:
+    return BatchWriteRow(
+        submission_index=index,
+        id=None,
+        data=data,
+        created_by=f"{actor}-created",
+        updated_by=f"{actor}-updated",
+    )
+
+
 async def fetch_docs(db_session: AsyncSession, table: Table) -> dict[str, Document]:
     result = await db_session.execute(
         select(Document).where(Document.table_id == table.id).order_by(Document.id)
@@ -127,7 +137,74 @@ async def test_insert_1000_rows_uses_bounded_statements_and_returns_documents(
     assert set(result.documents_by_index) == set(range(1000))
     assert result.documents_by_index[7].data == {"position": 7}
     assert result.previous_rows_by_index == {}
-    assert len(statements) <= 4
+
+    normalized = [" ".join(statement.lower().split()) for statement in statements]
+    document_selects = [
+        statement
+        for statement in normalized
+        if statement.startswith("select") and " from documents " in statement
+    ]
+    document_writes = [
+        statement
+        for statement in normalized
+        if statement.startswith("insert into documents")
+    ]
+    assert len(document_selects) == 1
+    assert " for update" in document_selects[0]
+    assert len(document_writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_insert_generates_uuid_ids_and_persists_rows(
+    db_session: AsyncSession,
+    table: Table,
+    principal: UserPrincipal,
+    allow_all_policies: TablePolicies,
+):
+    result = await write_table_batch(
+        db_session,
+        table,
+        [
+            generated_row(0, {"value": "first"}),
+            generated_row(1, {"value": "second"}),
+        ],
+        mode="insert",
+        policies=allow_all_policies,
+        user=principal,
+    )
+
+    generated_ids = [result.documents_by_index[index].id for index in (0, 1)]
+    assert len(set(generated_ids)) == 2
+    assert [str(UUID(doc_id)) for doc_id in generated_ids] == generated_ids
+
+    docs = await fetch_docs(db_session, table)
+    assert set(docs) == set(generated_ids)
+    assert docs[generated_ids[0]].data == {"value": "first"}
+    assert docs[generated_ids[1]].created_by == "writer-created"
+
+
+@pytest.mark.asyncio
+async def test_legacy_merge_upsert_idless_rows_are_inserted_with_generated_ids(
+    db_session: AsyncSession,
+    table: Table,
+    principal: UserPrincipal,
+    allow_all_policies: TablePolicies,
+):
+    result = await write_table_batch(
+        db_session,
+        table,
+        [generated_row(0, {"value": "legacy"})],
+        mode="merge_upsert",
+        policies=allow_all_policies,
+        user=principal,
+    )
+
+    generated_id = result.documents_by_index[0].id
+    assert str(UUID(generated_id)) == generated_id
+    assert result.previous_rows_by_index == {}
+    assert result.insert_conflicts == []
+    docs = await fetch_docs(db_session, table)
+    assert docs[generated_id].data == {"value": "legacy"}
 
 
 @pytest.mark.asyncio

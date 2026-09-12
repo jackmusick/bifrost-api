@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -19,6 +20,15 @@ BatchWriteMode = Literal["insert", "merge_upsert", "replace_upsert"]
 
 @dataclass(frozen=True)
 class BatchWriteRow:
+    submission_index: int
+    id: str | None
+    data: dict[str, Any]
+    created_by: str | None
+    updated_by: str | None
+
+
+@dataclass(frozen=True)
+class NormalizedBatchWriteRow:
     submission_index: int
     id: str
     data: dict[str, Any]
@@ -68,7 +78,20 @@ def _row_from_doc(doc: Document) -> dict[str, Any]:
     }
 
 
-def _find_duplicate_ids(rows: Sequence[BatchWriteRow]) -> list[str]:
+def _normalize_rows(rows: Sequence[BatchWriteRow]) -> list[NormalizedBatchWriteRow]:
+    return [
+        NormalizedBatchWriteRow(
+            submission_index=row.submission_index,
+            id=row.id if row.id is not None else str(uuid4()),
+            data=row.data,
+            created_by=row.created_by,
+            updated_by=row.updated_by,
+        )
+        for row in rows
+    ]
+
+
+def _find_duplicate_ids(rows: Sequence[NormalizedBatchWriteRow]) -> list[str]:
     seen: set[str] = set()
     duplicates: list[str] = []
     for row in rows:
@@ -78,7 +101,9 @@ def _find_duplicate_ids(rows: Sequence[BatchWriteRow]) -> list[str]:
     return duplicates
 
 
-def _candidate_row(table: Table, row: BatchWriteRow, now: datetime) -> dict[str, Any]:
+def _candidate_row(
+    table: Table, row: NormalizedBatchWriteRow, now: datetime
+) -> dict[str, Any]:
     return {
         **row.data,
         "id": row.id,
@@ -110,7 +135,7 @@ async def _load_existing_for_update(
 def _check_policies(
     *,
     table: Table,
-    rows: Sequence[BatchWriteRow],
+    rows: Sequence[NormalizedBatchWriteRow],
     mode: BatchWriteMode,
     policies: TablePolicies,
     user: UserPrincipal,
@@ -138,7 +163,9 @@ def _check_policies(
     return previous_rows_by_index
 
 
-def _values(table: Table, rows: Sequence[BatchWriteRow], now: datetime) -> list[dict[str, Any]]:
+def _values(
+    table: Table, rows: Sequence[NormalizedBatchWriteRow], now: datetime
+) -> list[dict[str, Any]]:
     return [
         {
             "id": row.id,
@@ -170,17 +197,19 @@ async def write_table_batch(
             insert_conflicts=[],
         )
 
-    duplicates = _find_duplicate_ids(rows)
+    normalized_rows = _normalize_rows(rows)
+
+    duplicates = _find_duplicate_ids(normalized_rows)
     if duplicates:
         raise DuplicateBatchIds(duplicates)
 
-    rows_by_id = {row.id: row for row in rows}
+    rows_by_id = {row.id: row for row in normalized_rows}
     ordered_ids = sorted(rows_by_id)
     existing = await _load_existing_for_update(session, table, ordered_ids)
     now = datetime.now(timezone.utc)
     previous_rows_by_index = _check_policies(
         table=table,
-        rows=rows,
+        rows=normalized_rows,
         mode=mode,
         policies=policies,
         user=user,
@@ -191,7 +220,7 @@ async def write_table_batch(
     if _after_preflight is not None:
         await _after_preflight()
 
-    insert_stmt = pg_insert(Document).values(_values(table, rows, now))
+    insert_stmt = pg_insert(Document).values(_values(table, normalized_rows, now))
 
     if mode == "insert":
         stmt = (
@@ -232,12 +261,12 @@ async def write_table_batch(
         inserted_ids = {doc.id for doc in returned_docs}
         insert_conflicts = [
             InsertConflict(submission_index=row.submission_index, id=row.id)
-            for row in rows
+            for row in normalized_rows
             if row.id not in inserted_ids
         ]
     else:
         insert_conflicts = []
-        if len(returned_docs) != len(rows):
+        if len(returned_docs) != len(normalized_rows):
             raise ConcurrentBatchWrite(
                 "batch upsert conflicted with a concurrent insert; retry the request"
             )
