@@ -105,12 +105,20 @@ def test_repeated_large_table_responses_keep_health_responsive(
     try:
         for start in range(0, len(documents), 750):
             seeded = e2e_client.post(
-                f"/api/tables/{table_id}/documents/bulk-upsert",
+                f"/api/tables/{table_id}/documents/batch",
                 headers=platform_admin.headers,
-                json={"documents": documents[start : start + 750]},
+                json={
+                    "write_mode": "replace_upsert",
+                    "return_documents": False,
+                    "documents": documents[start : start + 750],
+                },
             )
             assert seeded.status_code == 200, seeded.text
-            assert seeded.json() == {"count": min(750, len(documents) - start)}
+            assert seeded.json() == {
+                "inserted": min(750, len(documents) - start),
+                "errors": [],
+                "documents": [],
+            }
 
         health_thread = threading.Thread(target=probe_health, daemon=True)
         health_thread.start()
