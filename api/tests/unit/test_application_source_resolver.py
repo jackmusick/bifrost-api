@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -197,6 +198,48 @@ async def test_solution_success_maps_remapped_id_and_returns_only_target_app(
 
 
 @pytest.mark.asyncio
+async def test_solution_preview_runs_through_to_thread_with_exact_archive_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+
+    solution_id = uuid4()
+    manifest_id = uuid4()
+    app = _app(app_id=solution_entity_id(solution_id, manifest_id), solution_id=solution_id)
+    archive_data = _workspace_zip(tmp_path / "solution.zip", app_ids=[manifest_id, uuid4()])
+    preview_calls: list[Path] = []
+    to_thread_calls: list[tuple[object, tuple[object, ...]]] = []
+    original_preview_zip_path = resolver.preview_zip_path
+
+    class Storage:
+        async def copy_to_path(self, path):
+            path.write_bytes(archive_data)
+            return True
+
+    def preview_spy(path: Path):
+        preview_calls.append(path)
+        return original_preview_zip_path(path)
+
+    async def fake_to_thread(func, *args, **kwargs):
+        to_thread_calls.append((func, args))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", lambda _sid: Storage())
+    monkeypatch.setattr(resolver, "preview_zip_path", preview_spy)
+    monkeypatch.setattr(resolver.asyncio, "to_thread", fake_to_thread)
+
+    await resolver.resolve_application_source(app)
+
+    assert len(to_thread_calls) == 1
+    called_func, called_args = to_thread_calls[0]
+    assert called_func is preview_spy
+    assert len(called_args) == 1
+    assert isinstance(called_args[0], Path)
+    assert called_args[0].name == "source.zip"
+    assert preview_calls == [called_args[0]]
+
+
+@pytest.mark.asyncio
 async def test_solution_missing_mapping_is_typed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -297,6 +340,95 @@ async def test_solution_traversal_path_is_rejected(
     with pytest.raises(resolver.ApplicationSourceUnavailable) as exc:
         await resolver.resolve_application_source(_app(solution_id=uuid4()))
     _assert_unavailable(exc.value, "invalid_source")
+
+
+@pytest.mark.asyncio
+async def test_solution_zip_symlink_member_is_never_dereferenced_outside_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from src.services import application_source_resolver as resolver
+
+    solution_id = uuid4()
+    manifest_id = uuid4()
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("outside secret", encoding="utf-8")
+    archive_path = tmp_path / "solution.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "bifrost.solution.yaml",
+            b"slug: sdk-pack\nname: SDK Pack\nversion: 1.0.0\n",
+        )
+        archive.writestr(
+            ".bifrost/apps.yaml",
+            (
+                "apps:\n"
+                f"  {manifest_id}:\n"
+                f"    id: {manifest_id}\n"
+                "    slug: target\n"
+                "    name: Target\n"
+                "    path: apps/target\n"
+                "    app_model: standalone_v2\n"
+            ).encode(),
+        )
+        archive.writestr("apps/target/package.json", b'{"name":"target"}')
+        archive.writestr("apps/target/index.html", b"<div id='root'></div>")
+        info = zipfile.ZipInfo("apps/target/leak.txt")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(info, b"../../outside-secret.txt")
+
+    class Storage:
+        async def copy_to_path(self, path):
+            path.write_bytes(archive_path.read_bytes())
+            return True
+
+    monkeypatch.setattr(resolver, "SolutionSourceArtifactStorage", lambda _sid: Storage())
+
+    source = await resolver.resolve_application_source(
+        _app(app_id=solution_entity_id(solution_id, manifest_id), solution_id=solution_id)
+    )
+
+    assert source.files["package.json"] == b'{"name":"target"}'
+    assert b"outside secret" not in source.files.values()
+    # Python's zipfile extraction materializes this symlink-style member as a
+    # regular file containing the link target text; the resolver must not follow
+    # it outside the extracted Solution workspace.
+    assert source.files.get("leak.txt") == b"../../outside-secret.txt"
+
+
+def test_solution_collector_skips_real_symlink_escape_from_extracted_workspace(
+    tmp_path: Path,
+) -> None:
+    from bifrost.commands.solution import _collect_apps
+
+    manifest_id = uuid4()
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("outside secret", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    app_dir = workspace / "apps" / "target"
+    (workspace / ".bifrost").mkdir(parents=True)
+    app_dir.mkdir(parents=True)
+    (workspace / ".bifrost" / "apps.yaml").write_text(
+        "apps:\n"
+        f"  {manifest_id}:\n"
+        f"    id: {manifest_id}\n"
+        "    slug: target\n"
+        "    name: Target\n"
+        "    path: apps/target\n"
+        "    app_model: standalone_v2\n",
+        encoding="utf-8",
+    )
+    (app_dir / "package.json").write_text('{"name":"target"}', encoding="utf-8")
+    (app_dir / "index.html").write_text("<div id='root'></div>", encoding="utf-8")
+    (app_dir / "leak.txt").symlink_to(outside)
+
+    collected = _collect_apps(workspace)[0]
+
+    assert collected["src_files"] == {
+        "package.json": '{"name":"target"}',
+        "index.html": "<div id='root'></div>",
+    }
+    assert collected["bin_files"] == {}
 
 
 @pytest.mark.asyncio
