@@ -139,3 +139,7 @@ open the resource or its execution controls, never start a workflow merely
 by selecting the card. Agent management cards retain their details destination;
 Home agent cards retain Chat. Form editor back navigation belongs beside the
 title on the left, preserving the originating Solution when applicable.
+
+Primary and Settings navigation share navigationSelectionClasses: square
+selection rows, a straight leading border, and the same subtle brand tint.
+Do not substitute rounded inset-shadow accents in workspace navigation.

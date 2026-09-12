@@ -1,6 +1,7 @@
 import { Link, NavLink, type LinkProps } from "react-router-dom";
 import type { ElementType, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { navigationSelectionClasses } from "./navigationStyles";
 
 export function SidebarLink({
 	to,
@@ -21,11 +22,8 @@ export function SidebarLink({
 }) {
 	const linkClassName = (active: boolean) =>
 		cn(
-			"flex min-h-10 items-center border-l-2 rounded-none text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
-			"hover:bg-accent hover:text-accent-foreground",
-			active
-				? "border-primary bg-primary/[0.07] text-primary"
-				: "border-transparent text-muted-foreground",
+			"flex min-h-10 items-center text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
+			navigationSelectionClasses(active),
 			isCollapsed
 				? "justify-center w-10 h-10 mx-auto"
 				: "gap-3 px-3 py-2",

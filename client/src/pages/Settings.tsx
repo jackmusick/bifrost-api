@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { navigationSelectionClasses } from "@/components/layout/navigationStyles";
 import { PageWorkspace } from "@/components/layout/PageWorkspace";
 import { Button } from "@/components/ui/button";
 import { WorkflowKeys } from "@/pages/settings/WorkflowKeys";
@@ -281,7 +282,7 @@ export function Settings() {
 											toggleSection(section.id)
 										}
 										className={cn(
-											"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+											"flex min-h-11 w-full items-center gap-2 rounded-none border-l-2 border-transparent px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 											containsActive && "text-primary",
 											!containsActive &&
 												"text-muted-foreground",
@@ -325,10 +326,11 @@ export function Settings() {
 															)
 														}
 														className={cn(
-															"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-															isActive
-																? "bg-primary/10 font-medium text-primary shadow-[inset_2px_0_0_var(--primary)] hover:bg-primary/15 hover:text-primary"
-																: "text-muted-foreground",
+															"flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+															navigationSelectionClasses(
+																isActive,
+															),
+															"font-medium",
 														)}
 													>
 														<ItemIcon className="h-4 w-4 shrink-0" />
