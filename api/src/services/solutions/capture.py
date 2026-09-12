@@ -518,12 +518,16 @@ class SolutionCaptureService:
                 from src.services.solutions.app_build import SolutionAppBuilder
 
                 builder = SolutionAppBuilder()
-                rels = await builder.list_dist(app.id)
+                rels = await builder.list_dist(
+                    app.id, deployment_id=app.active_deployment_id
+                )
                 if rels:
                     text_dist: dict[str, str] = {}
                     binary_dist: dict[str, str] = {}
                     for rel in rels:
-                        data = await builder.read_dist(app.id, rel)
+                        data = await builder.read_dist(
+                            app.id, rel, deployment_id=app.active_deployment_id
+                        )
                         try:
                             text_dist[rel] = data.decode("utf-8")
                         except UnicodeDecodeError:

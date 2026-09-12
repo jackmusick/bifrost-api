@@ -25,6 +25,20 @@ def test_independent_v2_is_launchable_with_active_deployment():
     assert app.is_published is True
 
 
+def test_legacy_solution_v2_with_null_active_deployment_is_launchable():
+    app = _app("standalone_v2")
+    app.solution_id = "22222222-2222-2222-2222-222222222222"
+    app.active_deployment_id = None
+    assert app.is_published is True
+
+
+def test_versioned_solution_v2_with_active_deployment_is_launchable():
+    app = _app("standalone_v2")
+    app.solution_id = "22222222-2222-2222-2222-222222222222"
+    app.active_deployment_id = "11111111-1111-1111-1111-111111111111"
+    assert app.is_published is True
+
+
 def test_v2_has_no_unpublished_changes():
     assert _app("standalone_v2", snapshot=None).has_unpublished_changes is False
 

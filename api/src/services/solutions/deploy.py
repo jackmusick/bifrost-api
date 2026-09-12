@@ -23,11 +23,12 @@ and are added in their sub-plans.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import logging
 from typing import Any
 from uuid import UUID, uuid4, uuid5
 
@@ -204,6 +205,26 @@ async def _retry_idempotent(
 
 async def _noop_finalize() -> None:  # default so an unbound result is still awaitable
     return None
+
+
+@asynccontextmanager
+async def _solution_app_activation_db_context():
+    from src.core.database import get_db_context
+
+    async with get_db_context() as db:
+        yield db
+
+
+@dataclass
+class CompiledSolutionAppDeployment:
+    app_id: UUID
+    solution_id: UUID
+    deployment_id: UUID
+    expected_old_deployment_id: UUID | None
+    superseded_deployment_id: UUID | None
+    dist: dict[str, bytes]
+    sdk_metadata: Any | None = None
+    source_built: bool = False
 
 
 @dataclass
@@ -1065,7 +1086,11 @@ class SolutionDeployer:
 
             row = (
                 await self.db.execute(
-                    select(Application.id, Application.solution_id).where(
+                    select(
+                        Application.id,
+                        Application.solution_id,
+                        Application.active_deployment_id,
+                    ).where(
                         Application.id == app_id
                     )
                 )
@@ -1189,6 +1214,8 @@ class SolutionDeployer:
             # dist/, served from _apps/{id}/.
             builds.append({
                 "app_id": app_id,
+                "solution_id": sid,
+                "expected_old_deployment_id": row[2] if row is not None else None,
                 "src": mapp.get("src_files") or {},
                 # Non-text assets (png/fonts/public/) carried as base64 by the
                 # CLI/git collectors — decoded into the build input (P2-j/R4).
@@ -1204,7 +1231,7 @@ class SolutionDeployer:
 
     async def _compile_app_dists(
         self, builds: list[dict[str, Any]]
-    ) -> list[tuple[UUID, dict[str, bytes]]]:
+    ) -> list[CompiledSolutionAppDeployment]:
         """PRE-COMMIT: compile each app's dist to memory (npm install + vite
         build, or a shipped prebuilt dist). This is the failure-prone step — a
         build error raises HERE, before the deploy commits, so the whole deploy
@@ -1215,12 +1242,14 @@ class SolutionDeployer:
         import asyncio
         import base64 as _b64
 
+        from src.services.application_sdk_status import current_sdk_metadata
         from src.services.solutions.app_build import SolutionAppBuilder
 
         if not builds:
             return []
         builder = SolutionAppBuilder()
-        out: list[tuple[UUID, dict[str, bytes]]] = []
+        current_metadata = await asyncio.to_thread(current_sdk_metadata)
+        out: list[CompiledSolutionAppDeployment] = []
         for b in builds:
             prebuilt = b["dist"]
             bin_prebuilt = b.get("bin_dist")
@@ -1242,6 +1271,7 @@ class SolutionDeployer:
             }
             for rel, b64 in (b.get("bin") or {}).items():
                 src_bytes[rel] = _b64.b64decode(b64)
+            source_built = prebuilt_bytes is None
             # compile_dist is subprocess-bound (npm/vite) → run off the loop.
             dist = await asyncio.to_thread(
                 builder.compile_dist,
@@ -1250,22 +1280,119 @@ class SolutionDeployer:
                 b["dependencies"],
                 prebuilt_bytes,
             )
-            out.append((b["app_id"], dist))
+            deployment_id = uuid4()
+            expected_old = b["expected_old_deployment_id"]
+            out.append(
+                CompiledSolutionAppDeployment(
+                    app_id=b["app_id"],
+                    solution_id=b["solution_id"],
+                    deployment_id=deployment_id,
+                    expected_old_deployment_id=expected_old,
+                    superseded_deployment_id=expected_old,
+                    dist=dist,
+                    sdk_metadata=current_metadata if source_built else None,
+                    source_built=source_built,
+                )
+            )
         return out
 
     async def _upload_compiled_dists(
-        self, compiled: list[tuple[UUID, dict[str, bytes]]]
+        self, compiled: list[CompiledSolutionAppDeployment]
     ) -> None:
-        """POST-COMMIT: upload the already-compiled dists (cheap, retryable
-        PUTs). The compile already succeeded pre-commit, so this can't fail the
-        deploy on bad input — only a transient S3 outage, which is re-runnable."""
+        """POST-COMMIT: upload immutable dists, then atomically activate them."""
         from src.services.solutions.app_build import SolutionAppBuilder
 
         if not compiled:
             return
         builder = SolutionAppBuilder()
-        for app_id, dist in compiled:
-            await builder.upload_dist(app_id, dist)
+        for item in compiled:
+            await builder.upload_deployment(
+                item.app_id, item.deployment_id, item.dist
+            )
+        await self._activate_compiled_dists(compiled)
+        for item in compiled:
+            old = item.superseded_deployment_id
+            if old is not None and old != item.deployment_id:
+                try:
+                    await builder.delete_deployment(item.app_id, old)
+                except Exception:  # noqa: BLE001 - best-effort cleanup only
+                    logger.warning(
+                        "failed to delete superseded app deployment %s for app %s",
+                        old,
+                        item.app_id,
+                        exc_info=True,
+                    )
+
+    async def _activate_compiled_dists(
+        self, compiled: list[CompiledSolutionAppDeployment]
+    ) -> None:
+        """Advance all active app pointers in one fresh transaction.
+
+        Upload has already succeeded for every new immutable dist. This verifies
+        the app is still owned by this Solution and that no independent app
+        rebuild advanced the pointer since the DB reconciliation phase.
+        """
+        async with _solution_app_activation_db_context() as db:
+            app_ids = [item.app_id for item in compiled]
+            rows = (
+                await db.execute(
+                    select(
+                        Application.id,
+                        Application.solution_id,
+                        Application.active_deployment_id,
+                    ).where(Application.id.in_(app_ids))
+                )
+            ).all()
+            by_id = {row[0]: row for row in rows}
+            if len(by_id) != len(app_ids):
+                raise SolutionFinalizeIncomplete("solution app disappeared before activation")
+
+            solution_ids = {row[1] for row in rows}
+            if len(solution_ids) != 1:
+                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+            solution_id = next(iter(solution_ids))
+            expected_solution_ids = {item.solution_id for item in compiled}
+            if solution_ids != expected_solution_ids:
+                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+
+            for item in compiled:
+                row = by_id[item.app_id]
+                active = row[2]
+                if active == item.deployment_id:
+                    continue
+                if active != item.expected_old_deployment_id:
+                    raise SolutionFinalizeIncomplete(
+                        f"app {item.app_id} active deployment changed before activation"
+                    )
+
+            now = datetime.now(timezone.utc)
+            for item in compiled:
+                meta = item.sdk_metadata
+                values = {
+                    "active_deployment_id": item.deployment_id,
+                    "deployed_at": now,
+                    "sdk_package_version": meta.package_version if meta else None,
+                    "sdk_fingerprint": meta.fingerprint if meta else None,
+                    "sdk_contract_version": meta.contract_version if meta else None,
+                    "sdk_built_at": now if meta else None,
+                }
+                result = await db.execute(
+                    update(Application)
+                    .where(
+                        Application.id == item.app_id,
+                        Application.solution_id == solution_id,
+                        (
+                            Application.active_deployment_id
+                            == item.expected_old_deployment_id
+                        )
+                        | (Application.active_deployment_id == item.deployment_id),
+                    )
+                    .values(**values)
+                )
+                if result.rowcount != 1:
+                    raise SolutionFinalizeIncomplete(
+                        f"app {item.app_id} active deployment changed before activation"
+                    )
 
     async def _delete_stale_app_dist(self, app_ids: set[UUID]) -> None:
         """S3 phase: delete the dist artifacts of apps reconciled away."""
