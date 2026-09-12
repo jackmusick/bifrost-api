@@ -449,11 +449,6 @@ class DocumentRepository:
                 )
             )
         if query_params.after_document_id is not None:
-            if document_id_pagination:
-                document_id_order_expr = literal_column(
-                    'documents.id COLLATE "C"',
-                    type_=String(),
-                )
             base_query = base_query.where(
                 document_id_order_expr > query_params.after_document_id
             )

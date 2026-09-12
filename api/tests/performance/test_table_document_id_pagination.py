@@ -110,6 +110,57 @@ async def test_document_prefix_statement_uses_c_collation_and_literal_pattern(
 
 
 @pytest.mark.asyncio
+async def test_document_cursor_only_statement_keeps_default_id_order(
+    db_session: AsyncSession,
+) -> None:
+    """Cursor-only document ID pagination preserves the legacy id expression."""
+    org = Organization(
+        id=uuid4(),
+        name=f"Document cursor SQL {uuid4().hex[:8]}",
+        domain=f"document-cursor-sql-{uuid4().hex[:8]}.example.com",
+        created_by="test@example.com",
+    )
+    table = Table(
+        id=uuid4(),
+        name=f"document_cursor_sql_{uuid4().hex[:8]}",
+        organization_id=org.id,
+        created_by="test@example.com",
+    )
+    db_session.add_all([org, table])
+    await db_session.flush()
+
+    captured = []
+
+    def capture_statement(orm_execute_state):
+        if orm_execute_state.is_select:
+            captured.append(orm_execute_state.statement)
+
+    event.listen(db_session.sync_session, "do_orm_execute", capture_statement)
+    try:
+        await DocumentRepository(db_session, table).query(
+            DocumentQuery(
+                after_document_id="tenant-a|001",
+                skip_count=True,
+                limit=25,
+            )
+        )
+    finally:
+        event.remove(db_session.sync_session, "do_orm_execute", capture_statement)
+
+    assert len(captured) == 1
+    compiled = captured[0].compile(
+        dialect=postgresql.dialect(),
+        compile_kwargs={"render_postcompile": True},
+    )
+    sql = str(compiled)
+
+    assert "COLLATE" not in sql
+    assert re.search(r"documents\.id > %\([^)]+\)s", sql)
+    assert "ORDER BY documents.id" in sql
+    assert "tenant-a|001" in compiled.params.values()
+
+
+@pytest.mark.asyncio
 @pytest.mark.slow
 @pytest.mark.timeout(120)
 async def test_document_id_keyset_query_uses_composite_index_without_sort(
