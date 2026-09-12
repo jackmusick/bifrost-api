@@ -72,3 +72,10 @@ Knowledge, and Files, aligned flush with the trailing toolbar edge.
 Verified with the affected page tests, FilesExplorer tests, desktop/mobile live
 screenshots, scoped lint, and TypeScript. The earlier CRUD acceptance was not
 repeated for this presentation-only refinement.
+
+Header alignment refinement: catalog tabs and detail breadcrumbs now share
+WorkspaceHeader (48px). Table descriptions open from About This Table instead
+of adding a helper-text row. Verified identical header bounds before/after
+navigation at 1440px and 390px, description popup containment, breadcrumb
+navigation, and browser Back. All 16 scoped unit tests, ESLint, and TypeScript
+passed. Desktop/mobile screenshots reviewed.

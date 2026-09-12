@@ -1,3 +1,4 @@
+import { WorkspaceHeader } from "@/components/layout/WorkspaceHeader";
 import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import { TableActionsMenu } from "./tables/TableActionsMenu";
 import { useCallback, useRef, useState, useEffect } from "react";
@@ -230,17 +231,19 @@ export function Tables() {
 						: "shrink",
 				)}
 			>
-				<TabsList
-					variant="line"
-					className="min-h-12 w-full shrink-0 justify-start rounded-none border-b bg-muted/10 px-3"
-				>
-					<TabsTrigger value="tables" className="flex-none px-4">
-						Tables
-					</TabsTrigger>
-					<TabsTrigger value="claims" className="flex-none px-4">
-						Custom Claims
-					</TabsTrigger>
-				</TabsList>
+				<WorkspaceHeader>
+					<TabsList
+						variant="line"
+						className="w-full justify-start rounded-none border-0 group-data-horizontal/tabs:data-[variant=line]:border-b-0"
+					>
+						<TabsTrigger value="tables" className="flex-none px-4">
+							Tables
+						</TabsTrigger>
+						<TabsTrigger value="claims" className="flex-none px-4">
+							Custom Claims
+						</TabsTrigger>
+					</TabsList>
+				</WorkspaceHeader>
 
 				<TabsContent
 					value="tables"

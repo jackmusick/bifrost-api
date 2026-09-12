@@ -118,3 +118,8 @@ row height, and an inset focus ring. Keep secondary controls padded and quiet.
 On narrow screens the action stays at the right edge of its wrapped row.
 Tables keeps its route/deep links while retaining the Data Tables page header;
 the selected table name and return link live in a workspace breadcrumb.
+
+WorkspaceHeader gives directory tabs and detail breadcrumbs the same 48px
+navigation band, background, and divider. Descriptions must not add height to
+this row; table descriptions use an accessible About This Table popover with
+MarkdownContent. Preserve the frame position when navigating into a table.
