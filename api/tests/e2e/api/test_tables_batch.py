@@ -56,6 +56,7 @@ def _create_policy_table(
     *,
     organization_id=None,
     policy_actions: list[str] | None = None,
+    policies: dict | None = None,
 ) -> str:
     response = e2e_client.post(
         "/api/tables",
@@ -63,7 +64,7 @@ def _create_policy_table(
         json={
             "name": f"batch_policy_{uuid4().hex[:8]}",
             "organization_id": organization_id,
-            "policies": _admin_policy(policy_actions),
+            "policies": policies if policies is not None else _admin_policy(policy_actions),
         },
     )
     assert response.status_code == 201, response.text
@@ -347,6 +348,202 @@ class TestReplaceUpsertBatch:
         )
         assert count.status_code == 200, count.text
         assert count.json()["count"] == 0
+
+    def test_replace_upsert_denied_update_is_atomic(
+        self,
+        e2e_client,
+        platform_admin,
+    ):
+        table_id = _create_policy_table(
+            e2e_client, platform_admin, policy_actions=["read", "create"]
+        )
+        seed = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=platform_admin.headers,
+            json=_replace_body(("locked", {"value": "original"}), return_documents=True),
+        )
+        assert seed.status_code == 200, seed.text
+
+        response = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=platform_admin.headers,
+            json=_replace_body(
+                ("locked", {"value": "blocked"}),
+                ("new-row", {"value": "must-not-insert"}),
+            ),
+        )
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"] == {"denied_row_indices": [0]}
+
+        locked = e2e_client.get(
+            f"/api/tables/{table_id}/documents/locked",
+            headers=platform_admin.headers,
+        )
+        assert locked.status_code == 200, locked.text
+        assert locked.json()["data"] == {"value": "original"}
+        missing = e2e_client.get(
+            f"/api/tables/{table_id}/documents/new-row",
+            headers=platform_admin.headers,
+        )
+        assert missing.status_code == 404, missing.text
+
+    def test_replace_upsert_non_admin_policy_authorized_replacement_succeeds(
+        self,
+        e2e_client,
+        platform_admin,
+        alice_user,
+    ):
+        policies = _admin_policy()["policies"] + [
+            {
+                "name": "own_rows",
+                "actions": ["read", "create", "update"],
+                "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+            }
+        ]
+        table_id = _create_policy_table(
+            e2e_client,
+            platform_admin,
+            policies={"policies": policies},
+        )
+        doc_id = _uid("alice-")
+
+        first = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=alice_user.headers,
+            json=_replace_body((doc_id, {"owner": "alice", "drop": True}), return_documents=True),
+        )
+        assert first.status_code == 200, first.text
+        created = first.json()["documents"][0]
+
+        second = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=alice_user.headers,
+            json=_replace_body((doc_id, {"owner": "alice", "replacement": True}), return_documents=True),
+        )
+        assert second.status_code == 200, second.text
+        replaced = second.json()["documents"][0]
+        assert replaced["data"] == {"owner": "alice", "replacement": True}
+        assert replaced["created_by"] == created["created_by"] == str(alice_user.user_id)
+        assert replaced["created_at"] == created["created_at"]
+        assert replaced["updated_by"] == str(alice_user.user_id)
+        assert replaced["updated_at"] >= created["updated_at"]
+
+    def test_replace_upsert_update_preserves_creator_and_changes_updater(
+        self,
+        e2e_client,
+        platform_admin,
+    ):
+        table_id = _create_table(
+            e2e_client, platform_admin.headers, f"test_replace_attr_{uuid4().hex[:8]}"
+        )
+        doc_id = _uid("attr-")
+        first = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=platform_admin.headers,
+            json={
+                "write_mode": "replace_upsert",
+                "return_documents": True,
+                "documents": [
+                    {
+                        "id": doc_id,
+                        "data": {"version": 1},
+                        "created_by": "creator@example.com",
+                        "updated_by": "creator@example.com",
+                    }
+                ],
+            },
+        )
+        assert first.status_code == 200, first.text
+        created = first.json()["documents"][0]
+
+        second = e2e_client.post(
+            f"/api/tables/{table_id}/documents/batch",
+            headers=platform_admin.headers,
+            json={
+                "write_mode": "replace_upsert",
+                "return_documents": True,
+                "documents": [
+                    {
+                        "id": doc_id,
+                        "data": {"version": 2},
+                        "created_by": "ignored-new-creator@example.com",
+                        "updated_by": "updater@example.com",
+                    }
+                ],
+            },
+        )
+        assert second.status_code == 200, second.text
+        updated = second.json()["documents"][0]
+
+        assert updated["data"] == {"version": 2}
+        assert updated["created_by"] == "creator@example.com"
+        assert updated["created_at"] == created["created_at"]
+        assert updated["updated_by"] == "updater@example.com"
+        assert updated["updated_at"] > created["updated_at"]
+
+    def test_replace_upsert_table_and_org_isolation(
+        self,
+        e2e_client,
+        platform_admin,
+        org1,
+        org2,
+        org2_user,
+    ):
+        org1_table = _create_table(
+            e2e_client,
+            platform_admin.headers,
+            f"test_isolation_org1_{uuid4().hex[:8]}",
+        )
+        org2_table = _create_policy_table(
+            e2e_client,
+            platform_admin,
+            organization_id=org2["id"],
+            policies={
+                "policies": _admin_policy()["policies"] + [
+                    {
+                        "name": "own_rows",
+                        "actions": ["read", "create", "update"],
+                        "when": {"eq": [{"row": "created_by"}, {"user": "user_id"}]},
+                    }
+                ]
+            },
+        )
+        shared_doc_id = _uid("shared-")
+
+        org1_seed = e2e_client.post(
+            f"/api/tables/{org1_table}/documents/batch",
+            headers=platform_admin.headers,
+            json=_replace_body((shared_doc_id, {"table": "one"}), return_documents=True),
+        )
+        assert org1_seed.status_code == 200, org1_seed.text
+
+        org2_write = e2e_client.post(
+            f"/api/tables/{org2_table}/documents/batch",
+            headers=org2_user.headers,
+            json=_replace_body((shared_doc_id, {"table": "two"}), return_documents=True),
+        )
+        assert org2_write.status_code == 200, org2_write.text
+
+        org1_doc = e2e_client.get(
+            f"/api/tables/{org1_table}/documents/{shared_doc_id}",
+            headers=platform_admin.headers,
+        )
+        assert org1_doc.status_code == 200, org1_doc.text
+        assert org1_doc.json()["data"] == {"table": "one"}
+
+        cross_org = e2e_client.post(
+            f"/api/tables/{org2_table}/documents/batch?scope={org1['id']}",
+            headers=platform_admin.headers,
+            json=_replace_body((shared_doc_id, {"table": "wrong-org"})),
+        )
+        assert cross_org.status_code == 404, cross_org.text
+
+        org2_doc = e2e_client.get(
+            f"/api/tables/{org2_table}/documents/{shared_doc_id}?scope={org2['id']}",
+            headers=platform_admin.headers,
+        )
+        assert org2_doc.status_code == 200, org2_doc.text
+        assert org2_doc.json()["data"] == {"table": "two"}
 
     def test_replace_upsert_rolls_back_when_request_validation_fails(
         self,

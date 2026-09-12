@@ -18,11 +18,14 @@ class _FakeDb:
     def __init__(self) -> None:
         self.committed = False
         self.rolled_back = False
+        self.calls: list[str] = []
 
     async def commit(self) -> None:
+        self.calls.append("commit")
         self.committed = True
 
     async def rollback(self) -> None:
+        self.calls.append("rollback")
         self.rolled_back = True
 
 
@@ -157,6 +160,7 @@ async def test_batch_documents_publishes_successes_in_submission_order(monkeypat
         )
 
     async def fake_publish_document_change(**kwargs):
+        db.calls.append(f"publish:{kwargs['action']}")
         published.append(kwargs)
 
     monkeypatch.setattr(router, "get_table_or_404", fake_get_table_or_404)
@@ -179,4 +183,5 @@ async def test_batch_documents_publishes_successes_in_submission_order(monkeypat
     assert [event["action"] for event in published] == ["insert", "update"]
     assert published[0]["old_row"] is None
     assert published[1]["old_row"] == {"id": "beta", "value": "old"}
+    assert db.calls == ["commit", "publish:insert", "publish:update"]
     assert db.committed is True

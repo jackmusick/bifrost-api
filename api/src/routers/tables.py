@@ -648,6 +648,22 @@ async def _assert_solution_write_targets_owned_table(ctx: Context, table: Table)
     )
 
 
+def _assert_explicit_scope_targets_table(
+    ctx: Context,
+    table: Table,
+    scope: str | None,
+) -> None:
+    if scope is None:
+        return
+    target_org_id = _resolve_target_org_safe(ctx, scope)
+    if table.organization_id == target_org_id:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Table '{table.name}' not found",
+    )
+
+
 # =============================================================================
 # Table Endpoints
 # =============================================================================
@@ -1344,6 +1360,7 @@ async def batch_documents(
 ) -> DocumentBatchCreateResponse:
     """Insert, merge-upsert, or replace-upsert multiple documents."""
     table = await get_table_or_404(ctx, table_id, scope=scope)
+    _assert_explicit_scope_targets_table(ctx, table, scope)
     await _assert_solution_write_targets_owned_table(ctx, table)
     policies = await load_resolved_table_policies(table, ctx.db)
     await preresolve_for_policies(
@@ -1400,19 +1417,24 @@ async def batch_documents(
         for row in rows
         if row.submission_index in result.documents_by_index
     ]
+    events: list[dict[str, Any]] = []
     for row in rows:
         doc = result.documents_by_index.get(row.submission_index)
         if doc is None:
             continue
         old_row = result.previous_rows_by_index.get(row.submission_index)
-        await publish_document_change(
-            table_id=str(table.id),
-            action="update" if old_row is not None else "insert",
-            old_row=old_row,
-            new_row=_row_from_doc(doc),
+        events.append(
+            {
+                "table_id": str(table.id),
+                "action": "update" if old_row is not None else "insert",
+                "old_row": old_row,
+                "new_row": _row_from_doc(doc),
+            }
         )
 
     await ctx.db.commit()
+    for event in events:
+        await publish_document_change(**event)
     return DocumentBatchCreateResponse(
         inserted=len(ordered_documents),
         errors=[
