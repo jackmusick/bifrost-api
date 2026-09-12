@@ -460,7 +460,12 @@ export function Knowledge() {
 							/>
 						</div>
 					)}
-					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1">
+					<div
+						className={cn(
+							"flex min-w-0 flex-1 flex-wrap items-center",
+							compactFilters ? "gap-2 px-3 py-1" : "gap-0",
+						)}
+					>
 						<KnowledgeFilters
 							compact={compactFilters}
 							activeCount={
@@ -472,7 +477,12 @@ export function Knowledge() {
 									value={searchTerm}
 									onChange={setSearchTerm}
 									placeholder="Search documents..."
-									className="w-full sm:w-52"
+									className={cn(
+										"min-w-0",
+										compactFilters
+											? "w-full"
+											: "min-w-40 flex-1 [&>input]:h-12 [&>input]:rounded-none [&>input]:border-0 [&>input]:bg-transparent [&>input]:shadow-none [&>input]:focus-visible:ring-inset",
+									)}
 									aria-label="Search documents"
 								/>
 							}
@@ -498,41 +508,56 @@ export function Knowledge() {
 								placeholder="All Namespaces"
 								searchPlaceholder="Search Namespaces..."
 								emptyText="No namespaces found."
-								className="h-10 min-h-10 w-full sm:w-44 [&>span>span]:truncate [&>span>span]:whitespace-nowrap"
+								className={cn(
+									"[&>span>span]:truncate [&>span>span]:whitespace-nowrap",
+									compactFilters
+										? "h-10 min-h-10 w-full"
+										: "h-12 min-h-12 w-44 shrink-0 rounded-none border-y-0 border-x border-border bg-transparent px-4 shadow-none hover:bg-muted/50 focus-visible:ring-inset",
+								)}
 								disabled={externalBusy}
 							/>
 						</KnowledgeFilters>
-						<KnowledgeToolbarActions
-							isPlatformAdmin={isPlatformAdmin}
-							selectionMode={selectionMode}
-							selectedCount={selectedIds.size}
-							isExporting={isExporting}
-							isRefreshing={
-								documentQuery.isFetching ||
-								namespaceQuery.isFetching
-							}
-							busy={externalBusy}
-							onToggleSelectionMode={() => {
-								setSelectionMode((value) => !value);
-								if (selectionMode) setSelectedIds(new Set());
-							}}
-							onChangeScope={() =>
-								setBulkScopeIds(Array.from(selectedIds))
-							}
-							onExport={() => void handleExport()}
-							onImport={() => setIsImportOpen(true)}
-							onRefresh={() => {
-								void fetchDocuments();
-								void fetchNamespaces();
-							}}
-							onCreate={() => {
-								if (externalBusy) return;
-								setViewDocId(null);
-								setViewDocNamespace("");
-								setIsCreating(true);
-							}}
-							createRef={createRef}
-						/>
+						<div
+							className={cn(
+								"ml-auto flex min-w-0 items-center",
+								compactFilters
+									? "w-full"
+									: "max-w-full px-3 py-1",
+							)}
+						>
+							<KnowledgeToolbarActions
+								isPlatformAdmin={isPlatformAdmin}
+								selectionMode={selectionMode}
+								selectedCount={selectedIds.size}
+								isExporting={isExporting}
+								isRefreshing={
+									documentQuery.isFetching ||
+									namespaceQuery.isFetching
+								}
+								busy={externalBusy}
+								onToggleSelectionMode={() => {
+									setSelectionMode((value) => !value);
+									if (selectionMode)
+										setSelectedIds(new Set());
+								}}
+								onChangeScope={() =>
+									setBulkScopeIds(Array.from(selectedIds))
+								}
+								onExport={() => void handleExport()}
+								onImport={() => setIsImportOpen(true)}
+								onRefresh={() => {
+									void fetchDocuments();
+									void fetchNamespaces();
+								}}
+								onCreate={() => {
+									if (externalBusy) return;
+									setViewDocId(null);
+									setViewDocNamespace("");
+									setIsCreating(true);
+								}}
+								createRef={createRef}
+							/>
+						</div>
 					</div>
 				</ListToolbar>
 

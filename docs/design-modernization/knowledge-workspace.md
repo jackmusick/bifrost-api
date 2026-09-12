@@ -63,3 +63,9 @@ Checked with 13 scoped Knowledge/editor tests, TypeScript, scoped lint, and live
 desktop/mobile checks including collapsed Metadata visibility without outer-body
 scrolling and expanded metadata content. Full E2E was not repeated for these
 local feedback/layout changes.
+
+Desktop Scope, Search, and Namespace now form adjoining toolbar sections with
+subtle dividers. Search takes remaining space; actions retain their own padding.
+Mobile keeps the compact search/filter layout and allows actions to wrap.
+Verified with eight Knowledge tests, scoped lint, TypeScript, and live desktop
+and mobile checks for filtering, selection, editor controls, and overflow.
