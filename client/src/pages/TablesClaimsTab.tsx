@@ -1,3 +1,4 @@
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -221,7 +222,7 @@ export function TablesClaimsTab() {
 					placeholder="Search custom claims by name or description..."
 					className="min-w-40 flex-1 [&>input]:h-12 [&>input]:rounded-none [&>input]:border-0 [&>input]:bg-transparent [&>input]:shadow-none [&>input]:focus-visible:ring-inset"
 				/>
-				<div className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-1 sm:ml-auto">
+				<div className="flex min-w-0 flex-wrap items-center gap-2 self-stretch pl-3 max-sm:w-full sm:ml-auto">
 					<Button
 						variant="ghost"
 						size="icon"
@@ -236,8 +237,7 @@ export function TablesClaimsTab() {
 							className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
 						/>
 					</Button>
-					<Button
-						className="min-h-11 min-w-0 flex-1 sm:flex-none lg:min-h-10"
+					<WorkspacePrimaryAction
 						onClick={handleAdd}
 						ref={addClaimRef}
 						title="Add Claim"
@@ -245,7 +245,7 @@ export function TablesClaimsTab() {
 					>
 						<Plus className="h-4 w-4" />
 						New Claim
-					</Button>
+					</WorkspacePrimaryAction>
 				</div>
 			</ListToolbar>
 

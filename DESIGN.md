@@ -111,3 +111,10 @@ in expanding table rows. Table settings and record editing keep fixed footer
 actions within that workspace. IDs use HoverCopyText, with a copy hint above
 the text on hover/focus and direct keyboard/touch copying. See
 docs/design-modernization/tables-workspace.md for the preserved behaviors.
+
+Contained workspace toolbars use WorkspacePrimaryAction for the trailing
+Add/New/Upload action: flush with the right edge, square inner corners, full
+row height, and an inset focus ring. Keep secondary controls padded and quiet.
+On narrow screens the action stays at the right edge of its wrapped row.
+Tables keeps its route/deep links while retaining the Data Tables page header;
+the selected table name and return link live in a workspace breadcrumb.

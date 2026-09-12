@@ -1,3 +1,5 @@
+import { ListPageHeader } from "@/components/layout/ListPageHeader";
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import {
@@ -147,45 +149,51 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 
 	if (!table)
 		return (
-			<div className="space-y-4">
-				<Button
-					type="button"
-					variant="ghost"
-					asChild
-					className="min-h-11"
-				>
-					<Link to={backTo}>
-						<ArrowLeft aria-hidden="true" className="size-4" />
-						{backLabel}
-					</Link>
-				</Button>
-				<DocumentCollectionState
-					headingLevel={1}
-					title={
-						tableQuery.isError
-							? "Table could not be loaded"
-							: "Loading table…"
-					}
-					description={
-						tableQuery.isError
-							? "Try again to check whether this table is available to you."
-							: undefined
-					}
-					error={tableQuery.isError}
-					busy={tableQuery.isFetching}
-					action={tableQuery.isError ? "Retry table" : undefined}
-					onAction={() => void tableQuery.refetch()}
+			<PageWorkspace className="mx-auto w-full max-w-[1600px] gap-4">
+				<ListPageHeader
+					className="shrink-0"
+					title="Data Tables"
+					description="Manage document tables for your applications"
 				/>
-			</div>
+				<div className="overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card">
+					<Button
+						type="button"
+						variant="ghost"
+						asChild
+						className="min-h-11"
+					>
+						<Link to={backTo}>
+							<ArrowLeft aria-hidden="true" className="size-4" />
+							{backLabel}
+						</Link>
+					</Button>
+					<DocumentCollectionState
+						headingLevel={2}
+						title={
+							tableQuery.isError
+								? "Table could not be loaded"
+								: "Loading table…"
+						}
+						description={
+							tableQuery.isError
+								? "Try again to check whether this table is available to you."
+								: undefined
+						}
+						error={tableQuery.isError}
+						busy={tableQuery.isFetching}
+						action={tableQuery.isError ? "Retry table" : undefined}
+						onAction={() => void tableQuery.refetch()}
+					/>
+				</div>
+			</PageWorkspace>
 		);
 
 	return (
 		<PageWorkspace className="mx-auto w-full max-w-[1600px] gap-4">
-			<TableDetailHeader
-				name={table.name}
-				description={table.description}
-				backTo={backTo}
-				backLabel={backLabel}
+			<ListPageHeader
+				className="shrink-0"
+				title="Data Tables"
+				description="Manage document tables for your applications"
 			/>
 			<div
 				ref={frameRef}
@@ -196,6 +204,12 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 						: "shrink",
 				)}
 			>
+				<TableDetailHeader
+					name={table.name}
+					description={table.description}
+					backTo={backTo}
+					backLabel={backLabel}
+				/>
 				<div className="flex shrink-0 flex-wrap items-center border-b border-border/70 bg-muted/20">
 					<div className="flex h-12 w-full shrink-0 items-center gap-2 border-b px-4 text-sm sm:w-44 sm:border-b-0 sm:border-r">
 						<Database className="size-4 text-primary" />
@@ -208,7 +222,7 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 						aria-label="Search documents on this page"
 						className="min-w-40 flex-1 [&>input]:h-12 [&>input]:rounded-none [&>input]:border-0 [&>input]:bg-transparent [&>input]:shadow-none [&>input]:focus-visible:ring-inset"
 					/>
-					<div className="flex min-w-0 flex-wrap items-center gap-1 px-3 py-1">
+					<div className="flex min-w-0 flex-wrap items-center gap-1 self-stretch pl-3 max-sm:w-full">
 						<Button
 							ref={filterToggle}
 							variant="ghost"
@@ -243,13 +257,13 @@ function TableDetailSession({ tableId }: { tableId: string }) {
 								)}
 							/>
 						</Button>
-						<Button
+						<WorkspacePrimaryAction
 							disabled={editorBusy || (isDialogOpen && editing)}
 							onClick={handleAdd}
 						>
 							<Plus className="size-4" />
 							Add Document
-						</Button>
+						</WorkspacePrimaryAction>
 					</div>
 				</div>
 				{tableQuery.isError && (

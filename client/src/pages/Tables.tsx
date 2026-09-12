@@ -1,3 +1,4 @@
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import { TableActionsMenu } from "./tables/TableActionsMenu";
 import { useCallback, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -266,15 +267,15 @@ export function Tables() {
 									/>
 								</div>
 							)}
-							<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-2 sm:gap-0 sm:px-0 sm:py-0">
+							<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0 sm:gap-0">
 								<SearchBox
 									value={searchTerm}
 									onChange={setSearchTerm}
 									aria-label="Search tables"
 									placeholder="Search tables by name or description..."
-									className="min-w-0 w-full sm:min-w-40 sm:flex-1 [&>input]:h-10 sm:[&>input]:h-12 sm:[&>input]:rounded-none sm:[&>input]:border-0 sm:[&>input]:bg-transparent sm:[&>input]:shadow-none sm:[&>input]:focus-visible:ring-inset"
+									className="min-w-0 w-full max-sm:m-3 max-sm:w-[calc(100%-1.5rem)] sm:min-w-40 sm:flex-1 [&>input]:h-10 sm:[&>input]:h-12 sm:[&>input]:rounded-none sm:[&>input]:border-0 sm:[&>input]:bg-transparent sm:[&>input]:shadow-none sm:[&>input]:focus-visible:ring-inset"
 								/>
-								<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:border-l sm:border-border sm:px-3">
+								<div className="flex min-w-0 flex-wrap items-center gap-1 self-stretch pl-3 max-sm:w-full sm:ml-auto sm:gap-2 sm:border-l sm:border-border">
 									{isPlatformAdmin && (
 										<label className="flex min-h-10 items-center gap-2 text-sm sm:min-h-12">
 											<Switch
@@ -334,15 +335,14 @@ export function Tables() {
 											</DropdownMenuItem>
 										</RecordActionsMenu>
 									)}
-									<Button
-										className="h-10"
+									<WorkspacePrimaryAction
 										ref={createButtonRef}
 										onClick={handleAdd}
 										disabled={editorBusy}
 									>
 										<Plus className="size-4" />
 										New Table
-									</Button>
+									</WorkspacePrimaryAction>
 								</div>
 							</div>
 						</ListToolbar>

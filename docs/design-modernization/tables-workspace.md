@@ -63,3 +63,12 @@ DocumentDialog.test.tsx DocumentInspector.test.tsx HoverCopyText.test.tsx
 (two tests including authentication setup); scoped ESLint; npm run tsc.
 Claims and catalog/record tests were repeated after their final local changes.
 For Playwright passthrough, pass the spec directly without a redundant --.
+
+Navigation refinement: entering a table retains the catalog's Data Tables
+header and frame position. Table identity and the solution-aware return link
+move inside the frame as a breadcrumb. Loading/error states use the same shell.
+Primary workspace actions share WorkspacePrimaryAction across Tables, Claims,
+Knowledge, and Files, aligned flush with the trailing toolbar edge.
+Verified with the affected page tests, FilesExplorer tests, desktop/mobile live
+screenshots, scoped lint, and TypeScript. The earlier CRUD acceptance was not
+repeated for this presentation-only refinement.

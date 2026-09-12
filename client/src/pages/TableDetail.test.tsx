@@ -227,7 +227,7 @@ it("gives the initial loading and failed table states a page heading and retry",
 	});
 	const view = await renderAtRoute("/tables/tbl-1?from=solution:s1");
 	expect(
-		screen.getByRole("heading", { level: 1, name: "Loading table…" }),
+		screen.getByRole("heading", { level: 2, name: "Loading table…" }),
 	).toBeInTheDocument();
 	expect(
 		screen.getByRole("link", { name: "Back to Solution" }),
@@ -243,7 +243,7 @@ it("gives the initial loading and failed table states a page heading and retry",
 	const { user } = await renderAtRoute("/tables/tbl-1");
 	expect(
 		screen.getByRole("heading", {
-			level: 1,
+			level: 2,
 			name: "Table could not be loaded",
 		}),
 	).toBeInTheDocument();

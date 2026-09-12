@@ -24,7 +24,7 @@ export function KnowledgeFilters({
 			</>
 		);
 	return (
-		<div className="w-full min-w-0 space-y-3">
+		<div className="w-full min-w-0 space-y-3 p-3">
 			<div className="flex min-w-0 items-center gap-2">
 				<div className="min-w-0 flex-1">{search}</div>
 				<Button

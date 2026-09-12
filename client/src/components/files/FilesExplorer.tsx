@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 import {
 	Sheet,
 	SheetContent,
@@ -524,7 +525,7 @@ export function FilesExplorer({
 					</div>
 				)}
 				{!install && (
-					<div className="flex min-w-0 flex-1 basis-64 items-center gap-3 px-4 py-2">
+					<div className="flex min-w-0 flex-1 basis-64 items-stretch gap-3 pl-4">
 						{!install && (
 							<Tabs
 								value={view}
@@ -534,7 +535,7 @@ export function FilesExplorer({
 									setTestOpen(false);
 									setPolicyOpen(false);
 								}}
-								className="min-w-0"
+								className="flex min-w-0 items-center py-2"
 							>
 								<TabsList
 									variant="line"
@@ -558,19 +559,17 @@ export function FilesExplorer({
 							</Tabs>
 						)}
 						{!install && (
-							<Button
+							<WorkspacePrimaryAction
 								type="button"
-								variant="outline"
-								size="sm"
 								aria-label="New Share"
-								className="ml-auto min-h-11 w-11 shrink-0 px-0 sm:min-h-9 sm:w-auto sm:px-3"
+								className="ml-auto"
 								onClick={() => setNewShareOpen(true)}
 							>
 								<Plus className="size-4" />
 								<span className="hidden sm:inline">
 									New Share
 								</span>
-							</Button>
+							</WorkspacePrimaryAction>
 						)}
 					</div>
 				)}
@@ -599,7 +598,7 @@ export function FilesExplorer({
 						className="flex min-h-0 flex-1 flex-col"
 					>
 						{
-							<div className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-4 lg:h-14 lg:flex-nowrap">
+							<div className="flex min-h-14 shrink-0 flex-wrap items-stretch gap-2 border-b pl-3 sm:pl-4 lg:h-14 lg:flex-nowrap">
 								{!showTree && (
 									<Sheet
 										open={treeOpen}
@@ -610,6 +609,7 @@ export function FilesExplorer({
 												variant="outline"
 												size="icon"
 												aria-label="Open shares"
+												className="my-2"
 											>
 												<Menu className="size-4" />
 											</Button>
@@ -627,7 +627,7 @@ export function FilesExplorer({
 										</SheetContent>
 									</Sheet>
 								)}
-								<div className="min-w-0 flex-1">
+								<div className="flex min-w-0 flex-1 items-center py-2">
 									<Breadcrumbs
 										scopeLabel={
 											install ? solutionTitle : scopeLabel
@@ -643,7 +643,7 @@ export function FilesExplorer({
 										aria-label="Folder Details"
 										variant="ghost"
 										size="sm"
-										className="min-h-11 sm:min-h-9"
+										className="my-2 min-h-10"
 										onClick={() => {
 											setSelectedFile(null);
 											setDetailTab("access");
@@ -671,9 +671,7 @@ export function FilesExplorer({
 												event.target.value = "";
 											}}
 										/>
-										<Button
-											size="sm"
-											className="min-h-11 sm:min-h-9"
+										<WorkspacePrimaryAction
 											onClick={() =>
 												uploadInputRef.current?.click()
 											}
@@ -683,7 +681,7 @@ export function FilesExplorer({
 											{uploading
 												? "Uploading…"
 												: "Upload"}
-										</Button>
+										</WorkspacePrimaryAction>
 									</>
 								)}
 							</div>

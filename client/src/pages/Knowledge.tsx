@@ -1,3 +1,4 @@
+import { WorkspacePrimaryAction } from "@/components/layout/WorkspacePrimaryAction";
 /**
  * Knowledge Management Page
  *
@@ -125,7 +126,7 @@ function KnowledgeToolbarActions({
 	createRef: RefObject<HTMLButtonElement | null>;
 }) {
 	return (
-		<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto">
+		<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 self-stretch pl-3 sm:ml-auto sm:gap-2">
 			{isPlatformAdmin && (
 				<>
 					<label className="flex min-h-11 items-center gap-2 text-sm">
@@ -195,15 +196,14 @@ function KnowledgeToolbarActions({
 				</RecordActionsMenu>
 			)}
 
-			<Button
-				className="h-10"
+			<WorkspacePrimaryAction
 				ref={createRef}
 				onClick={onCreate}
 				disabled={busy}
 			>
 				<Plus className="size-4" />
 				Add Document
-			</Button>
+			</WorkspacePrimaryAction>
 		</div>
 	);
 }
@@ -463,7 +463,7 @@ export function Knowledge() {
 					<div
 						className={cn(
 							"flex min-w-0 flex-1 flex-wrap items-center",
-							compactFilters ? "gap-2 px-3 py-1" : "gap-0",
+							"gap-0",
 						)}
 					>
 						<KnowledgeFilters
@@ -519,10 +519,8 @@ export function Knowledge() {
 						</KnowledgeFilters>
 						<div
 							className={cn(
-								"ml-auto flex min-w-0 items-center",
-								compactFilters
-									? "w-full"
-									: "max-w-full px-3 py-1",
+								"ml-auto flex min-w-0 items-stretch self-stretch",
+								compactFilters ? "w-full" : "max-w-full",
 							)}
 						>
 							<KnowledgeToolbarActions
