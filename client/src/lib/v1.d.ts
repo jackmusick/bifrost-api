@@ -8257,31 +8257,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{table_id}/documents/bulk-upsert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Bulk upsert documents by explicit id
-         * @description Set-based privileged ingestion path for explicit-id full replacements.
-         *
-         *     This route enforces normal table resolution, solution ownership, and table
-         *     row policies before issuing one guarded upsert statement. It intentionally
-         *     skips per-row realtime publishing; callers that need progress events
-         *     publish them separately.
-         */
-        post: operations["bulk_upsert_documents_api_tables__table_id__documents_bulk_upsert_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/tables/{table_id}/documents/count": {
         parameters: {
             query?: never;
@@ -8370,13 +8345,7 @@ export interface paths {
         put?: never;
         /**
          * Batch insert or upsert documents
-         * @description Insert (or upsert) multiple documents in a single request.
-         *
-         *     When `upsert=true`, each item with a provided id will be updated if it
-         *     exists, otherwise inserted. Items without an id are always inserted.
-         *
-         *     All-or-nothing on policy denials: any denied row aborts the whole batch
-         *     with a 403 listing every denied index.
+         * @description Insert, merge-upsert, or replace-upsert multiple documents.
          */
         post: operations["batch_documents_api_tables__table_id__documents_batch_post"];
         delete?: never;
@@ -15267,7 +15236,7 @@ export interface components {
         DocumentBatchCreate: {
             /**
              * Documents
-             * @description Documents to insert or upsert
+             * @description Documents to insert or upsert. Maximum 1000 rows per request.
              */
             documents: components["schemas"]["DocumentBatchItem"][];
             /**
@@ -15276,6 +15245,17 @@ export interface components {
              * @default false
              */
             upsert: boolean;
+            /**
+             * Write Mode
+             * @description Batch write behavior. Defaults to insert unless legacy upsert=true is supplied, which maps to merge_upsert.
+             */
+            write_mode?: ("insert" | "merge_upsert" | "replace_upsert") | null;
+            /**
+             * Return Documents
+             * @description If true, include written documents in the response.
+             * @default true
+             */
+            return_documents: boolean;
         };
         /**
          * DocumentBatchCreateResponse
@@ -15345,53 +15325,6 @@ export interface components {
              * @description Override attribution for updated_by (upsert-update branch). Engine and platform-admin callers only.
              */
             updated_by?: string | null;
-        };
-        /**
-         * DocumentBulkUpsertItem
-         * @description A single explicit-id document for the privileged bulk upsert endpoint.
-         */
-        DocumentBulkUpsertItem: {
-            /**
-             * Id
-             * @description Document ID to upsert
-             */
-            id: string;
-            /**
-             * Data
-             * @description Replacement document data
-             */
-            data: {
-                [key: string]: unknown;
-            };
-            /**
-             * Created By
-             * @description Override attribution for inserted rows. Platform-admin callers only.
-             */
-            created_by?: string | null;
-            /**
-             * Updated By
-             * @description Override attribution for inserted and updated rows. Platform-admin callers only.
-             */
-            updated_by?: string | null;
-        };
-        /**
-         * DocumentBulkUpsertRequest
-         * @description Input for set-based, explicit-id bulk upsert.
-         */
-        DocumentBulkUpsertRequest: {
-            /**
-             * Documents
-             * @description Documents to upsert. Maximum 1000 rows per request.
-             */
-            documents: components["schemas"]["DocumentBulkUpsertItem"][];
-        };
-        /**
-         * DocumentBulkUpsertResponse
-         * @description Count-only response for privileged bulk upsert.
-         */
-        DocumentBulkUpsertResponse: {
-            /** Count */
-            count: number;
         };
         /**
          * DocumentCountResponse
@@ -15518,7 +15451,7 @@ export interface components {
             } | null;
             /**
              * Document Ids
-             * @description Filter by actual document IDs using the table's physical primary key. Duplicates have set semantics. An empty list matches no documents.
+             * @description Filter by actual document IDs using the table's physical primary key. At most 1000 IDs may be supplied. Duplicates have set semantics, and an empty list matches no documents. This filter is ANDed with where, document-ID pagination, and row policies. Results use the normal query ordering and pagination, not input order.
              */
             document_ids?: string[] | null;
             /**
@@ -42921,44 +42854,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentPublic"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    bulk_upsert_documents_api_tables__table_id__documents_bulk_upsert_post: {
-        parameters: {
-            query?: {
-                /** @description Target organization scope: 'global' or org UUID. Defaults to caller's home org. Provider admins only for non-self orgs. */
-                scope?: string | null;
-            };
-            header?: never;
-            path: {
-                table_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBulkUpsertRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBulkUpsertResponse"];
                 };
             };
             /** @description Validation Error */
