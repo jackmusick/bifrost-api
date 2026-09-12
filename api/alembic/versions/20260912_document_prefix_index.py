@@ -1,7 +1,7 @@
 """Add a C-collated index for document ID prefix scans.
 
 Revision ID: 20260912_document_prefix_index
-Revises: 20260902_chat_run_agentless
+Revises: 20260909_form_logos
 
 Document-ID prefix pages intentionally use two predicates: a C-collated lower
 bound to seek into the target table/prefix region and a literal LIKE check to
@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "20260912_document_prefix_index"
-down_revision: str | None = "20260902_chat_run_agentless"
+down_revision: str | None = "20260909_form_logos"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

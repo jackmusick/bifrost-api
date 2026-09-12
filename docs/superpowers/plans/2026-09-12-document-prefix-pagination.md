@@ -53,7 +53,7 @@ Use `Document.id.collate("C")` for the prefix `LIKE`, cursor `>`, and document-I
 
 - [ ] **Step 3: Add the concurrent index migration**
 
-Create `ix_documents_table_id_id_c` on `(table_id, id COLLATE "C")`, based on migration head `20260902_chat_run_agentless`. Use an Alembic autocommit block, a short lock timeout, a bounded build timeout, and concurrent create/drop. Document invalid-index cleanup after an interrupted build.
+Create `ix_documents_table_id_id_c` on `(table_id, id COLLATE "C")`, based on migration head `20260909_form_logos`. Use an Alembic autocommit block, a short lock timeout, a bounded build timeout, and concurrent create/drop. Document invalid-index cleanup after an interrupted build.
 
 - [ ] **Step 4: Run Task 1 tests and verify GREEN**
 
