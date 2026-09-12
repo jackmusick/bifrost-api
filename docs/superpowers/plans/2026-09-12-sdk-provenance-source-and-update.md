@@ -17,8 +17,10 @@
 - Modify: `api/src/models/contracts/applications.py`
 - Modify: `api/src/routers/applications.py`
 - Add: `api/src/services/application_sdk_status.py`
+- Modify: `api/src/services/sdk_package/__init__.py`
 - Add: `api/alembic/versions/<revision>_application_sdk_provenance.py`
 - Add: `api/tests/unit/test_application_sdk_status.py`
+- Modify: `api/tests/unit/test_sdk_package.py`
 - Modify: `api/tests/unit/test_applications.py` or the focused application serialization test discovered with `rg`
 
 **Step 1: Write failing status tests**
@@ -37,8 +39,9 @@ Run: `./test.sh tests/unit/test_application_sdk_status.py <serialization-test> -
 
 - Add nullable `sdk_package_version: str`, `sdk_fingerprint: str`, `sdk_contract_version: int`, and timezone-aware `sdk_built_at` columns and a reversible migration.
 - Add the same raw fields, `sdk_status`, and `sdk_source_available` to `ApplicationPublic`; these are server-owned outputs, not create/update DTO fields or manifest fields.
-- Implement a pure status helper accepting app model/provenance and current package metadata.
-- Populate the fields in `application_to_public`. Compute the current package fingerprint once per process/request path through the SDK package cache, not once per listed app.
+- Implement a pure status helper accepting app model/provenance and current package metadata. All four provenance fields must be present before reporting `current` or `update_available`.
+- Expose one SDK package-version helper used by both tarball stamping and provenance so git-describe versions cannot diverge from the installed npm version.
+- Populate the fields in `application_to_public`. Load current metadata off the event loop, degrade a toolchain failure to `unknown`, and compute it once per request rather than once per listed app.
 
 **Step 4: Run GREEN and contract tripwires**
 
