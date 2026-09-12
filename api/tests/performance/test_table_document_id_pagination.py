@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 import pytest
@@ -19,6 +20,79 @@ def _plan_nodes(plan: dict):
     yield plan
     for child in plan.get("Plans", []):
         yield from _plan_nodes(child)
+
+
+@pytest.mark.asyncio
+async def test_document_prefix_statement_uses_c_collation_and_literal_pattern(
+    db_session: AsyncSession,
+) -> None:
+    """The prefix keyset query must match the C-collated expression index."""
+    org = Organization(
+        id=uuid4(),
+        name=f"Document prefix SQL {uuid4().hex[:8]}",
+        domain=f"document-prefix-sql-{uuid4().hex[:8]}.example.com",
+        created_by="test@example.com",
+    )
+    table = Table(
+        id=uuid4(),
+        name=f"document_prefix_sql_{uuid4().hex[:8]}",
+        organization_id=org.id,
+        created_by="test@example.com",
+    )
+    db_session.add_all([org, table])
+    await db_session.flush()
+
+    captured = []
+
+    def capture_statement(orm_execute_state):
+        if orm_execute_state.is_select:
+            captured.append(orm_execute_state.statement)
+
+    event.listen(db_session.sync_session, "do_orm_execute", capture_statement)
+    try:
+        await DocumentRepository(db_session, table).query(
+            DocumentQuery(
+                document_id_prefix="tenant%_A/folder\\caf\u00e9/",
+                after_document_id="tenant%_A/folder\\caf\u00e9/001",
+                skip_count=True,
+                limit=25,
+            )
+        )
+    finally:
+        event.remove(db_session.sync_session, "do_orm_execute", capture_statement)
+
+    assert len(captured) == 1
+    compiled = captured[0].compile(
+        dialect=postgresql.dialect(),
+        compile_kwargs={"render_postcompile": True},
+    )
+    sql = str(compiled)
+
+    assert re.search(
+        r"documents\.table_id = %\(table_id_\d+\)s",
+        sql,
+    )
+    assert re.search(
+        r'documents\.id COLLATE "C" >= %\([^)]+\)s',
+        sql,
+    )
+    assert re.search(
+        r'documents\.id COLLATE "C" > %\([^)]+\)s',
+        sql,
+    )
+    assert (
+        "documents.id COLLATE \"C\" LIKE "
+        "'tenant/%%/_A//folder\\\\caf\u00e9//%%' ESCAPE '/'"
+    ) in sql
+    assert 'ORDER BY documents.id COLLATE "C"' in sql
+
+    assert any(key.startswith("table_id_") for key in compiled.params)
+    assert table.id in compiled.params.values()
+    assert "tenant%_A/folder\\caf\u00e9/001" in compiled.params.values()
+    assert all(
+        value != "tenant/%/_A//folder\\caf\u00e9//%"
+        for value in compiled.params.values()
+    )
 
 
 @pytest.mark.asyncio
