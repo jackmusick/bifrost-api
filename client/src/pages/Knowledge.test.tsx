@@ -173,7 +173,7 @@ describe("Knowledge", () => {
 			),
 		).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(screen.getByRole("switch", { name: "Select" }));
 		const selectAllButton = screen.getByRole("button", {
 			name: /select all/i,
 		});
@@ -183,17 +183,17 @@ describe("Knowledge", () => {
 			screen.getByRole("button", { name: /clear all/i }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("checkbox", { name: /select support-01/i }),
-		).toBeChecked();
+			screen.getByRole("button", { name: "support-01" }),
+		).toHaveAttribute("aria-pressed", "true");
 		expect(
-			screen.getByRole("checkbox", { name: /select sales-02/i }),
-		).toBeChecked();
+			screen.getByRole("button", { name: "sales-02" }),
+		).toHaveAttribute("aria-pressed", "true");
 
 		expect(
 			screen.getByRole("navigation", { name: /pagination/i }),
 		).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Done" }));
+		await user.click(screen.getByRole("switch", { name: "Select" }));
 		await user.click(
 			within(firstRecord).getByRole("button", { name: /support-01/i }),
 		);
@@ -228,6 +228,30 @@ describe("Knowledge", () => {
 		);
 		expect(await screen.findByRole("dialog")).toHaveTextContent(
 			"Knowledge drawer support doc-01",
+		);
+	});
+
+	it("searches namespaces and filters documents using the selected namespace", async () => {
+		const { user } = renderWithProviders(<Knowledge />);
+		await screen.findByRole("button", { name: "support-01" });
+		await user.click(screen.getByRole("button", { name: "Filters" }));
+		await user.click(
+			screen.getByRole("combobox", { name: "Filter by namespace" }),
+		);
+		await user.type(
+			screen.getByPlaceholderText("Search Namespaces..."),
+			"supp",
+		);
+		expect(
+			screen.queryByRole("option", { name: "sales" }),
+		).not.toBeInTheDocument();
+		await user.click(screen.getByRole("option", { name: "support" }));
+		await waitFor(() =>
+			expect(
+				mockAuthFetch.mock.calls.some(([url]) =>
+					String(url).includes("namespace=support"),
+				),
+			).toBe(true),
 		);
 	});
 
@@ -337,9 +361,9 @@ describe("Knowledge", () => {
 		await user.click(
 			screen.getByRole("button", { name: "Retry documents" }),
 		);
-		await user.click(screen.getByRole("button", { name: "Select" }));
-		const checkbox = await screen.findByRole("checkbox", {
-			name: "Select support-01",
+		await user.click(screen.getByRole("switch", { name: "Select" }));
+		const checkbox = await screen.findByRole("button", {
+			name: "support-01",
 		});
 		await user.click(checkbox);
 		fail = true;
@@ -348,7 +372,7 @@ describe("Knowledge", () => {
 		);
 		await user.click(screen.getByRole("menuitem", { name: "Refresh" }));
 		await screen.findByText("Documents could not be loaded");
-		expect(checkbox).toBeChecked();
+		expect(checkbox).toHaveAttribute("aria-pressed", "true");
 		expect(
 			screen.getByRole("article", { name: "support-01" }),
 		).toBeVisible();

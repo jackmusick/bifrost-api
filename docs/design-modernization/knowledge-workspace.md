@@ -32,3 +32,24 @@ into one workspace. Keep tabular comparison for actual fields, move full record
 inspection out of expanding rows, and use the shared hover-copy presentation for
 IDs. Formatted data should be the default; raw JSON belongs in an explicit view
 inside the record inspector. Preserve complete raw data access and editing.
+
+## Review refinements
+
+The workspace is content-sized when browsing a short list, capped by available
+space; an open editor gets a bounded workspace with fixed Save/Cancel controls.
+The feature frame is a flex column so headers and footers consume their own
+space instead of extending the editor beyond the visible boundary. Scope is
+flush on the left of the toolbar. All Namespaces uses the shared searchable
+Combobox; its trigger stays one line, while the popup shows complete names.
+
+Select is a switch. In selection mode, whole document rows toggle selection,
+with a checkmark in the existing icon slot and the normal selected surface.
+There are no selection checkboxes. Scope, namespace, and date occupy compact,
+consistent positions on the left of each row, adapting to two lines when narrow.
+Preview text uses MarkdownContent's noninteractive preview variant; the API's
+200-character excerpts may still end mid-syntax.
+
+Refinement checks: 13 scoped component tests, desktop/mobile browser checks for
+namespace search and whole-row selection, visible Save controls, and no page
+horizontal overflow; scoped lint and TypeScript. The persisted Knowledge
+acceptance spec is also rerun; broader suites are outside this refinement.

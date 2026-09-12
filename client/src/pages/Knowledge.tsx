@@ -23,13 +23,8 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PaginationFooter } from "@/components/pagination/PaginationFooter";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
 import { SearchBox } from "@/components/search/SearchBox";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
@@ -134,15 +129,15 @@ function KnowledgeToolbarActions({
 		<div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto">
 			{isPlatformAdmin && (
 				<>
-					<Button
-						type="button"
-						variant={selectionMode ? "secondary" : "outline"}
-						className="h-10"
-						onClick={onToggleSelectionMode}
-						disabled={busy}
-					>
-						{selectionMode ? "Done" : "Select"}
-					</Button>
+					<label className="flex min-h-11 items-center gap-2 text-sm">
+						<Switch
+							aria-label="Select"
+							checked={selectionMode}
+							onCheckedChange={onToggleSelectionMode}
+							disabled={busy}
+						/>
+						Select
+					</label>
 					{selectionMode && selectedCount > 0 && (
 						<>
 							<Button
@@ -394,9 +389,7 @@ export function Knowledge() {
 	const allVisibleSelected =
 		documents.length > 0 &&
 		documents.every((doc) => selectedIds.has(doc.id));
-	const someVisibleSelected = documents.some((doc) =>
-		selectedIds.has(doc.id),
-	);
+
 	const toggleSelectAll = () => {
 		setSelectedIds((previous) => {
 			const next = new Set(previous);
@@ -429,97 +422,103 @@ export function Knowledge() {
 				description="Manage knowledge documents for AI agents."
 			/>
 
-			<div className="min-h-0 flex-1 overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card shadow-sm">
-				<ListToolbar className="shrink-0 border-b border-border/70 bg-card/95 p-3">
-					<KnowledgeFilters
-						compact={compactFilters}
-						activeCount={
-							Number(filterNamespace !== undefined) +
-							Number(filterOrgId !== undefined)
-						}
-						search={
-							<SearchBox
-								value={searchTerm}
-								onChange={setSearchTerm}
-								placeholder="Search documents..."
-								className="w-full sm:w-72"
-								aria-label="Search documents"
+			<div
+				className={cn(
+					"flex min-h-0 max-h-full flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card",
+					editorOpen
+						? "h-[min(48rem,calc(100dvh-12rem))] lg:flex-1"
+						: "shrink",
+				)}
+			>
+				<ListToolbar className="shrink-0 gap-0 border-b border-border/70 bg-muted/20 p-0">
+					{isPlatformAdmin && (
+						<div className="w-full shrink-0 border-b sm:w-56 sm:self-stretch sm:border-b-0 sm:border-r">
+							<OrganizationSelect
+								value={filterOrgId}
+								onChange={setFilterOrgId}
+								showAll
+								showGlobal
+								placeholder="All Organizations"
+								disabled={externalBusy}
+								aria-label="Knowledge scope"
+								triggerClassName="h-full min-h-12 rounded-none border-0 bg-transparent px-4 py-2 shadow-none hover:bg-muted/50 focus-visible:ring-inset"
 							/>
-						}
-					>
-						<Select
-							value={filterNamespace ?? "__ALL__"}
-							onValueChange={(v) =>
-								setFilterNamespace(
-									v === "__ALL__" ? undefined : v,
-								)
+						</div>
+					)}
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 px-3 py-1">
+						<KnowledgeFilters
+							compact={compactFilters}
+							activeCount={
+								Number(filterNamespace !== undefined) +
+								Number(filterOrgId !== undefined)
 							}
-							disabled={externalBusy}
-						>
-							<SelectTrigger
-								aria-label="Filter by namespace"
-								className="min-h-10 w-full sm:w-40"
-							>
-								<SelectValue placeholder="All namespaces" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="__ALL__">
-									All namespaces
-								</SelectItem>
-								{namespaces.map((ns) => (
-									<SelectItem
-										key={ns.namespace}
-										value={ns.namespace}
-									>
-										{ns.namespace}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						{isPlatformAdmin && (
-							<div className="w-full sm:w-48">
-								<OrganizationSelect
-									value={filterOrgId}
-									onChange={setFilterOrgId}
-									showAll={true}
-									showGlobal={true}
-									placeholder="All organizations"
-									disabled={externalBusy}
+							search={
+								<SearchBox
+									value={searchTerm}
+									onChange={setSearchTerm}
+									placeholder="Search documents..."
+									className="w-full sm:w-52"
+									aria-label="Search documents"
 								/>
-							</div>
-						)}
-					</KnowledgeFilters>
-					<KnowledgeToolbarActions
-						isPlatformAdmin={isPlatformAdmin}
-						selectionMode={selectionMode}
-						selectedCount={selectedIds.size}
-						isExporting={isExporting}
-						isRefreshing={
-							documentQuery.isFetching ||
-							namespaceQuery.isFetching
-						}
-						busy={externalBusy}
-						onToggleSelectionMode={() => {
-							setSelectionMode((value) => !value);
-							if (selectionMode) setSelectedIds(new Set());
-						}}
-						onChangeScope={() =>
-							setBulkScopeIds(Array.from(selectedIds))
-						}
-						onExport={() => void handleExport()}
-						onImport={() => setIsImportOpen(true)}
-						onRefresh={() => {
-							void fetchDocuments();
-							void fetchNamespaces();
-						}}
-						onCreate={() => {
-							if (externalBusy) return;
-							setViewDocId(null);
-							setViewDocNamespace("");
-							setIsCreating(true);
-						}}
-						createRef={createRef}
-					/>
+							}
+						>
+							<Combobox
+								aria-label="Filter by namespace"
+								value={filterNamespace ?? "__ALL__"}
+								onValueChange={(v) =>
+									setFilterNamespace(
+										v === "__ALL__" ? undefined : v,
+									)
+								}
+								options={[
+									{
+										value: "__ALL__",
+										label: "All Namespaces",
+									},
+									...namespaces.map((ns) => ({
+										value: ns.namespace,
+										label: ns.namespace,
+									})),
+								]}
+								placeholder="All Namespaces"
+								searchPlaceholder="Search Namespaces..."
+								emptyText="No namespaces found."
+								className="h-10 min-h-10 w-full sm:w-44 [&>span>span]:truncate [&>span>span]:whitespace-nowrap"
+								disabled={externalBusy}
+							/>
+						</KnowledgeFilters>
+						<KnowledgeToolbarActions
+							isPlatformAdmin={isPlatformAdmin}
+							selectionMode={selectionMode}
+							selectedCount={selectedIds.size}
+							isExporting={isExporting}
+							isRefreshing={
+								documentQuery.isFetching ||
+								namespaceQuery.isFetching
+							}
+							busy={externalBusy}
+							onToggleSelectionMode={() => {
+								setSelectionMode((value) => !value);
+								if (selectionMode) setSelectedIds(new Set());
+							}}
+							onChangeScope={() =>
+								setBulkScopeIds(Array.from(selectedIds))
+							}
+							onExport={() => void handleExport()}
+							onImport={() => setIsImportOpen(true)}
+							onRefresh={() => {
+								void fetchDocuments();
+								void fetchNamespaces();
+							}}
+							onCreate={() => {
+								if (externalBusy) return;
+								setViewDocId(null);
+								setViewDocNamespace("");
+								setIsCreating(true);
+							}}
+							createRef={createRef}
+						/>
+					</div>
 				</ListToolbar>
 
 				{namespaceQuery.isError && (
@@ -572,7 +571,12 @@ export function Knowledge() {
 					</p>
 				)}
 
-				<div className="relative flex min-h-[32rem] flex-1 overflow-hidden lg:min-h-0">
+				<div
+					className={cn(
+						"relative flex min-h-0 overflow-hidden",
+						editorOpen ? "flex-1" : "shrink",
+					)}
+				>
 					<div
 						className={cn(
 							"flex min-h-0 min-w-0 flex-1 flex-col",
@@ -592,7 +596,6 @@ export function Knowledge() {
 									isPlatformAdmin={isPlatformAdmin}
 									selectedIds={selectedIds}
 									allVisibleSelected={allVisibleSelected}
-									someVisibleSelected={someVisibleSelected}
 									getOrgName={getOrgName}
 									busy={externalBusy}
 									onToggleSelect={toggleSelect}

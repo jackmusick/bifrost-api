@@ -21,7 +21,6 @@ it("keeps scope and Markdown preview readable while separating open from bulk se
 		isPlatformAdmin: true,
 		selectedIds: new Set<string>(),
 		allVisibleSelected: false,
-		someVisibleSelected: false,
 		getOrgName: () => "A long customer organization name",
 		busy: false,
 		onToggleSelect,
@@ -41,7 +40,8 @@ it("keeps scope and Markdown preview readable while separating open from bulk se
 	await user.click(screen.getByRole("button", { name: "Runbook" }));
 	expect(onOpen).toHaveBeenCalledWith(doc);
 	rerender(<KnowledgeDocumentList {...props} selectionMode />);
-	await user.click(screen.getByRole("checkbox", { name: "Select Runbook" }));
+	expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+	await user.click(screen.getByRole("button", { name: "Runbook" }));
 	expect(onToggleSelect).toHaveBeenCalledWith("doc-1");
 	expect(onOpen).toHaveBeenCalledTimes(1);
 });

@@ -1,5 +1,12 @@
-import { BookOpen, Building2, Globe, FileText, Trash2 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+	BookOpen,
+	Building2,
+	Globe,
+	FileText,
+	Trash2,
+	Check,
+	Calendar,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
@@ -50,7 +57,6 @@ function KnowledgeDocumentRow({
 	doc,
 	selected,
 	selectionMode,
-	isPlatformAdmin,
 	isChecked,
 	getOrgName,
 	disabled,
@@ -61,7 +67,6 @@ function KnowledgeDocumentRow({
 	doc: DocumentSummary;
 	selected: boolean;
 	selectionMode: boolean;
-	isPlatformAdmin: boolean;
 	isChecked: boolean;
 	getOrgName: (orgId: string | null | undefined) => string;
 	disabled: boolean;
@@ -78,23 +83,11 @@ function KnowledgeDocumentRow({
 			aria-current={selected ? "true" : undefined}
 			className={cn(
 				"group flex min-h-16 items-stretch border-b border-border/70 transition-colors last:border-b-0 motion-reduce:transition-none",
-				selected ? "tree-row-selected" : "hover:bg-muted/20",
+				(selectionMode ? isChecked : selected)
+					? "tree-row-selected"
+					: "hover:bg-muted/20",
 			)}
 		>
-			{isPlatformAdmin && selectionMode && (
-				<label
-					className="flex w-12 shrink-0 items-start justify-center px-3 py-4"
-					onClick={(event) => event.stopPropagation()}
-				>
-					<span className="sr-only">{`Select ${identity}`}</span>
-					<Checkbox
-						checked={isChecked}
-						onCheckedChange={() => onToggleSelect(doc.id)}
-						onClick={(event) => event.stopPropagation()}
-						disabled={disabled}
-					/>
-				</label>
-			)}
 			<article
 				aria-labelledby={titleId}
 				className="flex min-h-16 min-w-0 flex-1"
@@ -103,13 +96,20 @@ function KnowledgeDocumentRow({
 					aria-labelledby={titleId}
 					type="button"
 					className="flex min-h-16 min-w-0 flex-1 items-start gap-3 px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60"
-					disabled={disabled || selectionMode}
-					onClick={() => onOpen(doc)}
+					disabled={disabled}
+					aria-pressed={selectionMode ? isChecked : undefined}
+					onClick={() =>
+						selectionMode ? onToggleSelect(doc.id) : onOpen(doc)
+					}
 				>
 					<span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--bf-radius-surface)] border border-primary/20 bg-primary/10 text-primary">
-						<BookOpen aria-hidden="true" className="size-4" />
+						{selectionMode && isChecked ? (
+							<Check aria-hidden="true" className="size-4" />
+						) : (
+							<BookOpen aria-hidden="true" className="size-4" />
+						)}
 					</span>
-					<span className="min-w-0 flex-1 space-y-1">
+					<span className="@container min-w-0 flex-1 space-y-1">
 						<span
 							id={titleId}
 							className="block text-sm font-semibold leading-5 text-foreground [overflow-wrap:anywhere]"
@@ -121,7 +121,7 @@ function KnowledgeDocumentRow({
 								{doc.id}
 							</span>
 						)}
-						<span className="line-clamp-2 text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+						<span className="line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">
 							<MarkdownContent
 								variant="preview"
 								content={
@@ -130,21 +130,25 @@ function KnowledgeDocumentRow({
 								}
 							/>
 						</span>
-						<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-							<span className="inline-flex min-w-0 items-center gap-1 text-xs leading-5 text-muted-foreground">
-								<FileText
-									aria-hidden="true"
-									className="size-3.5 shrink-0"
-								/>
-								<span className="min-w-0 [overflow-wrap:anywhere]">
-									{doc.namespace}
-								</span>
-							</span>
+						<span className="grid min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)] items-start gap-x-3 gap-y-1 pt-1 @[480px]:grid-cols-[8rem_12rem_7rem]">
 							<KnowledgeDocumentScopeBadge
 								organizationId={doc.organization_id}
 								getOrgName={getOrgName}
 							/>
-							<span className="text-xs leading-5 text-muted-foreground">
+							<span className="inline-flex min-w-0 items-start gap-1 text-xs leading-5 text-muted-foreground">
+								<FileText
+									aria-hidden="true"
+									className="mt-0.5 size-3.5 shrink-0"
+								/>
+								<span className="min-w-0 break-words">
+									{doc.namespace}
+								</span>
+							</span>
+							<span className="inline-flex items-center gap-1 text-xs leading-5 text-muted-foreground">
+								<Calendar
+									aria-hidden="true"
+									className="size-3.5 shrink-0"
+								/>
 								{formatKnowledgeDate(doc.created_at)}
 							</span>
 						</span>
@@ -176,7 +180,6 @@ export function KnowledgeDocumentList({
 	isPlatformAdmin,
 	selectedIds,
 	allVisibleSelected,
-	someVisibleSelected,
 	getOrgName,
 	busy,
 	onToggleSelect,
@@ -190,7 +193,6 @@ export function KnowledgeDocumentList({
 	isPlatformAdmin: boolean;
 	selectedIds: Set<string>;
 	allVisibleSelected: boolean;
-	someVisibleSelected: boolean;
 	getOrgName: (orgId: string | null | undefined) => string;
 	busy: boolean;
 	onToggleSelect: (id: string) => void;
@@ -205,25 +207,9 @@ export function KnowledgeDocumentList({
 		>
 			{isPlatformAdmin && selectionMode && (
 				<div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-muted/20 px-3 py-2">
-					<label className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-						<Checkbox
-							aria-label="Select visible documents"
-							checked={
-								allVisibleSelected
-									? true
-									: someVisibleSelected
-										? "indeterminate"
-										: false
-							}
-							onCheckedChange={onToggleSelectAll}
-							disabled={busy || documents.length === 0}
-						/>
-						<span>
-							{selectedIds.size > 0
-								? `${selectedIds.size} selected`
-								: "Select documents for bulk changes"}
-						</span>
-					</label>
+					<span className="text-sm text-muted-foreground">
+						{selectedIds.size} selected
+					</span>
 					<Button
 						type="button"
 						variant="ghost"
@@ -237,7 +223,7 @@ export function KnowledgeDocumentList({
 			)}
 			<ul
 				aria-label="Knowledge documents"
-				className="min-h-0 flex-1 overflow-y-auto"
+				className="min-h-0 overflow-y-auto"
 			>
 				{documents.map((doc) => (
 					<KnowledgeDocumentRow
@@ -245,7 +231,6 @@ export function KnowledgeDocumentList({
 						doc={doc}
 						selected={selectedDocId === doc.id}
 						selectionMode={selectionMode}
-						isPlatformAdmin={isPlatformAdmin}
 						isChecked={selectedIds.has(doc.id)}
 						getOrgName={getOrgName}
 						disabled={busy}
