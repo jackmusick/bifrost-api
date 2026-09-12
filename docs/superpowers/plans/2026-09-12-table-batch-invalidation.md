@@ -104,7 +104,7 @@ git commit -m "feat: forward table invalidation events"
 - Assert the websocket client accepts and dispatches `table_invalidated` messages.
 - Assert `useTable` refetches its current page when invalidated and replaces rows/total from the authoritative result.
 - Assert `useInfiniteTable` refetches the currently loaded window when invalidated.
-- In both hooks, deliver multiple invalidations while the first refresh is pending and assert refresh calls are coalesced: one in flight and at most one trailing refresh, so the final state includes changes that arrived during the first refresh.
+- In both hooks, deliver multiple invalidations while a refresh is pending and assert refresh calls are coalesced: only one refresh may be in flight at a time, and all invalidations observed during a pass are folded into one subsequent authoritative refresh. Continue until a pass completes with no dirty event so committed invalidations are not lost.
 
 **Step 2: Run the focused tests and verify failure**
 
@@ -116,7 +116,7 @@ Expected: invalidation frames are unsupported and do not trigger refreshes.
 
 - Add `{type: "table_invalidated"; table_id: string}` to `TableChangeEvent` and `TableChangeMessage`.
 - In each hook's subscription callback, route invalidations to its existing authoritative snapshot loader rather than `applyPagedEvent`/`applyEvent`.
-- Add a small per-hook in-flight/dirty coalescer scoped to the subscription effect. If an invalidation arrives during a refresh, mark it dirty and perform one more refresh after the current one settles. Surface refresh errors through existing hook error state.
+- Add a small per-hook in-flight/dirty coalescer scoped to the subscription effect. If invalidations arrive during a refresh pass, mark the subscription dirty and perform one subsequent authoritative refresh after the current pass settles; repeat until a pass completes without a dirty event. Surface refresh errors through existing hook error state.
 - Preserve reconnect refresh behavior and granular document-change handling.
 
 **Step 4: Run the focused tests and verify success**

@@ -281,8 +281,7 @@ export function useTable(
     let cancelled = false;
     let unsubscribe: (() => void) | null = null;
     let refreshInFlight = false;
-    let trailingRefreshRequested = false;
-    let runningTrailingRefresh = false;
+    let refreshDirty = false;
     // Compute the offset/limit for this page. Server validates limit ≤ 1000;
     // a caller passing pageSize > 1000 will get the 422 surfaced via `error`.
     const offset = Math.max(0, (page - 1) * pageSize);
@@ -304,15 +303,15 @@ export function useTable(
 
     function refreshAuthoritativeSnapshot() {
       if (refreshInFlight) {
-        if (!runningTrailingRefresh) trailingRefreshRequested = true;
+        refreshDirty = true;
         return;
       }
 
       refreshInFlight = true;
       void (async () => {
         try {
-          for (let pass = 0; pass < 2 && !cancelled; pass += 1) {
-            runningTrailingRefresh = pass === 1;
+          do {
+            refreshDirty = false;
             try {
               await loadSnapshot();
             } catch (e) {
@@ -320,13 +319,9 @@ export function useTable(
                 setError(e instanceof Error ? e : new Error(String(e)));
               }
             }
-            if (!trailingRefreshRequested || pass === 1) break;
-            trailingRefreshRequested = false;
-          }
+          } while (refreshDirty && !cancelled);
         } finally {
           refreshInFlight = false;
-          trailingRefreshRequested = false;
-          runningTrailingRefresh = false;
         }
       })();
     }

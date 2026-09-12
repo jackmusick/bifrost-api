@@ -187,7 +187,7 @@ describe("useTable", () => {
     expect(fetchMock.mock.calls[1][0]).toMatch(/scope=org-a$/);
   });
 
-  it("coalesces invalidation bursts to one in-flight refresh and one trailing refresh", async () => {
+  it("coalesces an invalidation burst during one pass into one subsequent refresh", async () => {
     const firstRefresh = deferredPage(["first"], 1);
     const trailingRefresh = deferredPage(["trailing"], 1);
     const fetchMock = vi
@@ -226,14 +226,16 @@ describe("useTable", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("does not let invalidations during the trailing refresh create another trailing refresh", async () => {
+  it("queues one additional refresh for invalidations during the trailing refresh", async () => {
     const firstRefresh = deferredPage(["first"], 1);
     const trailingRefresh = deferredPage(["trailing"], 1);
+    const finalRefresh = deferredPage(["final"], 1);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(makePage(["initial"], 1))
       .mockReturnValueOnce(firstRefresh.promise)
       .mockReturnValueOnce(trailingRefresh.promise)
+      .mockReturnValueOnce(finalRefresh.promise)
       .mockResolvedValueOnce(makePage(["later"], 1));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -262,14 +264,22 @@ describe("useTable", () => {
       await trailingRefresh.promise;
     });
 
-    await waitFor(() => expect(result.current.rows[0]?.id).toBe("trailing"));
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(result.current.rows[0]?.id).toBe("trailing");
+
+    await act(async () => {
+      finalRefresh.resolve();
+      await finalRefresh.promise;
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("final"));
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     act(() => {
       lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
     });
     await waitFor(() => expect(result.current.rows[0]?.id).toBe("later"));
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("resets invalidation coalescing after a rejected refresh", async () => {

@@ -103,8 +103,7 @@ export function useInfiniteTable(
 
     let unsubscribe: (() => void) | null = null;
     let refreshInFlight = false;
-    let trailingRefreshRequested = false;
-    let runningTrailingRefresh = false;
+    let refreshDirty = false;
 
     async function loadInitialPage() {
       if (effectCancelled) return;
@@ -171,15 +170,15 @@ export function useInfiniteTable(
 
     function refreshAuthoritativeSnapshot() {
       if (refreshInFlight) {
-        if (!runningTrailingRefresh) trailingRefreshRequested = true;
+        refreshDirty = true;
         return;
       }
 
       refreshInFlight = true;
       void (async () => {
         try {
-          for (let pass = 0; pass < 2 && !effectCancelled; pass += 1) {
-            runningTrailingRefresh = pass === 1;
+          do {
+            refreshDirty = false;
             try {
               await refreshLoadedSnapshot();
             } catch (e) {
@@ -187,13 +186,9 @@ export function useInfiniteTable(
                 setError(e instanceof Error ? e : new Error(String(e)));
               }
             }
-            if (!trailingRefreshRequested || pass === 1) break;
-            trailingRefreshRequested = false;
-          }
+          } while (refreshDirty && !effectCancelled);
         } finally {
           refreshInFlight = false;
-          trailingRefreshRequested = false;
-          runningTrailingRefresh = false;
         }
       })();
     }
