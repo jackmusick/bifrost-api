@@ -138,8 +138,6 @@ git commit -m "feat: refresh table hooks after batch invalidation"
 - Modify: `client/src/lib/app-sdk/wire-surface.ts`
 - Modify: `client/src/lib/app-sdk/sdk-contract.json`
 - Modify: `client/src/lib/app-sdk/sdk-contract.test.ts`
-- Modify: `api/src/services/sdk_package/sdk_src/wire-surface.ts`
-- Modify: `api/src/services/sdk_package/sdk_src/sdk-contract.json`
 
 **Step 1: Update the declared wire surface and run the tripwire**
 
@@ -152,7 +150,7 @@ git commit -m "feat: refresh table hooks after batch invalidation"
 - Bump `sdk-contract.json` from version 1 to version 2.
 - Add a dated history entry explaining that batch mutations now send table invalidation frames and compatible hooks must refetch.
 - Refresh the expected wire-surface snapshot hash.
-- Synchronize the API's packaged SDK source using the repository's established SDK-source sync mechanism; do not hand-diverge the copies.
+- The API image copies `client/src/lib/app-sdk` into its packaged SDK source during its Docker build; do not create or hand-maintain a second checked-in copy.
 
 **Step 3: Verify client and packaged contracts**
 
@@ -168,7 +166,7 @@ Expected: all selected tests pass and the API package reports contract version 2
 **Step 4: Commit**
 
 ```bash
-git add client/src/lib/app-sdk api/src/services/sdk_package/sdk_src
+git add client/src/lib/app-sdk
 git commit -m "feat: version table invalidation SDK contract"
 ```
 
