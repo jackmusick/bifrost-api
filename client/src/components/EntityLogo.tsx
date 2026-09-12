@@ -59,9 +59,11 @@ export function EntityLogo({
 			aria-label={ariaLabel}
 			aria-hidden={ariaHidden}
 		>
-			<span className="absolute inset-0 grid place-items-center">
-				{fallback}
-			</span>
+			{(!hasUsableSource || !imageLoaded) && (
+				<span className="absolute inset-0 grid place-items-center">
+					{fallback}
+				</span>
+			)}
 			{hasUsableSource ? (
 				<img
 					data-testid="entity-logo"
