@@ -576,7 +576,7 @@ describe("SolutionDetail", () => {
 		await user.click(screen.getByTestId("tab-contents"));
 		await user.click(screen.getByTestId("chip-workflows"));
 		const execute = screen.getByRole("button", {
-			name: "Sync Tickets", exact: true,
+			name: "Sync Tickets",
 		});
 		await user.click(execute);
 
@@ -596,7 +596,7 @@ describe("SolutionDetail", () => {
 			screen.queryByRole("button", { name: /edit form/i }),
 		).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Ticket Intake", exact: true }));
+		await user.click(screen.getByRole("button", { name: "Ticket Intake" }));
 		expect(mockNavigate).toHaveBeenCalledWith(
 			"/execute/form-1?from=solution:sol-1",
 		);
@@ -636,7 +636,7 @@ describe("SolutionDetail", () => {
 			"src",
 			APP_LOGO_DATA_URL,
 		);
-		await user.click(screen.getByRole("button", { name: "Solution App", exact: true }));
+		await user.click(screen.getByRole("button", { name: "Solution App" }));
 
 		expect(mockNavigate).toHaveBeenCalledWith(
 			"/apps/solution-app?from=solution:sol-1",
