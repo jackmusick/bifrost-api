@@ -31,7 +31,9 @@ import {
 } from "lucide-react";
 import { AgentMcpCopyButton } from "./AgentMcpCopyButton";
 
+import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { ResourceIcon } from "@/components/ResourceIcon";
+import { ResourceCatalogCard } from "@/components/catalog/ResourceCatalogCard";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +46,7 @@ import {
 	DataTableHeader,
 	DataTableRow,
 } from "@/components/ui/data-table";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 import { QueueBanner } from "@/components/agents/QueueBanner";
 import { Sparkline } from "@/components/agents/Sparkline";
@@ -54,14 +57,12 @@ import { term, useTerminology } from "@/lib/terminology";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import type { components } from "@/lib/v1";
 import {
-	CARD_HOVER,
 	CARD_SURFACE,
 	CHIP_OUTLINE,
 	GAP_CARD,
 	PILL_ACTIVE,
 	RADIUS_CARD,
 	TONE_MUTED,
-	TYPE_CARD_TITLE,
 	TYPE_MINI_STAT_VALUE,
 	TYPE_MUTED,
 	successRateTone,
@@ -307,68 +308,76 @@ function AgentGridCard({
 	const successRate = stats?.success_rate ?? 0;
 	const colorClass = successRateTone(successRate);
 	const hasRuns = (stats?.runs_7d ?? 0) > 0;
+	const navigate = useNavigate();
+	const terminology = useTerminology();
 
 	return (
-		<article
+		<div
 			onPointerEnter={() => prefetchAgentDetail(agent.id)}
 			onFocus={() => prefetchAgentDetail(agent.id)}
-			className={cn(
-				"group relative flex min-w-0 flex-col overflow-hidden",
-				CARD_SURFACE,
-				CARD_HOVER,
-			)}
 		>
-			<div className="border-b px-4 pb-3 pt-3.5">
-				<div className="flex min-w-0 flex-col gap-2">
-					<div className="flex min-w-0 items-start gap-2">
-						<ResourceIcon
-							kind="agent"
-							id={agent.id}
-							logo={agent.logo_url ?? null}
-							size="card"
-						/>
-						<Link
-							to={`/agents/${agent.id}`}
-							className={cn(
-								"min-w-0 flex-1 [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-[inherit] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring",
-								TYPE_CARD_TITLE,
-							)}
-						>
-							{agent.name}
-						</Link>
-					</div>
-					<div className="flex flex-wrap items-center gap-1.5">
-						{!agent.is_active ? (
-							<Badge variant="secondary" className="text-[11px]">
-								Paused
-							</Badge>
-						) : null}
-						{agent.is_solution_managed ? (
-							<span className="relative z-10 [&_a]:min-h-11">
-								<SolutionManagedBadge
-									solutionId={agent.solution_id}
-								/>
-							</span>
-						) : null}
-						{(agent.channels ?? []).slice(0, 3).map((c) => (
-							<ChannelBadge key={c} channel={c} />
-						))}
-					</div>
-				</div>
-				{agent.description ? (
-					<p
-						className={cn(
-							"mt-2 line-clamp-2 [overflow-wrap:anywhere]",
-							TYPE_MUTED,
-						)}
-					>
-						{agent.description}
-					</p>
-				) : null}
-			</div>
-			<div className="flex-1 space-y-3 p-4">
-				{hasRuns ? (
+			<ResourceCatalogCard
+				icon={
+					<ResourceIcon
+						kind="agent"
+						id={agent.id}
+						logo={agent.logo_url ?? null}
+						size="card"
+						className="border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300 [&_svg]:text-current"
+					/>
+				}
+				title={agent.name}
+				subtitle={
 					<>
+						{term(terminology, "agent", "singular")}
+						<span> · </span>
+						{agent.is_active ? "Active" : "Paused"}
+					</>
+				}
+				description={agent.description}
+				action={
+					<div className="flex items-center gap-1">
+						{agent.is_solution_managed ? (
+							<SolutionManagedBadge
+								solutionId={agent.solution_id}
+							/>
+						) : null}
+						<RecordActionsMenu label={`${agent.name} actions`}>
+							<DropdownMenuItem
+								className="min-h-11"
+								onSelect={() => navigate(`/agents/${agent.id}`)}
+							>
+								<Bot aria-hidden="true" className="size-4" />
+								Open Agent
+							</DropdownMenuItem>
+							<AgentMcpCopyButton
+								agentId={agent.id}
+								variant="menuitem"
+							/>
+						</RecordActionsMenu>
+					</div>
+				}
+				footer={
+					showOrg ? (
+						<p className="flex min-w-0 items-center gap-2">
+							{agent.organization_id ? (
+								<Building2 className="size-3.5 shrink-0" />
+							) : (
+								<Globe className="size-3.5 shrink-0" />
+							)}
+							<span className="truncate">{orgName}</span>
+						</p>
+					) : undefined
+				}
+				onOpen={() => navigate(`/agents/${agent.id}`)}
+			>
+				<div className="flex flex-wrap items-center gap-1.5">
+					{(agent.channels ?? []).slice(0, 3).map((c) => (
+						<ChannelBadge key={c} channel={c} />
+					))}
+				</div>
+				{hasRuns ? (
+					<div className="mt-3 space-y-3 border-t pt-3">
 						<div className="grid grid-cols-3 gap-3">
 							<MiniStat
 								label="Runs"
@@ -408,23 +417,15 @@ function AgentGridCard({
 								avg {formatDuration(stats!.avg_duration_ms)}
 							</span>
 						</div>
-					</>
+					</div>
 				) : (
-					<p className={cn("py-1", TYPE_MUTED)}>
+					<p className={cn("mt-3 border-t pt-3", TYPE_MUTED)}>
 						No runs yet ·{" "}
 						{agent.is_active ? "waiting for traffic" : "paused"}
 					</p>
 				)}
-			</div>
-			<div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
-				{showOrg ? (
-					<OrgBadge orgId={agent.organization_id} name={orgName} />
-				) : (
-					<span />
-				)}
-				{agent.id ? <AgentMcpCopyButton agentId={agent.id} /> : null}
-			</div>
-		</article>
+			</ResourceCatalogCard>
+		</div>
 	);
 }
 

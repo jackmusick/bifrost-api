@@ -17,17 +17,12 @@ import {
 	Webhook,
 } from "lucide-react";
 
+import { ResourceCatalogCard } from "@/components/catalog/ResourceCatalogCard";
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	DataTable,
 	DataTableBody,
@@ -110,6 +105,12 @@ function executeLabel(workflow: WorkflowListItem): string {
 	if (workflow.type === "tool") return "Test Tool";
 	if (workflow.type === "data_provider") return "Preview Data";
 	return "Execute Workflow";
+}
+
+function workflowTypeLabel(workflow: WorkflowListItem): string {
+	if (workflow.type === "tool") return "Tool";
+	if (workflow.type === "data_provider") return "Data Provider";
+	return "Workflow";
 }
 
 export function WorkflowListSurface({
@@ -337,75 +338,64 @@ export function WorkflowListSurface({
 	return (
 		<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))]">
 			{workflows.map((workflow) => (
-				<Card
+				<ResourceCatalogCard
 					key={workflow.id ?? workflow.name}
-					className="min-w-0 flex flex-col transition-colors hover:border-primary"
-				>
-					<CardHeader className="min-w-0 pb-2">
-						<div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-							<div className="flex items-center gap-2">
-								<WorkflowTypeBadge workflow={workflow} />
-							</div>
-							<div className="flex items-center justify-end gap-1">
-								{workflow.is_solution_managed && (
-									<SolutionManagedBadge
-										solutionId={workflow.solution_id}
-									/>
-								)}
-								{renderActions(workflow)}
-							</div>
-						</div>
-
-						<CardTitle className="min-w-0 [overflow-wrap:anywhere] font-mono text-base">
-							<Link
-								to={`/history?workflow=${encodeURIComponent(workflow.id ?? "")}`}
-								className="inline-flex min-h-11 min-w-0 items-center text-left [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							>
-								{workflow.name}
-							</Link>
-						</CardTitle>
-						{workflow.description && (
-							<CardDescription className="mt-2 min-w-0 [overflow-wrap:anywhere] text-sm">
-								{workflow.description}
-							</CardDescription>
-						)}
-					</CardHeader>
-
-					<CardContent className="mt-auto space-y-3 pt-0">
-						<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-							{workflow.category && (
-								<span>{workflow.category}</span>
-							)}
-							{workflow.category &&
-								(isPlatformAdmin ||
-									workflow.endpoint_enabled ||
-									workflow.is_orphaned ||
-									workflow.disable_global_key) && (
-									<span>·</span>
-								)}
-							{isPlatformAdmin && (
-								<span className="flex items-center gap-1">
-									{workflow.organization_id ? (
-										<>
-											<Building2 className="h-3 w-3" />
-											{getOrgName(
-												workflow.organization_id,
-											)}
-										</>
-									) : (
-										<>
-											<Globe className="h-3 w-3" />
-											Global
-										</>
-									)}
-								</span>
-							)}
-							{isPlatformAdmin && workflow.access_level && (
+					icon={
+						<span className="inline-grid size-12 shrink-0 place-items-center overflow-hidden rounded-[var(--bf-radius-control)] border border-primary/15 bg-primary/10 text-primary">
+							<Code aria-hidden="true" className="size-6" />
+						</span>
+					}
+					title={workflow.name}
+					subtitle={
+						<span className="inline-flex flex-wrap items-center gap-1.5">
+							<span>{workflowTypeLabel(workflow)}</span>
+							{workflow.category ? (
 								<>
 									<span>·</span>
+									<span>{workflow.category}</span>
+								</>
+							) : null}
+						</span>
+					}
+					description={workflow.description || "No description"}
+					action={
+						<div className="flex items-center justify-end gap-1">
+							{workflow.is_solution_managed && (
+								<SolutionManagedBadge
+									solutionId={workflow.solution_id}
+								/>
+							)}
+							{renderActions(workflow)}
+						</div>
+					}
+					footer={
+						<div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+							<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+								{isPlatformAdmin && (
+									<span className="flex min-w-0 items-center gap-1">
+										{workflow.organization_id ? (
+											<>
+												<Building2 className="size-3.5 shrink-0" />
+												<span className="truncate">
+													{getOrgName(
+														workflow.organization_id,
+													)}
+												</span>
+											</>
+										) : (
+											<>
+												<Globe className="size-3.5 shrink-0" />
+												<span className="truncate">
+													Global
+												</span>
+											</>
+										)}
+									</span>
+								)}
+								{isPlatformAdmin && workflow.access_level && (
 									<Tooltip>
 										<TooltipTrigger asChild>
-											<span className="flex items-center gap-1 cursor-help">
+											<span className="relative z-10 flex cursor-help items-center gap-1">
 												{workflow.access_level ===
 												"role_based" ? (
 													<>
@@ -433,86 +423,79 @@ export function WorkflowListSurface({
 													: "Role-based access required"}
 										</TooltipContent>
 									</Tooltip>
-								</>
-							)}
-						</div>
-
-						{(workflow.endpoint_enabled ||
-							workflow.is_orphaned ||
-							workflow.disable_global_key) && (
-							<div className="flex min-w-0 flex-wrap items-center gap-1.5">
-								{workflow.is_orphaned && (
-									<Badge
-										variant="outline"
-										className="bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]"
-										title="This workflow's file no longer exists."
-									>
-										<Unlink className="mr-1 h-3 w-3" />
-										Orphaned
-									</Badge>
-								)}
-								{workflow.endpoint_enabled && (
-									<Badge
-										variant={
-											workflow.public_endpoint
-												? "destructive"
-												: hasGlobalKey ||
-													  workflowsWithKeys.has(
-															workflow.name ?? "",
-													  )
-													? "default"
-													: "outline"
-										}
-										className={`motion-reduce:transition-none ${
-											workflow.public_endpoint
-												? "bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] border-[var(--bf-warning)]/20"
-												: hasGlobalKey ||
-													  workflowsWithKeys.has(
-															workflow.name ?? "",
-													  )
-													? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
-													: "text-muted-foreground hover:bg-accent"
-										}`}
-										title={
-											workflow.public_endpoint
-												? "Public webhook endpoint - no authentication required"
-												: hasGlobalKey ||
-													  workflowsWithKeys.has(
-															workflow.name ?? "",
-													  )
-													? "HTTP endpoint enabled with API key"
-													: "HTTP endpoint (no API key configured)"
-										}
-									>
-										{workflow.public_endpoint ? (
-											<AlertTriangle className="mr-1 h-3 w-3" />
-										) : (
-											<Webhook className="mr-1 h-3 w-3" />
-										)}
-										Endpoint
-									</Badge>
-								)}
-								{workflow.disable_global_key && (
-									<Badge
-										variant="outline"
-										className="bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] border-[var(--bf-warning)]/20"
-										title="This workflow only accepts workflow-specific API keys (global keys are disabled)"
-									>
-										Global Opt-Out
-									</Badge>
 								)}
 							</div>
-						)}
-
-						<Button
-							className="min-h-11 w-full"
-							onClick={() => onExecute(workflow)}
-						>
-							<PlayCircle className="mr-2 h-4 w-4" />
-							{executeLabel(workflow)}
-						</Button>
-					</CardContent>
-				</Card>
+						</div>
+					}
+					onOpen={() => onExecute(workflow)}
+				>
+					{(workflow.endpoint_enabled ||
+						workflow.is_orphaned ||
+						workflow.disable_global_key) && (
+						<div className="flex min-w-0 flex-wrap items-center gap-1.5">
+							{workflow.is_orphaned && (
+								<Badge
+									variant="outline"
+									className="bg-[var(--bf-warning-soft)] text-[var(--bf-warning)]"
+									title="This workflow's file no longer exists."
+								>
+									<Unlink className="mr-1 h-3 w-3" />
+									Orphaned
+								</Badge>
+							)}
+							{workflow.endpoint_enabled && (
+								<Badge
+									variant={
+										workflow.public_endpoint
+											? "destructive"
+											: hasGlobalKey ||
+												  workflowsWithKeys.has(
+														workflow.name ?? "",
+												  )
+												? "default"
+												: "outline"
+									}
+									className={`motion-reduce:transition-none ${
+										workflow.public_endpoint
+											? "bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] border-[var(--bf-warning)]/20"
+											: hasGlobalKey ||
+												  workflowsWithKeys.has(
+														workflow.name ?? "",
+												  )
+												? "bg-[var(--bf-success-soft)] text-[var(--bf-success)]"
+												: "text-muted-foreground hover:bg-accent"
+									}`}
+									title={
+										workflow.public_endpoint
+											? "Public webhook endpoint - no authentication required"
+											: hasGlobalKey ||
+												  workflowsWithKeys.has(
+														workflow.name ?? "",
+												  )
+												? "HTTP endpoint enabled with API key"
+												: "HTTP endpoint (no API key configured)"
+									}
+								>
+									{workflow.public_endpoint ? (
+										<AlertTriangle className="mr-1 h-3 w-3" />
+									) : (
+										<Webhook className="mr-1 h-3 w-3" />
+									)}
+									Endpoint
+								</Badge>
+							)}
+							{workflow.disable_global_key && (
+								<Badge
+									variant="outline"
+									className="bg-[var(--bf-warning-soft)] text-[var(--bf-warning)] border-[var(--bf-warning)]/20"
+									title="This workflow only accepts workflow-specific API keys (global keys are disabled)"
+								>
+									Global Opt-Out
+								</Badge>
+							)}
+						</div>
+					)}
+				</ResourceCatalogCard>
 			))}
 		</div>
 	);

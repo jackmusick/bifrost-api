@@ -41,9 +41,16 @@ describe("workflow recovery actions", () => {
 					onExecute={onExecute}
 				/>,
 			);
-			expect(
-				screen.getByRole("link", { name: "review_workflow" }),
-			).toHaveAttribute("href", "/history?workflow=review-workflow");
+			const primary =
+				viewMode === "grid"
+					? screen.getByRole("button", { name: "review_workflow" })
+					: screen.getByRole("link", { name: "review_workflow" });
+			if (viewMode === "table") {
+				expect(primary).toHaveAttribute(
+					"href",
+					"/history?workflow=review-workflow",
+				);
+			}
 			const menu = screen.getByRole("button", {
 				name: "review_workflow actions",
 			});
@@ -61,6 +68,31 @@ describe("workflow recovery actions", () => {
 			expect(onExecute).not.toHaveBeenCalled();
 		},
 	);
+
+	it("opens execution from the grid card primary target", async () => {
+		const workflow = {
+			id: "review-workflow",
+			name: "review_workflow",
+			type: "workflow",
+		} as WorkflowListItem;
+		const onExecute = vi.fn();
+		const { user } = renderWithProviders(
+			<WorkflowListSurface
+				workflows={[workflow]}
+				viewMode="grid"
+				isPlatformAdmin
+				canManageWorkflows
+				getOrgName={() => "Global"}
+				onExecute={onExecute}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: "review_workflow" }),
+		);
+
+		expect(onExecute).toHaveBeenCalledExactlyOnceWith(workflow);
+	});
 
 	it("opens the workflow history filter from the table row", async () => {
 		const workflow = {

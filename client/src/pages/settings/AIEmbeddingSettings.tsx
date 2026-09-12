@@ -108,7 +108,7 @@ export function AIEmbeddingSettings() {
 
 	const loading = loadingConnections || loadingConfig;
 	return (
-		<div className="min-w-0 max-w-3xl space-y-6 pb-8">
+		<div className="min-w-0 w-full space-y-6">
 			<div>
 				<h2 className="font-display text-2xl font-semibold tracking-tight">
 					Embeddings

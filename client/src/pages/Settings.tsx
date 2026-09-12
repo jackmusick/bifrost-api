@@ -232,132 +232,139 @@ export function Settings() {
 				title="Settings"
 				description="Manage platform settings and configuration"
 			/>
-			<Button
-				variant="outline"
-				className="h-auto min-h-11 w-full justify-between gap-3 whitespace-normal px-4 py-3 text-left lg:hidden"
-				aria-label={`Settings navigation: ${activeLabel}`}
-				aria-expanded={mobileNavigationOpen}
-				ref={mobileNavigationRef}
-				aria-controls="settings-navigation"
-				onClick={() => setMobileNavigationOpen((open) => !open)}
-			>
-				<span className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
-					<span className="block text-xs font-normal text-muted-foreground">
-						Settings navigation
-					</span>
-					<span className="block">{activeLabel}</span>
-				</span>
-				<ChevronDown
-					className={cn(
-						"size-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
-						mobileNavigationOpen && "rotate-180",
-					)}
-				/>
-			</Button>
-
-			<div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
-				<nav
-					id="settings-navigation"
-					aria-label="Settings sections"
-					className={cn(
-						"min-h-0 rounded-[var(--bf-radius-surface)] border bg-card p-2 lg:block lg:overflow-auto",
-						!mobileNavigationOpen && "hidden",
-					)}
+			<div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--bf-radius-feature)] border border-border/70 bg-card lg:flex-1">
+				<Button
+					variant="ghost"
+					className="h-auto min-h-12 w-full shrink-0 justify-between gap-3 rounded-none border-b border-border/70 bg-muted/20 whitespace-normal px-4 py-3 text-left lg:hidden"
+					aria-label={`Settings navigation: ${activeLabel}`}
+					aria-expanded={mobileNavigationOpen}
+					ref={mobileNavigationRef}
+					aria-controls="settings-navigation"
+					onClick={() => setMobileNavigationOpen((open) => !open)}
 				>
-					{settingsSections.map((section) => {
-						const SectionIcon = section.icon;
-						const isExpanded = sectionState.has(section.id);
-						const containsActive = section.id === activeSectionId;
+					<span className="min-w-0 space-y-1 [overflow-wrap:anywhere]">
+						<span className="block text-xs font-normal text-muted-foreground">
+							Settings navigation
+						</span>
+						<span className="block">{activeLabel}</span>
+					</span>
+					<ChevronDown
+						className={cn(
+							"size-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
+							mobileNavigationOpen && "rotate-180",
+						)}
+					/>
+				</Button>
 
-						return (
-							<div key={section.id} className="space-y-1">
-								<button
-									type="button"
-									aria-expanded={isExpanded}
-									aria-controls={`settings-section-${section.id}`}
-									onClick={() => toggleSection(section.id)}
-									className={cn(
-										"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-										containsActive && "text-foreground",
-										!containsActive &&
-											"text-muted-foreground",
-									)}
-								>
-									<SectionIcon className="h-4 w-4 shrink-0" />
-									<span className="flex-1">
-										{section.label}
-									</span>
-									<ChevronDown
-										className={cn(
-											"h-4 w-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
-											!isExpanded && "-rotate-90",
-										)}
-										aria-hidden="true"
-									/>
-								</button>
-
-								{isExpanded && (
-									<div
-										id={`settings-section-${section.id}`}
-										className="space-y-1 pb-2 pl-3"
-									>
-										{section.items.map((item) => {
-											const ItemIcon = item.icon;
-											const isActive =
-												item.value === currentTab;
-
-											return (
-												<button
-													key={item.value}
-													type="button"
-													aria-current={
-														isActive
-															? "page"
-															: undefined
-													}
-													onClick={() =>
-														handleRouteChange(
-															item.value,
-														)
-													}
-													className={cn(
-														"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-														isActive
-															? "bg-primary/10 font-medium text-primary"
-															: "text-muted-foreground",
-													)}
-												>
-													<ItemIcon className="h-4 w-4 shrink-0" />
-													<span>{item.label}</span>
-												</button>
-											);
-										})}
-									</div>
-								)}
-							</div>
-						);
-					})}
-				</nav>
-
-				<section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
-					<div
-						ref={contentRef}
-						data-page-scroll
-						className="min-w-0 pb-6 lg:min-h-0 lg:flex-1 lg:overflow-auto lg:px-1 lg:pr-3"
+				<div className="grid min-h-0 lg:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+					<nav
+						id="settings-navigation"
+						aria-label="Settings sections"
+						className={cn(
+							"min-h-0 space-y-2 border-b border-border/70 bg-muted/20 p-3 lg:block lg:overflow-auto lg:border-b-0 lg:border-r",
+							!mobileNavigationOpen && "hidden",
+						)}
 					>
-						{settingsSections
-							.flatMap((section) => section.items)
-							.filter((item) => visitedTabs.has(item.value))
-							.map((item) => (
-								<div
-									key={item.value}
-									hidden={item.value !== currentTab}
-								>
-									{createElement(item.content)}
+						{settingsSections.map((section) => {
+							const SectionIcon = section.icon;
+							const isExpanded = sectionState.has(section.id);
+							const containsActive =
+								section.id === activeSectionId;
+
+							return (
+								<div key={section.id} className="space-y-1">
+									<button
+										type="button"
+										aria-expanded={isExpanded}
+										aria-controls={`settings-section-${section.id}`}
+										onClick={() =>
+											toggleSection(section.id)
+										}
+										className={cn(
+											"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm font-medium transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+											containsActive && "text-primary",
+											!containsActive &&
+												"text-muted-foreground",
+										)}
+									>
+										<SectionIcon className="h-4 w-4 shrink-0" />
+										<span className="flex-1">
+											{section.label}
+										</span>
+										<ChevronDown
+											className={cn(
+												"h-4 w-4 shrink-0 transition-transform duration-[var(--bf-motion-disclosure)] motion-reduce:transition-none",
+												!isExpanded && "-rotate-90",
+											)}
+											aria-hidden="true"
+										/>
+									</button>
+
+									{isExpanded && (
+										<div
+											id={`settings-section-${section.id}`}
+											className="space-y-1 pb-2"
+										>
+											{section.items.map((item) => {
+												const ItemIcon = item.icon;
+												const isActive =
+													item.value === currentTab;
+
+												return (
+													<button
+														key={item.value}
+														type="button"
+														aria-current={
+															isActive
+																? "page"
+																: undefined
+														}
+														onClick={() =>
+															handleRouteChange(
+																item.value,
+															)
+														}
+														className={cn(
+															"flex min-h-11 w-full items-center gap-2 rounded-[var(--bf-radius-control)] px-3 py-2 text-left text-sm transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+															isActive
+																? "bg-primary/10 font-medium text-primary shadow-[inset_2px_0_0_var(--primary)] hover:bg-primary/15 hover:text-primary"
+																: "text-muted-foreground",
+														)}
+													>
+														<ItemIcon className="h-4 w-4 shrink-0" />
+														<span>
+															{item.label}
+														</span>
+													</button>
+												);
+											})}
+										</div>
+									)}
 								</div>
-							))}
-					</div>
-				</section>
+							);
+						})}
+					</nav>
+
+					<section className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+						<div
+							ref={contentRef}
+							data-page-scroll
+							className="min-w-0 p-4 sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-auto"
+						>
+							{settingsSections
+								.flatMap((section) => section.items)
+								.filter((item) => visitedTabs.has(item.value))
+								.map((item) => (
+									<div
+										key={item.value}
+										hidden={item.value !== currentTab}
+									>
+										{createElement(item.content)}
+									</div>
+								))}
+						</div>
+					</section>
+				</div>
 			</div>
 		</PageWorkspace>
 	);

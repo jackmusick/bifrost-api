@@ -1,12 +1,24 @@
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
-export function AgentMcpCopyButton({ agentId }: { agentId: string }) {
+type CopyEvent = {
+	preventDefault: () => void;
+	stopPropagation: () => void;
+};
+
+export function AgentMcpCopyButton({
+	agentId,
+	variant = "button",
+}: {
+	agentId: string;
+	variant?: "button" | "menuitem";
+}) {
 	const [pending, setPending] = useState(false);
 	const url = `${window.location.origin}/mcp/${agentId}`;
-	async function copy(event: MouseEvent) {
+	async function copy(event: CopyEvent) {
 		event.preventDefault();
 		event.stopPropagation();
 		if (pending) return;
@@ -22,6 +34,18 @@ export function AgentMcpCopyButton({ agentId }: { agentId: string }) {
 			setPending(false);
 		}
 	}
+	if (variant === "menuitem") {
+		return (
+			<DropdownMenuItem
+				className="min-h-11"
+				onSelect={(event) => void copy(event)}
+				disabled={pending}
+			>
+				<Copy className="size-4" aria-hidden="true" />
+				{pending ? "Copying…" : "Copy MCP URL"}
+			</DropdownMenuItem>
+		);
+	}
 	return (
 		<Button
 			variant="outline"
@@ -31,7 +55,6 @@ export function AgentMcpCopyButton({ agentId }: { agentId: string }) {
 			disabled={pending}
 			title={url}
 			aria-label="Copy agent MCP URL"
-			data-testid="agent-mcp-copy"
 		>
 			<Copy className="size-4" aria-hidden="true" />
 			{pending ? "Copying…" : "MCP URL"}

@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import { AppWindow, Bot, FileCode, Plug } from "lucide-react";
+import { AppWindow, Bot, FileInput, Plug } from "lucide-react";
 
 import { EntityLogo } from "@/components/EntityLogo";
 import { getIcon } from "@/lib/icons";
@@ -15,7 +15,7 @@ type EntityLogoKind = Extract<
 
 const KIND_FALLBACK = {
 	app: AppWindow,
-	form: FileCode,
+	form: FileInput,
 	agent: Bot,
 	integration: Plug,
 };

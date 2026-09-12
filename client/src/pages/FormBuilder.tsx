@@ -271,7 +271,7 @@ export function FormBuilder() {
 			}
 
 			toast.success("Form saved");
-			navigate("/forms");
+			navigate(backTo);
 		} catch (error: unknown) {
 			if (formPersisted) {
 				setSavePartial(true);
@@ -493,7 +493,21 @@ export function FormBuilder() {
 
 			<div className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 				<div className="space-y-2">
-					<div className="flex min-w-0 items-start gap-3">
+					<div className="flex min-w-0 items-center gap-3">
+						<Button
+							variant="ghost"
+							size="icon-lg"
+							disabled={isSaving}
+							onClick={() => navigate(backTo)}
+							aria-label={
+								fromSolution
+									? "Back to Solution"
+									: "Back to Forms"
+							}
+							className="shrink-0"
+						>
+							<ArrowLeft className="h-5 w-5" />
+						</Button>
 						{formId && !isSolutionManaged ? (
 							<FormLogoEditor
 								formId={formId}
@@ -526,17 +540,6 @@ export function FormBuilder() {
 					)}
 				</div>
 				<div className="flex flex-wrap items-center gap-2 lg:justify-end">
-					<Button
-						variant="outline"
-						size="icon-lg"
-						disabled={isSaving}
-						onClick={() => navigate(backTo)}
-						title={
-							fromSolution ? "Back to Solution" : "Back to Forms"
-						}
-					>
-						<ArrowLeft className="h-4 w-4" />
-					</Button>
 					<div className="flex items-center">
 						<Button
 							variant="outline"

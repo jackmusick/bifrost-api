@@ -232,3 +232,31 @@ PrettyInputDisplay applies the same framed surface, branded field labels, quiet 
 Collection tabs expose Edit and Delete only for editable collections through a context menu (right-click, Shift+F10, or touch long-press). Delete opens the existing confirmation flow. Desktop native dragging and Move left/right reorder the personal view; All remains fixed first. Selecting an overflow collection appends it to the visible tabs so its actions remain reachable.
 
 Collections appear only as Home tabs; no sidebar shortcuts are rendered on any route. Order is stored per account in this browser. Reordering a filtered scope preserves other collections' positions. It does not change shared collection ownership, content, grants, or other users' layouts, and does not yet sync between browsers/devices.
+
+### Shared resource cards and Settings refinement
+
+Home, Apps, Forms, Agents, and Workflows now consume ResourceCatalogCard.
+It owns the icon/title/action/description/footer layout, stretched primary
+click target, keyboard focus, and equal row heights. Catalog overflow menus
+retain editing, history, preview, and MCP copy actions. Form launch eligibility
+and Solution-managed restrictions remain intact. Agent catalog cards keep
+their management destination and fleet metrics; Home agents still open Chat.
+
+Settings navigation and content now share one bounded frame, with a tinted
+navigation surface and brand-colored active state. Embeddings and Usage no
+longer impose independent content widths. Mobile navigation stays collapsible,
+and visited panel drafts remain mounted. Form Builder back navigation sits
+beside the title and save returns to the originating Solution when present.
+
+Verified with scoped unit commands: Settings.test.tsx AIEmbeddingSettings.test.tsx
+AIUsageSettings.test.tsx (39 tests); ResourceCatalogCard.test.tsx ResourceCard.test.tsx
+ResourceIcon.test.tsx FormListSurface.test.tsx WorkflowListSurface.test.tsx
+FormBuilder.test.tsx (25 tests); Applications.test.tsx FleetPage.test.tsx
+AgentMcpCopyButton.test.tsx (34 tests). All passed using ./test.sh client unit --.
+Scoped ESLint and npm run tsc passed. Live Playwright coverage passed for
+forms-acceptance.admin.spec.ts, forms.user.spec.ts, home-catalog-acceptance.admin.spec.ts,
+and workflows.admin.spec.ts using ./test.sh client e2e. The workflow test
+was corrected to click the resource title after the dedicated launch button
+was removed, then passed in its scoped rerun. Desktop/mobile cards, menus,
+Settings navigation, and Form Builder back navigation were reviewed live.
+The full pre-PR gate was not rerun for this branch refinement; no merge.

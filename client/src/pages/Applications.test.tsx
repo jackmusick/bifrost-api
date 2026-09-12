@@ -165,21 +165,23 @@ describe("Applications — solution-managed badge (grid view)", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		await renderPage();
+		const { user } = await renderPage();
 		const badge = screen.getByTestId("solution-managed-badge");
 		expect(badge).toHaveAttribute("href", "/solutions/s1");
-		// Managed apps must not expose management menus.
+		await user.click(
+			screen.getByRole("button", { name: "Managed App actions" }),
+		);
 		expect(
-			screen.queryByRole("button", { name: "Managed App actions" }),
-		).not.toBeInTheDocument();
+			screen.getByRole("menuitem", { name: /open published/i }),
+		).toBeInTheDocument();
 		expect(
 			screen.queryByRole("button", { name: /delete application/i }),
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole("button", { name: /settings/i }),
+			screen.queryByRole("menuitem", { name: /settings/i }),
 		).not.toBeInTheDocument();
 		expect(
-			screen.queryByRole("button", { name: /code editor/i }),
+			screen.queryByRole("menuitem", { name: /code editor/i }),
 		).not.toBeInTheDocument();
 	});
 

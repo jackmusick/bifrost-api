@@ -229,6 +229,19 @@ describe("FormBuilder header controls", () => {
 			"lg",
 		);
 	});
+
+	it("keeps back navigation anchored to the solution return route", async () => {
+		mockLocation.mockReturnValue({ search: "?from=solution:solution-1" });
+		const { user } = renderWithProviders(<FormBuilder />, {
+			initialEntries: ["/forms/form-1?from=solution:solution-1"],
+		});
+
+		await user.click(
+			screen.getByRole("button", { name: "Back to Solution" }),
+		);
+
+		expect(mockNavigate).toHaveBeenCalledWith("/solutions/solution-1");
+	});
 });
 
 describe("FormBuilder save recovery", () => {
@@ -382,4 +395,32 @@ it("preserves loaded role assignments in an existing-form patch without additive
 		}),
 	);
 	expect(mockAssignRolesToForm).not.toHaveBeenCalled();
+});
+
+it("returns to the originating solution after saving from a solution route", async () => {
+	mockLocation.mockReturnValue({ search: "?from=solution:solution-1" });
+	const update = vi.fn().mockResolvedValue({ id: "form-1" });
+	const existing = mockUseForm().data;
+	mockUseForm.mockReturnValue({
+		data: {
+			...existing,
+			role_ids: ["existing-role"],
+			form_schema: {
+				fields: [{ name: "summary", label: "Summary", type: "text" }],
+			},
+		},
+	});
+	mockUseUpdateForm.mockReturnValue({
+		mutateAsync: update,
+		isPending: false,
+	});
+	const { user } = renderWithProviders(<FormBuilder />, {
+		initialEntries: ["/forms/form-1?from=solution:solution-1"],
+	});
+
+	await user.click(screen.getByRole("button", { name: "Save" }));
+
+	await waitFor(() =>
+		expect(mockNavigate).toHaveBeenCalledWith("/solutions/solution-1"),
+	);
 });

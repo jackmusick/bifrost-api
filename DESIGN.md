@@ -123,3 +123,19 @@ WorkspaceHeader gives directory tabs and detail breadcrumbs the same 48px
 navigation band, background, and divider. Descriptions must not add height to
 this row; table descriptions use an accessible About This Table popover with
 MarkdownContent. Preserve the frame position when navigating into a table.
+
+Settings is a contained workspace: navigation and settings content share one
+outer frame and divider, with a tinted navigation surface and a persistent
+brand-colored active item. The frame owns page width; individual settings
+panels should not impose narrower max-widths. Desktop navigation and content
+scroll independently; mobile navigation collapses into the frame header.
+
+Home is the visual reference for resource catalog cards. Home, Apps, Forms,
+Agents, and Workflows use ResourceCatalogCard: resource icon at the top left,
+pin or management action at the top right, shared title/type/description
+placement, and organization at the bottom left. The primary target stretches
+over the card; secondary controls remain separate accessible targets. Cards
+open the resource or its execution controls, never start a workflow merely
+by selecting the card. Agent management cards retain their details destination;
+Home agent cards retain Chat. Form editor back navigation belongs beside the
+title on the left, preserving the originating Solution when applicable.

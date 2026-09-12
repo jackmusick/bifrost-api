@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { RecordActionsMenu } from "@/components/common/RecordActionsMenu";
+import { ResourceCatalogCard } from "@/components/catalog/ResourceCatalogCard";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ResourceIcon } from "@/components/ResourceIcon";
 import { PageLoader } from "@/components/PageLoader";
@@ -71,17 +72,46 @@ function getApplicationPrimaryAction(
 
 function ApplicationActions({
 	app,
+	onLaunch,
+	onPreview,
 	onOpenSettings,
 	onOpenCode,
 	onDelete,
 }: { app: ApplicationListItem } & Pick<
 	ApplicationListSurfaceProps,
-	"onOpenSettings" | "onOpenCode" | "onDelete"
+	"onLaunch" | "onPreview" | "onOpenSettings" | "onOpenCode" | "onDelete"
 >) {
-	if (!onOpenSettings && (!onOpenCode || isV2App(app)) && !onDelete)
+	const showPublished = canLaunchApp(app);
+	const showPreview =
+		!isV2App(app) && app.has_unpublished_changes && onPreview;
+	if (
+		!showPublished &&
+		!showPreview &&
+		!onOpenSettings &&
+		(!onOpenCode || isV2App(app)) &&
+		!onDelete
+	)
 		return null;
 	return (
 		<RecordActionsMenu label={`${app.name} actions`}>
+			{showPublished && (
+				<DropdownMenuItem
+					className="min-h-11"
+					onSelect={() => onLaunch(app)}
+				>
+					<PlayCircle aria-hidden="true" className="size-4" />
+					Open Published
+				</DropdownMenuItem>
+			)}
+			{showPreview && (
+				<DropdownMenuItem
+					className="min-h-11"
+					onSelect={() => onPreview?.(app)}
+				>
+					<Eye aria-hidden="true" className="size-4" />
+					Open Preview
+				</DropdownMenuItem>
+			)}
 			{onOpenSettings && (
 				<DropdownMenuItem
 					className="min-h-11"
@@ -350,6 +380,8 @@ export function ApplicationListSurface({
 												!app.is_solution_managed && (
 													<ApplicationActions
 														app={app}
+														onLaunch={onLaunch}
+														onPreview={onPreview}
 														onOpenSettings={
 															onOpenSettings
 														}
@@ -373,11 +405,10 @@ export function ApplicationListSurface({
 			{apps.map((app) => {
 				const opensPreview =
 					!isV2App(app) && !canLaunchApp(app) && Boolean(onPreview);
-				const defaultTarget = canLaunchApp(app)
-					? () => onLaunch(app)
-					: !isV2App(app) && onPreview
-						? () => onPreview(app)
-						: undefined;
+				const defaultTarget = getApplicationPrimaryAction(app, {
+					onLaunch,
+					onPreview,
+				});
 				const orgLabel = isPlatformAdmin
 					? app.organization_id
 						? getOrgName(app.organization_id)
@@ -392,86 +423,85 @@ export function ApplicationListSurface({
 						onFocus={() =>
 							prefetchApplicationDetail(app, opensPreview)
 						}
-						onClick={defaultTarget}
-						className="group relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] bg-card ring-1 ring-inset ring-border transition-colors duration-[var(--bf-motion-feedback)] hover:ring-primary/40 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring "
 					>
-						<div className="border-b px-4 py-3">
-							<div className="flex items-start justify-between gap-3">
-								<div className="flex min-w-0 flex-1 items-start gap-3">
-									<ResourceIcon
-										kind="app"
-										id={app.id}
-										logo={app.logo_url ?? null}
-										size="card"
-									/>
-									{renderName(app)}
+						<ResourceCatalogCard
+							icon={
+								<ResourceIcon
+									kind="app"
+									id={app.id}
+									logo={app.logo_url ?? null}
+									size="card"
+									className="border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300 [&_svg]:text-current"
+								/>
+							}
+							title={app.name}
+							subtitle={
+								<>
+									{term(terminology, "app", "formalSingular")}
+									<span> · </span>
+									{isV2App(app) ? "Code app" : "Legacy app"}
+								</>
+							}
+							description={
+								app.description || (
+									<span className="italic text-muted-foreground/60">
+										No description
+									</span>
+								)
+							}
+							action={
+								<div className="flex items-center gap-1">
+									{app.is_solution_managed ? (
+										<SolutionManagedBadge
+											solutionId={app.solution_id}
+										/>
+									) : null}
+									{canManageApps ? (
+										<ApplicationActions
+											app={app}
+											onLaunch={onLaunch}
+											onPreview={onPreview}
+											onOpenSettings={
+												app.is_solution_managed
+													? undefined
+													: onOpenSettings
+											}
+											onOpenCode={
+												app.is_solution_managed
+													? undefined
+													: onOpenCode
+											}
+											onDelete={
+												app.is_solution_managed
+													? undefined
+													: onDelete
+											}
+										/>
+									) : null}
 								</div>
-								{app.is_solution_managed ? (
-									<SolutionManagedBadge
-										solutionId={app.solution_id}
-									/>
-								) : canManageApps ? (
-									<ApplicationActions
-										app={app}
-										onOpenSettings={onOpenSettings}
-										onOpenCode={onOpenCode}
-										onDelete={onDelete}
-									/>
-								) : null}
-							</div>
-						</div>
-
-						<div className="relative min-h-[72px] flex-1 px-4 py-3">
-							{app.description ? (
-								<p className="[overflow-wrap:anywhere] text-[13px] text-muted-foreground">
-									{app.description}
-								</p>
-							) : (
-								<p className="text-[13px] italic text-muted-foreground">
-									No description
-								</p>
-							)}
-
-							{!isV2App(app) && (
-								<div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-									{app.is_published && (
-										<button
-											type="button"
-											className="pointer-events-auto min-h-11 text-left text-[13px] font-medium text-foreground hover:text-primary"
-											onClick={(e) => {
-												e.stopPropagation();
-												onLaunch(app);
-											}}
-										>
-											<PlayCircle className="-mt-0.5 mr-1.5 inline h-3.5 w-3.5" />
-											Open Published
-										</button>
-									)}
-									{canManageApps &&
-										app.has_unpublished_changes &&
-										onPreview && (
-											<button
-												type="button"
-												className="pointer-events-auto min-h-11 text-left text-[13px] font-medium text-foreground hover:text-primary"
-												onClick={(e) => {
-													e.stopPropagation();
-													onPreview(app);
-												}}
-											>
-												<Eye className="-mt-0.5 mr-1.5 inline h-3.5 w-3.5" />
-												Open Preview
-											</button>
+							}
+							footer={
+								orgLabel ? (
+									<p className="flex min-w-0 items-center gap-2">
+										{app.organization_id ? (
+											<Building2 className="size-3.5 shrink-0" />
+										) : (
+											<Globe className="size-3.5 shrink-0" />
 										)}
-								</div>
-							)}
-						</div>
-
-						<div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
+										<span className="truncate">
+											{orgLabel}
+										</span>
+									</p>
+								) : undefined
+							}
+							onOpen={() => defaultTarget?.()}
+							disabled={!defaultTarget}
+						>
 							<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 								{app.is_published && (
 									<Badge
 										variant="outline"
-										className="border-[var(--bf-success)]/20 bg-[var(--bf-success)]/10 text-[var(--bf-success)] px-1.5 py-0 text-xs"
+										className="border-[var(--bf-success)]/20 bg-[var(--bf-success)]/10 px-1.5 py-0 text-xs text-[var(--bf-success)]"
 									>
 										{isV2App(app)
 											? "Deployed"
@@ -481,38 +511,24 @@ export function ApplicationListSurface({
 								{app.has_unpublished_changes && (
 									<Badge
 										variant="outline"
-										className="border-[var(--bf-warning)]/20 bg-[var(--bf-warning)]/10 px-1.5 py-0 text-[10px] text-[var(--bf-warning)]"
+										className="border-[var(--bf-warning)]/20 bg-[var(--bf-warning)]/10 px-1.5 py-0 text-xs text-[var(--bf-warning)]"
 									>
 										Draft
 									</Badge>
 								)}
 								{!app.is_published &&
 									!app.has_unpublished_changes && (
-										<span className="text-[11px] text-muted-foreground">
+										<Badge
+											variant="secondary"
+											className="text-xs"
+										>
 											{isV2App(app)
 												? "Not deployed"
 												: "Empty"}
-										</span>
+										</Badge>
 									)}
 							</div>
-							{orgLabel ? (
-								<Badge
-									variant={
-										app.organization_id
-											? "outline"
-											: "default"
-									}
-									className="h-auto max-w-full whitespace-normal [overflow-wrap:anywhere] px-1.5 py-0.5 text-[10px]"
-								>
-									{app.organization_id ? (
-										<Building2 className="mr-1 h-3 w-3" />
-									) : (
-										<Globe className="mr-1 h-3 w-3" />
-									)}
-									{orgLabel}
-								</Badge>
-							) : null}
-						</div>
+						</ResourceCatalogCard>
 					</div>
 				);
 			})}

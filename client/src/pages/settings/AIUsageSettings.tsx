@@ -44,7 +44,7 @@ export function AIUsageSettings() {
 	};
 
 	return (
-		<div className="min-w-0 max-w-5xl space-y-6">
+		<div className="min-w-0 w-full space-y-6">
 			<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div><h2 ref={headingRef} tabIndex={-1} className="font-display text-2xl font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring">Usage & pricing</h2><p className="mt-1 text-sm text-muted-foreground">Maintain per-model rates used to calculate AI spend.</p></div>
 				<Button className="min-h-11 w-full sm:w-auto" onClick={() => { saveMutation.reset(); setEditing(null); }}><Plus className="mr-2 h-4 w-4" />Add pricing</Button>
