@@ -145,6 +145,7 @@
 | PUT | `/api/config/{config_id}` |
 | GET | `/api/decorator-properties` |
 | PUT | `/api/decorator-properties` |
+| POST | `/api/dependencies/availability` |
 | GET | `/api/dependencies/{entity_type}/{entity_id}` |
 | DELETE | `/api/endpoints/{workflow_id}` |
 | GET | `/api/endpoints/{workflow_id}` |
