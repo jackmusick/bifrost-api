@@ -1401,7 +1401,13 @@ async def sdk_integrations_refresh_token(
         )
         stored_token = None
         if provider.oauth_flow_type == "authorization_code":
-            stored_token = await token_repo.get_org_level_for_provider(provider.id)
+            # Providers may rotate refresh tokens. Hold a row lock through
+            # refresh + persistence so concurrent workflow 401 retries cannot
+            # both submit the same one-time refresh token.
+            stored_token = await token_repo.get_org_level_for_provider(
+                provider.id,
+                for_update=True,
+            )
             if not stored_token or not stored_token.encrypted_refresh_token:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
