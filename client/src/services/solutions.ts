@@ -44,6 +44,9 @@ export type SolutionDeployEnqueued =
 	components["schemas"]["SolutionDeployEnqueued"];
 export type SolutionDeployJobStatus =
 	components["schemas"]["SolutionDeployJobStatus"];
+export type SolutionSdkStatus = components["schemas"]["SolutionSdkStatus"];
+export type SolutionSdkUpdateResponse =
+	components["schemas"]["SolutionSdkUpdateResponse"];
 
 interface RequestOptions {
 	signal?: AbortSignal;
@@ -200,6 +203,40 @@ export async function syncSolution(
 	);
 	if (error)
 		throw new Error(getErrorMessage(error, "Failed to sync solution"));
+}
+
+export async function getSolutionSdkStatus(
+	solutionId: string,
+	options: RequestOptions = {},
+): Promise<SolutionSdkStatus> {
+	const { signal } = options;
+	const { data, error } = await apiClient.GET(
+		"/api/solutions/{solution_id}/sdk/status",
+		{ params: { path: { solution_id: solutionId } }, signal },
+	);
+	if (error) {
+		throw new Error(
+			getErrorMessage(error, "Failed to get Solution SDK status"),
+		);
+	}
+	return data;
+}
+
+export async function updateSolutionAppSdks(
+	solutionId: string,
+	options: RequestOptions = {},
+): Promise<SolutionSdkUpdateResponse> {
+	const { signal } = options;
+	const { data, error } = await apiClient.POST(
+		"/api/solutions/{solution_id}/sdk/update",
+		{ params: { path: { solution_id: solutionId } }, signal },
+	);
+	if (error) {
+		throw new Error(
+			getErrorMessage(error, "Failed to queue Solution app SDK updates"),
+		);
+	}
+	return data;
 }
 
 /**

@@ -31,7 +31,12 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useApplications, useDeleteApplication } from "@/hooks/useApplications";
+import {
+	useApplications,
+	useDeleteApplication,
+	useUpdateApplicationSdk,
+} from "@/hooks/useApplications";
+import { useApplicationSdkUpdateJobs } from "@/hooks/useApplicationSdkUpdateJobs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
@@ -78,6 +83,8 @@ export function Applications() {
 	);
 	const applications = applicationsData?.applications ?? [];
 	const deleteApplication = useDeleteApplication({ errorToast: false });
+	const updateApplicationSdk = useUpdateApplicationSdk();
+	const sdkUpdateJobs = useApplicationSdkUpdateJobs();
 
 	// Fetch organizations for name lookup (platform admins only)
 	const { data: organizations } = useOrganizations({
@@ -114,6 +121,15 @@ export function Applications() {
 		setSelectedApp({ id: app.id, name: app.name });
 		setDeleteError(false);
 		setIsDeleteDialogOpen(true);
+	};
+
+	const handleUpdateSdk = async (app: ApplicationListItem) => {
+		const operation = await updateApplicationSdk.mutateAsync({
+			params: { path: { app_id: app.id } },
+		});
+		sdkUpdateJobs.trackAccepted([
+			{ ...operation, application_id: app.id },
+		]);
 	};
 
 	const handleConfirmDelete = async () => {
@@ -265,7 +281,13 @@ export function Applications() {
 						onPreview={handlePreview}
 						onOpenSettings={handleOpenSettings}
 						onOpenCode={handleOpenCode}
+						onUpdateSdk={(app) => {
+							void handleUpdateSdk(app);
+						}}
 						onDelete={handleDelete}
+						getSdkUpdateState={(app) =>
+							sdkUpdateJobs.getUpdateState(app.id)
+						}
 						emptySearchActive={Boolean(searchTerm)}
 					/>
 				)}

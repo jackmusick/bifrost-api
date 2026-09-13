@@ -5,6 +5,7 @@ import {
 	MoreVertical,
 	Pencil,
 	PowerOff,
+	RefreshCw,
 	Trash2,
 } from "lucide-react";
 
@@ -24,6 +25,9 @@ interface Props {
 	isInactive: boolean;
 	onCapture: () => void;
 	onExport: () => void;
+	onUpdateAppSdks?: () => void;
+	appSdkUpdateDisabled?: boolean;
+	appSdkUpdating?: boolean;
 	onEdit: () => void;
 	/** Non-destructive uninstall → flips to inactive. Only shown when active. */
 	onUninstall: () => void;
@@ -43,6 +47,9 @@ export function SolutionActionsMenu({
 	isInactive,
 	onCapture,
 	onExport,
+	onUpdateAppSdks,
+	appSdkUpdateDisabled = false,
+	appSdkUpdating = false,
 	onEdit,
 	onUninstall,
 	onHardDelete,
@@ -85,6 +92,26 @@ export function SolutionActionsMenu({
 					)}
 					Export Solution
 				</DropdownMenuItem>
+				{onUpdateAppSdks && (
+					<DropdownMenuItem
+						onClick={onUpdateAppSdks}
+						disabled={busy || appSdkUpdateDisabled || appSdkUpdating}
+						className="min-h-11 whitespace-normal"
+						data-testid="update-solution-app-sdks"
+					>
+						{appSdkUpdating ? (
+							<Loader2
+								aria-hidden="true"
+								className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
+							/>
+						) : (
+							<RefreshCw className="mr-2 h-4 w-4" />
+						)}
+						{appSdkUpdating
+							? "Updating app SDKs"
+							: "Update app SDKs"}
+					</DropdownMenuItem>
+				)}
 				<DropdownMenuItem
 					disabled={busy}
 					onClick={onEdit}

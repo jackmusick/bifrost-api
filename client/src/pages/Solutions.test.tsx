@@ -67,6 +67,11 @@ vi.mock("@/services/solutions", () => ({
 		mockInstallSolutionFromRepo(...a),
 }));
 
+const mockUseApplications = vi.fn();
+vi.mock("@/hooks/useApplications", () => ({
+	useApplications: () => mockUseApplications(),
+}));
+
 function makeSolution(overrides: Record<string, unknown> = {}) {
 	return {
 		id: "sol-1",
@@ -84,6 +89,7 @@ function makeSolution(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockListSolutions.mockResolvedValue({ solutions: [] });
+	mockUseApplications.mockReturnValue({ data: { applications: [] } });
 	mockSearchParams = new URLSearchParams();
 });
 
@@ -163,6 +169,47 @@ describe("Solutions — list", () => {
 		await renderPage();
 		await screen.findByText("Versioned");
 		expect(screen.getByText("v1.2.3")).toBeInTheDocument();
+	});
+
+	it("aggregates SDK drift from the applications list without per-Solution status calls", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-sdk",
+					name: "SDK Solution",
+					slug: "sdk-solution",
+				}),
+			],
+		});
+		mockUseApplications.mockReturnValue({
+			data: {
+				applications: [
+					{
+						id: "app-1",
+						name: "Contained App",
+						slug: "contained-app",
+						organization_id: null,
+						published_at: null,
+						created_at: "2026-09-12T12:00:00Z",
+						updated_at: "2026-09-12T12:00:00Z",
+						created_by: null,
+						is_published: true,
+						has_unpublished_changes: false,
+						access_level: "authenticated",
+						app_model: "standalone_v2",
+						is_solution_managed: true,
+						solution_id: "sol-sdk",
+						sdk_status: "update_available",
+						sdk_source_available: true,
+					},
+				],
+			},
+		});
+
+		await renderPage();
+
+		expect(await screen.findByText("SDK update available")).toBeVisible();
+		expect(mockUseApplications).toHaveBeenCalled();
 	});
 
 	it("renders colored entity count badges in a wrapping card footer", async () => {

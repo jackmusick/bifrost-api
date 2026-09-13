@@ -2,10 +2,12 @@ import {
 	AppWindow,
 	Building2,
 	Code2,
+	CircleSlash,
 	Eye,
 	Globe,
 	Pencil,
 	PlayCircle,
+	RefreshCw,
 	Trash2,
 } from "lucide-react";
 
@@ -15,6 +17,11 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ResourceIcon } from "@/components/ResourceIcon";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
+import {
+	ApplicationSdkStatusBadge,
+	canUpdateApplicationSdk,
+	type ApplicationSdkUpdateState,
+} from "@/components/applications/ApplicationSdkStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,7 +54,9 @@ export interface ApplicationListSurfaceProps {
 	onPreview?: (app: ApplicationListItem) => void;
 	onOpenSettings?: (app: ApplicationListItem) => void;
 	onOpenCode?: (app: ApplicationListItem) => void;
+	onUpdateSdk?: (app: ApplicationListItem) => void;
 	onDelete?: (app: ApplicationListItem) => void;
+	getSdkUpdateState?: (app: ApplicationListItem) => ApplicationSdkUpdateState;
 	onCreateEmpty?: () => void;
 	emptySearchActive?: boolean;
 }
@@ -76,19 +85,34 @@ function ApplicationActions({
 	onPreview,
 	onOpenSettings,
 	onOpenCode,
+	onUpdateSdk,
 	onDelete,
+	updateState = "idle",
 }: { app: ApplicationListItem } & Pick<
 	ApplicationListSurfaceProps,
-	"onLaunch" | "onPreview" | "onOpenSettings" | "onOpenCode" | "onDelete"
->) {
+	| "onLaunch"
+	| "onPreview"
+	| "onOpenSettings"
+	| "onOpenCode"
+	| "onUpdateSdk"
+	| "onDelete"
+> & { updateState?: ApplicationSdkUpdateState }) {
 	const showPublished = canLaunchApp(app);
 	const showPreview =
 		!isV2App(app) && app.has_unpublished_changes && onPreview;
+	const sdkUpdateAllowed = canUpdateApplicationSdk(app, updateState);
+	const sdkStatusNeedsMenu =
+		updateState === "failed" ||
+		updateState === "updating" ||
+		app.sdk_status === "update_available" ||
+		app.sdk_status === "update_required" ||
+		app.sdk_status === "unknown";
 	if (
 		!showPublished &&
 		!showPreview &&
 		!onOpenSettings &&
 		(!onOpenCode || isV2App(app)) &&
+		!sdkStatusNeedsMenu &&
 		!onDelete
 	)
 		return null;
@@ -130,6 +154,33 @@ function ApplicationActions({
 					Code editor
 				</DropdownMenuItem>
 			)}
+			{sdkStatusNeedsMenu && onUpdateSdk && (
+				<DropdownMenuItem
+					className="min-h-11"
+					disabled={!sdkUpdateAllowed}
+					onSelect={() => {
+						if (sdkUpdateAllowed) onUpdateSdk(app);
+					}}
+				>
+					{app.sdk_source_available ? (
+						<RefreshCw aria-hidden="true" className="size-4" />
+					) : (
+						<CircleSlash
+							aria-hidden="true"
+							className="size-4"
+						/>
+					)}
+					{!app.sdk_source_available
+						? "Source unavailable"
+						: updateState === "updating"
+							? "Updating SDK"
+							: updateState === "failed"
+								? "Retry SDK update"
+								: app.sdk_status === "unknown"
+									? "Rebuild SDK"
+									: "Update SDK"}
+				</DropdownMenuItem>
+			)}
 			{onDelete && (
 				<DropdownMenuItem
 					variant="destructive"
@@ -155,11 +206,22 @@ export function ApplicationListSurface({
 	onPreview,
 	onOpenSettings,
 	onOpenCode,
+	onUpdateSdk,
 	onDelete,
+	getSdkUpdateState,
 	onCreateEmpty,
 	emptySearchActive = false,
 }: ApplicationListSurfaceProps) {
 	const terminology = useTerminology();
+	const renderSdkBadge = (app: ApplicationListItem, showCurrent = false) => (
+		<ApplicationSdkStatusBadge
+			status={app.sdk_status}
+			sourceAvailable={app.sdk_source_available}
+			sourceUnavailable={!app.sdk_source_available}
+			showCurrent={showCurrent}
+			updateState={getSdkUpdateState?.(app) ?? "idle"}
+		/>
+	);
 	const renderName = (app: ApplicationListItem) => {
 		const open = getApplicationPrimaryAction(app, { onLaunch, onPreview });
 		return (
@@ -237,6 +299,14 @@ export function ApplicationListSurface({
 								!isV2App(app) &&
 								!canLaunchApp(app) &&
 								Boolean(onPreview);
+							const updateState =
+								getSdkUpdateState?.(app) ?? "idle";
+							const sdkStatusNeedsMenu =
+								updateState === "failed" ||
+								updateState === "updating" ||
+								app.sdk_status === "update_available" ||
+								app.sdk_status === "update_required" ||
+								app.sdk_status === "unknown";
 							const open = getApplicationPrimaryAction(app, {
 								onLaunch,
 								onPreview,
@@ -331,6 +401,7 @@ export function ApplicationListSurface({
 															: "Empty"}
 													</Badge>
 												)}
+											{renderSdkBadge(app, true)}
 										</div>
 									</DataTableCell>
 									<DataTableCell
@@ -377,16 +448,29 @@ export function ApplicationListSurface({
 												/>
 											)}
 											{canManageApps &&
-												!app.is_solution_managed && (
+												(!app.is_solution_managed ||
+													sdkStatusNeedsMenu) && (
 													<ApplicationActions
 														app={app}
 														onLaunch={onLaunch}
 														onPreview={onPreview}
 														onOpenSettings={
-															onOpenSettings
+															app.is_solution_managed
+																? undefined
+																: onOpenSettings
 														}
-														onOpenCode={onOpenCode}
-														onDelete={onDelete}
+														onOpenCode={
+															app.is_solution_managed
+																? undefined
+																: onOpenCode
+														}
+														onUpdateSdk={onUpdateSdk}
+														onDelete={
+															app.is_solution_managed
+																? undefined
+																: onDelete
+														}
+														updateState={updateState}
 													/>
 												)}
 										</div>
@@ -471,10 +555,15 @@ export function ApplicationListSurface({
 													? undefined
 													: onOpenCode
 											}
+											onUpdateSdk={onUpdateSdk}
 											onDelete={
 												app.is_solution_managed
 													? undefined
 													: onDelete
+											}
+											updateState={
+												getSdkUpdateState?.(app) ??
+												"idle"
 											}
 										/>
 									) : null}
@@ -527,6 +616,7 @@ export function ApplicationListSurface({
 												: "Empty"}
 										</Badge>
 									)}
+								{renderSdkBadge(app)}
 							</div>
 						</ResourceCatalogCard>
 					</div>
