@@ -27,6 +27,28 @@ vi.mock("./ws-client", () => ({
 
 import { useTable } from "./use-table";
 
+function makePage(ids: string[], total: number, table_id = "tbl-uuid") {
+  return new Response(
+    JSON.stringify({
+      documents: ids.map((id) => ({ id, data: { label: id } })),
+      table_id,
+      total,
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+function deferredPage(ids: string[], total: number, table_id = "tbl-uuid") {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((r) => {
+    resolve = r;
+  });
+  return {
+    promise,
+    resolve: () => resolve(makePage(ids, total, table_id)),
+  };
+}
+
 describe("useTable", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -122,6 +144,169 @@ describe("useTable", () => {
 
     await waitFor(() => expect(result.current.rows[0]?.id).toBe("after"));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes the authoritative page snapshot after table invalidation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["before"], 1))
+      .mockResolvedValueOnce(makePage(["after", "extra"], 5));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() =>
+      useTable("t1", {
+        where: { status: "active" },
+        page: 3,
+        pageSize: 2,
+        order_by: "created_at",
+        order_dir: "desc",
+        scope: "org-a",
+      }),
+    );
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("before"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await waitFor(() =>
+      expect(result.current.rows.map((row) => row.id)).toEqual([
+        "after",
+        "extra",
+      ]),
+    );
+    expect(result.current.total).toBe(5);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      where: { status: "active" },
+      limit: 2,
+      offset: 4,
+      order_by: "created_at",
+      order_dir: "desc",
+    });
+    expect(fetchMock.mock.calls[1][0]).toMatch(/scope=org-a$/);
+  });
+
+  it("coalesces an invalidation burst during one pass into one subsequent refresh", async () => {
+    const firstRefresh = deferredPage(["first"], 1);
+    const trailingRefresh = deferredPage(["trailing"], 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(trailingRefresh.promise);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useTable("t1", { pageSize: 10 }));
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("initial"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(result.current.rows[0]?.id).toBe("initial");
+
+    await act(async () => {
+      firstRefresh.resolve();
+      await firstRefresh.promise;
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(result.current.rows[0]?.id).toBe("first");
+
+    await act(async () => {
+      trailingRefresh.resolve();
+      await trailingRefresh.promise;
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("trailing"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("queues one additional refresh for invalidations during the trailing refresh", async () => {
+    const firstRefresh = deferredPage(["first"], 1);
+    const trailingRefresh = deferredPage(["trailing"], 1);
+    const finalRefresh = deferredPage(["final"], 1);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockReturnValueOnce(firstRefresh.promise)
+      .mockReturnValueOnce(trailingRefresh.promise)
+      .mockReturnValueOnce(finalRefresh.promise)
+      .mockResolvedValueOnce(makePage(["later"], 1));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useTable("t1", { pageSize: 10 }));
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("initial"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      firstRefresh.resolve();
+      await firstRefresh.promise;
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await act(async () => {
+      trailingRefresh.resolve();
+      await trailingRefresh.promise;
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(result.current.rows[0]?.id).toBe("trailing");
+
+    await act(async () => {
+      finalRefresh.resolve();
+      await finalRefresh.promise;
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("final"));
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("later"));
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("resets invalidation coalescing after a rejected refresh", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makePage(["initial"], 1))
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce(makePage(["recovered"], 1));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { result } = renderHook(() => useTable("t1", { pageSize: 10 }));
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("initial"));
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+    await waitFor(() =>
+      expect(result.current.error?.message).toBe("temporary failure"),
+    );
+
+    act(() => {
+      lastOnEvent?.({ type: "table_invalidated", table_id: "tbl-uuid" });
+    });
+
+    await waitFor(() => expect(result.current.rows[0]?.id).toBe("recovered"));
+    expect(result.current.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("applies updates by replacing the row with matching id", async () => {

@@ -8,13 +8,13 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
-import time
 import zipfile
 
 import click
 
 from bifrost.app_binding import AppBinding, find_app_root, read_app_binding, write_app_binding
 from bifrost.client import BifrostClient
+from bifrost.platform_jobs import poll_platform_job
 from bifrost.refs import RefResolver
 
 APP_DEPLOY_TIMEOUT_SECONDS = 20 * 60
@@ -288,23 +288,14 @@ def swap_slugs_cmd(app_a: str, app_b: str, api_url: str | None) -> None:
 
 
 async def _wait_for_deploy(client: BifrostClient, job_id: str) -> dict:
-    deadline = time.monotonic() + APP_DEPLOY_TIMEOUT_SECONDS
-    last_phase = None
-    while time.monotonic() < deadline:
-        response = await client.get(f"/api/platform-jobs/{job_id}")
-        response.raise_for_status()
-        job = response.json()
-        phase = (job.get("progress") or {}).get("phase")
-        if phase and phase != last_phase:
-            click.echo(phase, err=True)
-            last_phase = phase
-        if job.get("status") == "succeeded":
-            return job
-        if job.get("status") in {"failed", "cancelled"}:
-            error = (job.get("error") or {}).get("message") or job.get("status")
-            raise click.ClickException(f"App deploy failed: {error}")
-        await asyncio.sleep(2)
-    raise click.ClickException(f"App deploy timed out; job {job_id} is still running.")
+    return await poll_platform_job(
+        client,
+        job_id,
+        label="Deploy",
+        failure_label="App deploy",
+        timeout_seconds=APP_DEPLOY_TIMEOUT_SECONDS,
+        timeout_operation="app deploy",
+    )
 
 
 @app_group.command("deploy")

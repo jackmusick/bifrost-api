@@ -5,9 +5,14 @@ import { useIsDesktop } from "@/hooks/useMediaQuery";
  * Lists all App Builder applications with management capabilities.
  */
 
-import { useState, useRef } from "react";
+import { useId, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, LayoutGrid, Table as TableIcon } from "lucide-react";
+import {
+	RefreshCw,
+	LayoutGrid,
+	Table as TableIcon,
+	CheckSquare,
+} from "lucide-react";
 import { AppInfoDialog } from "@/components/app-builder/AppInfoDialog";
 import {
 	ApplicationListSurface,
@@ -31,7 +36,14 @@ import {
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useApplications, useDeleteApplication } from "@/hooks/useApplications";
+import {
+	batchUpdateApplicationSdks,
+	useApplications,
+	useDeleteApplication,
+	useUpdateApplicationSdk,
+} from "@/hooks/useApplications";
+import { useApplicationSdkUpdateJobs } from "@/hooks/useApplicationSdkUpdateJobs";
+import { canUpdateApplicationSdk } from "@/components/applications/ApplicationSdkStatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganizations } from "@/hooks/useOrganizations";
 import { SearchBox } from "@/components/search/SearchBox";
@@ -39,10 +51,12 @@ import { useSearch } from "@/hooks/useSearch";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { term, useTerminology } from "@/lib/terminology";
 import type { components } from "@/lib/v1";
+import { toast } from "sonner";
 
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Applications() {
+	const updateAllSdkDescriptionId = useId();
 	const isDesktop = useIsDesktop();
 	const deleteBusy = useRef(false);
 	const [deletePending, setDeletePending] = useState(false);
@@ -55,6 +69,11 @@ export function Applications() {
 	);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+	const [selectionMode, setSelectionMode] = useState(false);
+	const [selectedSdkUpdateIds, setSelectedSdkUpdateIds] = useState<
+		Set<string>
+	>(new Set());
+	const [batchUpdatePending, setBatchUpdatePending] = useState(false);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [infoDialogSlug, setInfoDialogSlug] = useState<string | null>(null);
 	const [selectedApp, setSelectedApp] = useState<{
@@ -78,6 +97,8 @@ export function Applications() {
 	);
 	const applications = applicationsData?.applications ?? [];
 	const deleteApplication = useDeleteApplication({ errorToast: false });
+	const updateApplicationSdk = useUpdateApplicationSdk();
+	const sdkUpdateJobs = useApplicationSdkUpdateJobs();
 
 	// Fetch organizations for name lookup (platform admins only)
 	const { data: organizations } = useOrganizations({
@@ -116,6 +137,122 @@ export function Applications() {
 		setIsDeleteDialogOpen(true);
 	};
 
+	const handleUpdateSdk = async (app: ApplicationListItem) => {
+		try {
+			const operation = await updateApplicationSdk.mutateAsync({
+				params: { path: { app_id: app.id } },
+			});
+			sdkUpdateJobs.trackAccepted([
+				{ ...operation, application_id: app.id },
+			]);
+		} catch {
+			// useUpdateApplicationSdk owns the user-facing error toast.
+		}
+	};
+
+	// Filter and search applications
+	const filteredApps = useSearch(applications || [], searchTerm, [
+		"name",
+		"description",
+		"slug",
+		(app) => app.id,
+	]);
+
+	const actionableApps = (applications as ApplicationListItem[]).filter(
+		(app) => canUpdateApplicationSdk(app, sdkUpdateJobs.getUpdateState(app.id)),
+	);
+	const visibleActionableApps = (filteredApps as ApplicationListItem[]).filter(
+		(app) => canUpdateApplicationSdk(app, sdkUpdateJobs.getUpdateState(app.id)),
+	);
+	const selectedActionableApps = actionableApps.filter((app) =>
+		selectedSdkUpdateIds.has(app.id),
+	);
+	const actionableCount = actionableApps.length;
+	const hiddenActionableCount = Math.max(
+		actionableCount - visibleActionableApps.length,
+		0,
+	);
+	const selectedCount = selectedActionableApps.length;
+	const hasSearch = searchTerm.trim().length > 0;
+	const updateAllSdkDescription =
+		hasSearch && hiddenActionableCount > 0
+			? `Includes all actionable ${term(terminology, "app", "formalPlural")} in the current organization scope, including ${hiddenActionableCount} hidden by search.`
+			: undefined;
+
+	const toggleSdkUpdateSelection = (app: ApplicationListItem) => {
+		if (!canUpdateApplicationSdk(app, sdkUpdateJobs.getUpdateState(app.id))) {
+			return;
+		}
+		setSelectedSdkUpdateIds((current) => {
+			const next = new Set(current);
+			if (next.has(app.id)) next.delete(app.id);
+			else next.add(app.id);
+			return next;
+		});
+	};
+
+	const toggleSelectAllVisible = () => {
+		setSelectedSdkUpdateIds((current) => {
+			const next = new Set(current);
+			const allVisibleSelected =
+				visibleActionableApps.length > 0 &&
+				visibleActionableApps.every((app) => next.has(app.id));
+			for (const app of visibleActionableApps) {
+				if (allVisibleSelected) next.delete(app.id);
+				else next.add(app.id);
+			}
+			return next;
+		});
+	};
+
+	const handleDoneSelecting = () => {
+		setSelectionMode(false);
+	};
+
+	const reportBatchResult = (
+		result: components["schemas"]["ApplicationSdkUpdateBatchResponse"],
+	) => {
+		const accepted = result.accepted ?? [];
+		const skipped = result.skipped ?? [];
+		sdkUpdateJobs.trackAccepted(accepted);
+		const appWord = accepted.length === 1 ? "App" : "Apps";
+		const skippedSuffix =
+			skipped.length > 0
+				? ` ${skipped.length} skipped.`
+				: "";
+		if (accepted.length === 0 && skipped.length > 0) {
+			toast.warning(
+				`No SDK updates were queued. ${skipped.length} skipped.`,
+			);
+			return;
+		}
+		toast.success(
+			`Queued SDK updates for ${accepted.length} ${appWord}.${skippedSuffix}`,
+		);
+	};
+
+	const handleBatchUpdate = async (
+		appsToUpdate: ApplicationListItem[],
+		options: { clearSelection: boolean },
+	) => {
+		if (appsToUpdate.length === 0 || batchUpdatePending) return;
+		setBatchUpdatePending(true);
+		try {
+			const result = await batchUpdateApplicationSdks(
+				appsToUpdate.map((app) => app.id),
+			);
+			reportBatchResult(result);
+			if (options.clearSelection) {
+				setSelectedSdkUpdateIds(new Set());
+				setSelectionMode(false);
+			}
+		} catch {
+			toast.error("Failed to queue SDK updates");
+		} finally {
+			setBatchUpdatePending(false);
+		}
+	};
+
 	const handleConfirmDelete = async () => {
 		if (!selectedApp || deleteBusy.current) return;
 		deleteBusy.current = true;
@@ -134,14 +271,6 @@ export function Applications() {
 			setDeletePending(false);
 		}
 	};
-
-	// Filter and search applications
-	const filteredApps = useSearch(applications || [], searchTerm, [
-		"name",
-		"description",
-		"slug",
-		(app) => app.id,
-	]);
 
 	return (
 		<PageWorkspace className="max-w-7xl mx-auto">
@@ -216,6 +345,111 @@ export function Applications() {
 						/>
 					</div>
 				)}
+				{canManageApps && (
+					<div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+						{selectionMode ? (
+							<>
+								<span className="text-sm text-muted-foreground">
+									{selectedCount} selected
+								</span>
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									onClick={toggleSelectAllVisible}
+									disabled={
+										visibleActionableApps.length === 0 ||
+										batchUpdatePending
+									}
+								>
+									Select all
+								</Button>
+								<Button
+									type="button"
+									variant="default"
+									size="lg"
+									onClick={() =>
+										void handleBatchUpdate(
+											selectedActionableApps,
+											{ clearSelection: true },
+										)
+									}
+									disabled={
+										selectedCount === 0 ||
+										batchUpdatePending
+									}
+								>
+									{batchUpdatePending
+										? "Queueing…"
+										: `Update selected (${selectedCount})`}
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									onClick={handleDoneSelecting}
+									disabled={batchUpdatePending}
+								>
+									Done
+								</Button>
+							</>
+						) : (
+							<>
+								{actionableCount > 0 && (
+									<Button
+										type="button"
+										variant="default"
+										size="lg"
+										onClick={() =>
+											void handleBatchUpdate(
+												actionableApps,
+												{ clearSelection: false },
+											)
+										}
+										disabled={batchUpdatePending}
+										aria-describedby={
+											updateAllSdkDescription
+												? updateAllSdkDescriptionId
+												: undefined
+										}
+										aria-description={
+											updateAllSdkDescription
+										}
+										title={updateAllSdkDescription}
+									>
+										{batchUpdatePending
+											? "Queueing…"
+											: `Update all SDKs (${actionableCount})`}
+									</Button>
+								)}
+								{updateAllSdkDescription && (
+									<span
+										id={updateAllSdkDescriptionId}
+										className="sr-only"
+									>
+										{updateAllSdkDescription}
+									</span>
+								)}
+								<Button
+									type="button"
+									variant="outline"
+									size="lg"
+									onClick={() => setSelectionMode(true)}
+									disabled={
+										actionableCount === 0 ||
+										batchUpdatePending
+									}
+								>
+									<CheckSquare
+										aria-hidden="true"
+										className="size-4"
+									/>
+									Select
+								</Button>
+							</>
+						)}
+					</div>
+				)}
 			</ListToolbar>
 
 			<PageScrollArea
@@ -265,7 +499,17 @@ export function Applications() {
 						onPreview={handlePreview}
 						onOpenSettings={handleOpenSettings}
 						onOpenCode={handleOpenCode}
+						onUpdateSdk={(app) => {
+							void handleUpdateSdk(app);
+						}}
 						onDelete={handleDelete}
+						getSdkUpdateState={(app) =>
+							sdkUpdateJobs.getUpdateState(app.id)
+						}
+						selectionMode={selectionMode}
+						selectedIds={selectedSdkUpdateIds}
+						onToggleSelection={toggleSdkUpdateSelection}
+						onToggleSelectAllVisible={toggleSelectAllVisible}
 						emptySearchActive={Boolean(searchTerm)}
 					/>
 				)}

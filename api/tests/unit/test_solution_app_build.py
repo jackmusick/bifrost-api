@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import uuid
+from contextlib import asynccontextmanager
 
 import pytest
 
@@ -187,3 +188,58 @@ async def test_redeploy_clears_stale_dist_files(monkeypatch):
     )
     assert await b.read_dist(app_id, "assets/new-bbb.js") == b"//new"
     assert "assets/old-aaa.js" not in await b.list_dist(app_id)
+
+
+@pytest.mark.e2e
+async def test_delete_all_app_artifacts_deletes_legacy_and_versioned_paginated(
+    monkeypatch,
+):
+    app_id = uuid.uuid4()
+    prefix = f"_apps/{app_id}/"
+    pages = {
+        None: {
+            "Contents": [
+                {"Key": f"{prefix}dist/index.html"},
+                {"Key": f"{prefix}deployments/{uuid.uuid4()}/dist/index.html"},
+            ],
+            "IsTruncated": True,
+            "NextContinuationToken": "page-2",
+        },
+        "page-2": {
+            "Contents": [
+                {"Key": f"{prefix}deployments/{uuid.uuid4()}/dist/assets/app.js"},
+            ],
+            "IsTruncated": False,
+        },
+    }
+    deleted: list[str] = []
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def list_objects_v2(self, **kwargs):
+            assert kwargs["Prefix"] == prefix
+            return pages[kwargs.get("ContinuationToken")]
+
+        async def delete_object(self, **kwargs):
+            deleted.append(kwargs["Key"])
+
+    b = SolutionAppBuilder()
+
+    @asynccontextmanager
+    async def _client():
+        yield _FakeClient()
+
+    monkeypatch.setattr(b, "_client", _client)
+
+    await b.delete_all_app_artifacts(app_id)
+
+    assert deleted == [
+        pages[None]["Contents"][0]["Key"],
+        pages[None]["Contents"][1]["Key"],
+        pages["page-2"]["Contents"][0]["Key"],
+    ]

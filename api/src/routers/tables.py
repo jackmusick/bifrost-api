@@ -71,7 +71,11 @@ from src.services.solution_scope import (
 )
 from src.services.table_policy_loader import load_resolved_table_policies
 from src.repositories.tables import TableRepository
-from src.core.pubsub import publish_document_change, publish_policy_changed
+from src.core.pubsub import (
+    publish_document_change,
+    publish_policy_changed,
+    publish_table_invalidated,
+)
 from src.services.audit import emit_table_policy_deny
 
 logger = logging.getLogger(__name__)
@@ -1445,24 +1449,10 @@ async def batch_documents(
         for row in rows
         if row.submission_index in result.documents_by_index
     ]
-    events: list[dict[str, Any]] = []
-    for row in rows:
-        doc = result.documents_by_index.get(row.submission_index)
-        if doc is None:
-            continue
-        old_row = result.previous_rows_by_index.get(row.submission_index)
-        events.append(
-            {
-                "table_id": str(table.id),
-                "action": "update" if old_row is not None else "insert",
-                "old_row": old_row,
-                "new_row": _row_from_doc(doc),
-            }
-        )
 
     await ctx.db.commit()
-    for event in events:
-        await publish_document_change(**event)
+    if ordered_documents:
+        await publish_table_invalidated(str(table.id))
     return DocumentBatchCreateResponse(
         inserted=len(ordered_documents),
         errors=[
@@ -1535,17 +1525,12 @@ async def batch_delete_documents(
         existing = existing_by_index.get(i)
         if existing is None:
             continue
-        old_row = _row_from_doc(existing)
         ok = await repo.delete(doc_id)
         if ok:
-            await publish_document_change(
-                table_id=str(table.id),
-                action="delete",
-                old_row=old_row,
-                new_row=None,
-            )
             deleted += 1
             deleted_ids.append(doc_id)
 
     await ctx.db.commit()
+    if deleted > 0:
+        await publish_table_invalidated(str(table.id))
     return DocumentBatchDeleteResponse(deleted=deleted, deleted_ids=deleted_ids)

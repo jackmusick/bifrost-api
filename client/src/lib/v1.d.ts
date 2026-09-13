@@ -8439,6 +8439,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/{solution_id}/sdk/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Solution App SDK status */
+        get: operations["get_solution_sdk_status_api_solutions__solution_id__sdk_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/sdk/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue SDK updates for Apps in selected Solutions */
+        post: operations["batch_update_solution_app_sdks_api_solutions_sdk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/sdk/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue SDK updates for Solution Apps */
+        post: operations["update_solution_app_sdks_api_solutions__solution_id__sdk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}": {
         parameters: {
             query?: never;
@@ -9259,6 +9310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/sdk/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue SDK updates for Apps */
+        post: operations["batch_update_application_sdks_api_applications_sdk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{slug}": {
         parameters: {
             query?: never;
@@ -9344,11 +9412,45 @@ export interface paths {
          * Deploy an App
          * @description Build local App source and atomically activate the resulting artifact.
          *
-         *     Source is staged only for the platform job and is deleted whether the job
-         *     succeeds or fails. The Application row and object storage retain compiled
-         *     ``dist`` files only.
+         *     The raw upload is staged only for the platform job and is deleted whether
+         *     the job succeeds or fails. Successful deployments retain a sanitized source
+         *     archive beside the immutable compiled deployment artifact.
          */
         post: operations["deploy_application_api_applications__app_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download retained App source */
+        get: operations["download_application_source_api_applications__app_id__source_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/sdk/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue an App SDK update */
+        post: operations["update_application_sdk_api_applications__app_id__sdk_update_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12242,6 +12344,39 @@ export interface components {
              * @description Presentation-logo content hash.
              */
             logo_version?: string | null;
+            /**
+             * Sdk Package Version
+             * @description Bifrost SDK package version used for the active app build.
+             */
+            sdk_package_version?: string | null;
+            /**
+             * Sdk Fingerprint
+             * @description Content fingerprint of the Bifrost SDK used for the active app build.
+             */
+            sdk_fingerprint?: string | null;
+            /**
+             * Sdk Contract Version
+             * @description SDK/server contract version used for the active app build.
+             */
+            sdk_contract_version?: number | null;
+            /**
+             * Sdk Built At
+             * @description When the active app build's SDK provenance was recorded.
+             */
+            sdk_built_at?: string | null;
+            /**
+             * Sdk Status
+             * @description Derived status of the active app SDK relative to this server.
+             * @default unknown
+             * @enum {string}
+             */
+            sdk_status: "not_applicable" | "unknown" | "current" | "update_available" | "update_required";
+            /**
+             * Sdk Source Available
+             * @description Cheap capability hint for whether source is expected to be recoverable.
+             * @default false
+             */
+            sdk_source_available: boolean;
         };
         /**
          * ApplicationPublishRequest
@@ -12284,6 +12419,64 @@ export interface components {
              * @description UUID of the version to rollback to
              */
             version_id: string;
+        };
+        /**
+         * ApplicationSdkUpdateAccepted
+         * @description One App SDK update operation accepted by the platform-job system.
+         */
+        ApplicationSdkUpdateAccepted: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+        };
+        /**
+         * ApplicationSdkUpdateBatchRequest
+         * @description Request to enqueue SDK updates for a selected set of Apps.
+         *
+         *     When omitted, the server evaluates every visible App in the caller's scope.
+         */
+        ApplicationSdkUpdateBatchRequest: {
+            /** Application Ids */
+            application_ids?: string[] | null;
+        };
+        /**
+         * ApplicationSdkUpdateBatchResponse
+         * @description Batch SDK update enqueue result.
+         */
+        ApplicationSdkUpdateBatchResponse: {
+            /** Accepted */
+            accepted?: components["schemas"]["ApplicationSdkUpdateAccepted"][];
+            /** Skipped */
+            skipped?: components["schemas"]["ApplicationSdkUpdateSkipped"][];
+        };
+        /**
+         * ApplicationSdkUpdateSkipped
+         * @description One App skipped by a batch SDK update request.
+         */
+        ApplicationSdkUpdateSkipped: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /** Reason */
+            reason: string;
         };
         /**
          * ApplicationSwapSlugsRequest
@@ -24845,6 +25038,17 @@ export interface components {
              */
             status: string;
             entity_counts?: components["schemas"]["SolutionEntityCounts"];
+            /**
+             * Sdk Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            sdk_status: "not_applicable" | "unknown" | "current" | "update_available" | "update_required";
+            /**
+             * Sdk Actionable Count
+             * @default 0
+             */
+            sdk_actionable_count: number;
             /** Logo Url */
             logo_url?: string | null;
             /** Logo Version */
@@ -24869,6 +25073,25 @@ export interface components {
             name?: string | null;
             /** Email */
             email: string;
+        };
+        /** SolutionAppSdkStatus */
+        SolutionAppSdkStatus: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Sdk Status
+             * @enum {string}
+             */
+            sdk_status: "not_applicable" | "unknown" | "current" | "update_available" | "update_required";
+            /** Sdk Source Available */
+            sdk_source_available: boolean;
+            /** Actionable */
+            actionable: boolean;
         };
         /**
          * SolutionCaptureCandidates
@@ -25619,6 +25842,83 @@ export interface components {
              * @description Target org for the install (absent => caller's org, null => global).
              */
             organization_id?: string | null;
+        };
+        /** SolutionSdkStatus */
+        SolutionSdkStatus: {
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+            /**
+             * Sdk Status
+             * @enum {string}
+             */
+            sdk_status: "not_applicable" | "unknown" | "current" | "update_available" | "update_required";
+            /** Actionable Count */
+            actionable_count: number;
+            /** Apps */
+            apps?: components["schemas"]["SolutionAppSdkStatus"][];
+        };
+        /**
+         * SolutionSdkUpdateAccepted
+         * @description One accepted App SDK update, attributed to its Solution.
+         */
+        SolutionSdkUpdateAccepted: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+        };
+        /**
+         * SolutionSdkUpdateBatchRequest
+         * @description Request to enqueue SDK updates for Apps in selected Solutions.
+         */
+        SolutionSdkUpdateBatchRequest: {
+            /** Solution Ids */
+            solution_ids: string[];
+        };
+        /**
+         * SolutionSdkUpdateBatchResponse
+         * @description Batch SDK update enqueue result across selected Solutions.
+         */
+        SolutionSdkUpdateBatchResponse: {
+            /** Accepted */
+            accepted?: components["schemas"]["SolutionSdkUpdateAccepted"][];
+            /** Skipped */
+            skipped?: components["schemas"]["ApplicationSdkUpdateSkipped"][];
+        };
+        /** SolutionSdkUpdateResponse */
+        SolutionSdkUpdateResponse: {
+            /** Accepted */
+            accepted?: components["schemas"]["ApplicationSdkUpdateAccepted"][];
+            /** Skipped */
+            skipped?: components["schemas"]["ApplicationSdkUpdateSkipped"][];
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
         };
         /**
          * SolutionSetupItem
@@ -43347,6 +43647,101 @@ export interface operations {
             };
         };
     };
+    get_solution_sdk_status_api_solutions__solution_id__sdk_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSdkStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_update_solution_app_sdks_api_solutions_sdk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionSdkUpdateBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSdkUpdateBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_solution_app_sdks_api_solutions__solution_id__sdk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSdkUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_solution_api_solutions__solution_id__get: {
         parameters: {
             query?: never;
@@ -44826,6 +45221,39 @@ export interface operations {
             };
         };
     };
+    batch_update_application_sdks_api_applications_sdk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationSdkUpdateBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationSdkUpdateBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_application_api_applications__slug__get: {
         parameters: {
             query?: never;
@@ -45001,6 +45429,82 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_deploy_application_api_applications__app_id__deploy_post"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_application_source_api_applications__app_id__source_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Retained source is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Retained source storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_application_sdk_api_applications__app_id__sdk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             202: {

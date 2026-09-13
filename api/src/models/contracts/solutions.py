@@ -8,6 +8,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from src.models.contracts.applications import (
+    ApplicationSdkStatus,
+    ApplicationSdkUpdateAccepted,
+    ApplicationSdkUpdateBatchResponse,
+    ApplicationSdkUpdateSkipped,
+)
+
 SolutionScope = Literal["org", "global"]
 
 
@@ -76,6 +83,44 @@ class SolutionReadme(BaseModel):
     readme: str | None = None
 
 
+class SolutionAppSdkStatus(BaseModel):
+    application_id: UUID
+    slug: str
+    sdk_status: ApplicationSdkStatus
+    sdk_source_available: bool
+    actionable: bool
+
+
+class SolutionSdkStatus(BaseModel):
+    solution_id: UUID
+    sdk_status: ApplicationSdkStatus
+    actionable_count: int
+    apps: list[SolutionAppSdkStatus] = Field(default_factory=list)
+
+
+class SolutionSdkUpdateResponse(ApplicationSdkUpdateBatchResponse):
+    solution_id: UUID
+
+
+class SolutionSdkUpdateBatchRequest(BaseModel):
+    """Request to enqueue SDK updates for Apps in selected Solutions."""
+
+    solution_ids: list[UUID] = Field(min_length=1)
+
+
+class SolutionSdkUpdateAccepted(ApplicationSdkUpdateAccepted):
+    """One accepted App SDK update, attributed to its Solution."""
+
+    solution_id: UUID
+
+
+class SolutionSdkUpdateBatchResponse(BaseModel):
+    """Batch SDK update enqueue result across selected Solutions."""
+
+    accepted: list[SolutionSdkUpdateAccepted] = Field(default_factory=list)
+    skipped: list[ApplicationSdkUpdateSkipped] = Field(default_factory=list)
+
+
 class SolutionEntityCounts(BaseModel):
     """Per-install inventory counts for lightweight list/catalog views."""
 
@@ -127,6 +172,8 @@ class Solution(BaseModel):
     # (status flip only — data frozen in place under solution_id, dormant).
     status: str = "active"
     entity_counts: SolutionEntityCounts = Field(default_factory=SolutionEntityCounts)
+    sdk_status: ApplicationSdkStatus = "not_applicable"
+    sdk_actionable_count: int = 0
     logo_url: str | None = None
     logo_version: str | None = None
 

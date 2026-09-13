@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from src.models.enums import ConfigType
 from src.models.orm.config import Config
+from src.models.orm.applications import Application
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Document, Table
 from src.services.solutions.capture import (
@@ -93,6 +94,93 @@ async def test_capture_table_keeps_rows_and_exports_manifest(db_session) -> None
     exported = tables_yaml["tables"][str(table.id)]
     assert exported["name"] == "documents"
     assert exported["schema"]["columns"][0]["name"] == "title"
+
+
+async def test_bundle_for_prebuilt_app_reads_active_versioned_dist(
+    db_session, monkeypatch
+) -> None:
+    from src.services.solutions import app_build
+
+    db = db_session
+    sol = await _make_solution(db)
+    app_id = uuid.uuid4()
+    active = uuid.uuid4()
+    app = Application(
+        id=app_id,
+        name="Dash",
+        slug=f"dash-{uuid.uuid4().hex[:8]}",
+        repo_path="apps/dash",
+        app_model="standalone_v2",
+        organization_id=None,
+        solution_id=sol.id,
+        active_deployment_id=active,
+    )
+    db.add(app)
+    await db.flush()
+
+    calls: list[tuple[str, uuid.UUID | None]] = []
+
+    async def _list_dist(self, listed_app_id, *, deployment_id=None):
+        calls.append(("list", deployment_id))
+        assert listed_app_id == app_id
+        return ["index.html"]
+
+    async def _read_dist(self, read_app_id, rel, *, deployment_id=None):
+        calls.append(("read", deployment_id))
+        assert read_app_id == app_id
+        assert rel == "index.html"
+        return b"<html>active version</html>"
+
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "list_dist", _list_dist)
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "read_dist", _read_dist)
+
+    bundle = await SolutionCaptureService(db, repo=_FakeRepo({})).bundle_for(sol)
+
+    assert calls == [("list", active), ("read", active)]
+    assert bundle.apps[0]["dist_files"] == {"index.html": "<html>active version</html>"}
+
+
+async def test_bundle_for_legacy_prebuilt_app_reads_unversioned_dist(
+    db_session, monkeypatch
+) -> None:
+    from src.services.solutions import app_build
+
+    db = db_session
+    sol = await _make_solution(db)
+    app_id = uuid.uuid4()
+    app = Application(
+        id=app_id,
+        name="Dash",
+        slug=f"dash-{uuid.uuid4().hex[:8]}",
+        repo_path="apps/dash",
+        app_model="standalone_v2",
+        organization_id=None,
+        solution_id=sol.id,
+        active_deployment_id=None,
+    )
+    db.add(app)
+    await db.flush()
+
+    calls: list[tuple[str, uuid.UUID | None]] = []
+
+    async def _list_dist(self, listed_app_id, *, deployment_id=None):
+        calls.append(("list", deployment_id))
+        assert listed_app_id == app_id
+        return ["index.html"]
+
+    async def _read_dist(self, read_app_id, rel, *, deployment_id=None):
+        calls.append(("read", deployment_id))
+        assert read_app_id == app_id
+        assert rel == "index.html"
+        return b"<html>legacy unversioned</html>"
+
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "list_dist", _list_dist)
+    monkeypatch.setattr(app_build.SolutionAppBuilder, "read_dist", _read_dist)
+
+    bundle = await SolutionCaptureService(db, repo=_FakeRepo({})).bundle_for(sol)
+
+    assert calls == [("list", None), ("read", None)]
+    assert bundle.apps[0]["dist_files"] == {"index.html": "<html>legacy unversioned</html>"}
 
 
 async def test_capture_config_declares_existing_value_without_copying_value(db_session) -> None:

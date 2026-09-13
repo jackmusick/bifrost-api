@@ -71,10 +71,13 @@ directory as `bifrost-sdk.tgz`, and injects:
 }
 ```
 
-Then it runs `npm install` and `vite build`. `bifrost app deploy` uploads source
-only for that durable build, stores an immutable compiled artifact, atomically
-activates it, and deletes the source. `bifrost solution deploy` builds the same
-App shape as part of full Solution reconciliation.
+Then it runs `npm install` and `vite build`. `bifrost app deploy` uploads source,
+stores a sanitized source archive beside the immutable compiled deployment,
+and atomically activates it. `bifrost solution deploy` builds the same App shape
+as part of full Solution reconciliation and retains the deployed Solution
+archive. These retained artifacts make an SDK-only rebuild possible without a
+full redeploy; `.env*`, dependencies, generated output, caches, and VCS data are
+excluded. See [Application SDK updates](application-sdk-update.md).
 
 Prebuilt disconnected Solution packages are different: if a bundle ships a
 ready `dist/`, the platform skips the server-side Vite build. In that case the
@@ -113,15 +116,19 @@ Do not add cache-busting queries to the entry or disable Vite code splitting.
 
 ## Versioning Contract
 
-There is no independently published web SDK version stream today. The SDK
+There is no independently published web SDK version stream today. The package
 version follows the Bifrost instance version returned by `shared.version`.
+Deployed Apps also record a fingerprint of the built SDK bytes and a separately
+managed wire-contract version.
 
 Practical consequences:
 
 - App authors should let the CLI/server inject the selected instance's SDK, not depend on `bifrost@latest`.
 - SDK changes ship with the Bifrost deployment that contains them.
 - Local Apps update through `app start` or `solution sdk update`.
-- Deployed source-built Apps update when the App or Solution is redeployed on the target instance.
+- Deployed source-built Apps update only when an administrator explicitly runs
+  an SDK update or redeploys the App or Solution; a Bifrost upgrade does not
+  silently change a deployed App.
 - Breaking SDK surface changes should be treated as Bifrost release changes and
   documented in release notes, because apps consume the SDK from their host
   instance.

@@ -38,6 +38,7 @@ RefKind = Literal[
     "table",
     "event_source",
     "config",
+    "solution",
 ]
 
 
@@ -237,9 +238,7 @@ async def _resolve_event_source(
     return "", candidates
 
 
-async def _resolve_config(
-    client: Any, value: str
-) -> tuple[str, list[dict[str, Any]]]:
+async def _resolve_config(client: Any, value: str) -> tuple[str, list[dict[str, Any]]]:
     # Configs are keyed by ``key`` + ``org_id``; "name" == ``key`` for this helper.
     items = await _get_json(client, "/api/config")
     matches = [c for c in items if c.get("key") == value]
@@ -254,6 +253,29 @@ async def _resolve_config(
         )
     if len(candidates) == 1:
         return candidates[0]["uuid"], candidates
+    return "", candidates
+
+
+async def _resolve_solution(
+    client: Any, value: str
+) -> tuple[str, list[dict[str, Any]]]:
+    data = await _get_json(client, "/api/solutions")
+    items = data.get("solutions", []) if isinstance(data, dict) else data
+    matches = [
+        s
+        for s in items
+        if s.get("slug") == value or s.get("name") == value or s.get("title") == value
+    ]
+    candidates = [
+        _candidate(
+            str(s.get("slug") or s.get("name") or s.get("title") or value),
+            str(s["id"]),
+            _as_opt_str(s.get("organization_id")),
+        )
+        for s in matches
+    ]
+    if len(matches) == 1:
+        return str(matches[0]["id"]), candidates
     return "", candidates
 
 
@@ -274,6 +296,7 @@ _RESOLVERS = {
     "table": _resolve_table,
     "event_source": _resolve_event_source,
     "config": _resolve_config,
+    "solution": _resolve_solution,
 }
 
 

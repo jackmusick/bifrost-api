@@ -12,6 +12,7 @@ export function ResourceCatalogCard({
 	disabled = false,
 	compact = false,
 	titleClassName = "",
+	titleInteractive = true,
 }: {
 	icon: ReactNode;
 	title: ReactNode;
@@ -24,6 +25,7 @@ export function ResourceCatalogCard({
 	disabled?: boolean;
 	compact?: boolean;
 	titleClassName?: string;
+	titleInteractive?: boolean;
 }) {
 	return (
 		<article
@@ -37,14 +39,22 @@ export function ResourceCatalogCard({
 						compact ? "min-w-0 flex-1" : "min-w-0 w-full order-2"
 					}
 				>
-					<button
-						type="button"
-						className={`text-left text-base leading-snug font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring disabled:cursor-not-allowed [overflow-wrap:anywhere] ${titleClassName}`}
-						onClick={onOpen}
-						disabled={disabled}
-					>
-						{title}
-					</button>
+					{titleInteractive ? (
+						<button
+							type="button"
+							className={`text-left text-base leading-snug font-semibold after:absolute after:inset-0 after:rounded-[var(--bf-radius-surface)] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-ring disabled:cursor-not-allowed [overflow-wrap:anywhere] ${titleClassName}`}
+							onClick={onOpen}
+							disabled={disabled}
+						>
+							{title}
+						</button>
+					) : (
+						<span
+							className={`block text-left text-base leading-snug font-semibold [overflow-wrap:anywhere] ${titleClassName}`}
+						>
+							{title}
+						</span>
+					)}
 					{subtitle ? (
 						<p className="mt-1 text-xs text-muted-foreground">
 							{subtitle}

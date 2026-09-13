@@ -26,6 +26,7 @@ import {
 	getSolutionEntities,
 	getSolutionExportJob,
 	getSolutionReadme,
+	getSolutionSdkStatus,
 	installSolution,
 	installSolutionFromRepo,
 	listSolutionExportJobs,
@@ -34,6 +35,8 @@ import {
 	previewSolutionFromRepo,
 	putSolutionReadme,
 	syncSolution,
+	updateSelectedSolutionAppSdks,
+	updateSolutionAppSdks,
 	updateSolution,
 } from "./solutions";
 
@@ -185,6 +188,75 @@ describe("solutions service", () => {
 		mockPost.mockResolvedValue({ error: { detail: "no remote" } });
 
 		await expect(syncSolution("sol-1")).rejects.toThrow(/no remote/);
+	});
+
+	it("gets aggregate SDK status for a solution", async () => {
+		mockGet.mockResolvedValue({
+			data: {
+				solution_id: "sol-1",
+				sdk_status: "update_available",
+				actionable_count: 2,
+				apps: [],
+			},
+		});
+
+		const out = await getSolutionSdkStatus("sol-1");
+
+		expect(mockGet).toHaveBeenCalledWith(
+			"/api/solutions/{solution_id}/sdk/status",
+			{ params: { path: { solution_id: "sol-1" } } },
+		);
+		expect(out.sdk_status).toBe("update_available");
+	});
+
+	it("queues all actionable app SDK updates for a solution without git sync", async () => {
+		mockPost.mockResolvedValue({
+			data: {
+				solution_id: "sol-1",
+				accepted: [
+					{
+						application_id: "app-1",
+						job_id: "job-1",
+						status: "queued",
+						reused: false,
+					},
+				],
+				skipped: [],
+			},
+		});
+
+		const out = await updateSolutionAppSdks("sol-1");
+
+		expect(mockPost).toHaveBeenCalledWith(
+			"/api/solutions/{solution_id}/sdk/update",
+			{ params: { path: { solution_id: "sol-1" } } },
+		);
+		expect(out.accepted?.[0]?.application_id).toBe("app-1");
+	});
+
+	it("queues app SDK updates for selected solutions in one request", async () => {
+		mockPost.mockResolvedValue({
+			data: {
+				accepted: [
+					{
+						application_id: "app-1",
+						solution_id: "sol-1",
+						job_id: "job-1",
+						status: "queued",
+						reused: false,
+					},
+				],
+				skipped: [{ application_id: "app-2", reason: "current" }],
+			},
+		});
+
+		const out = await updateSelectedSolutionAppSdks(["sol-1", "sol-2"]);
+
+		expect(mockPost).toHaveBeenCalledWith("/api/solutions/sdk/update", {
+			body: { solution_ids: ["sol-1", "sol-2"] },
+		});
+		expect(out.accepted?.[0]?.application_id).toBe("app-1");
+		expect(out.skipped).toHaveLength(1);
 	});
 
 	it("previews a solution from a repo with the body", async () => {

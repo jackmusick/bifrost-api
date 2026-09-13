@@ -18,6 +18,10 @@ export type ApplicationListResponse =
 export type ApplicationPublishRequest =
 	components["schemas"]["ApplicationPublishRequest"];
 export type PlatformJobAccepted = components["schemas"]["PlatformJobAccepted"];
+export type ApplicationSdkUpdateAccepted =
+	components["schemas"]["ApplicationSdkUpdateAccepted"];
+export type ApplicationSdkUpdateBatchResponse =
+	components["schemas"]["ApplicationSdkUpdateBatchResponse"];
 
 // Export type for applications
 export type ApplicationExport = ApplicationPublic;
@@ -231,6 +235,33 @@ export function usePublishApplication(options?: { errorToast?: boolean }) {
 	});
 }
 
+/**
+ * Queue an SDK rebuild for one retained-source application. Progress and
+ * terminal state arrive through platform-job notification WebSocket updates.
+ */
+export function useUpdateApplicationSdk(options?: { errorToast?: boolean }) {
+	return $api.useMutation("post", "/api/applications/{app_id}/sdk/update", {
+		onSuccess: (operation) => {
+			toast.success(
+				operation.reused
+					? "Following existing SDK update"
+					: "SDK update queued",
+				{
+					description: operation.notification_id
+						? "Progress will appear in notifications."
+						: `Track durable job ${operation.job_id}.`,
+				},
+			);
+		},
+		onError: (error) => {
+			if (options?.errorToast === false) return;
+			toast.error("Failed to queue SDK update", {
+				description: getErrorMessage(error, "Unknown error"),
+			});
+		},
+	});
+}
+
 // =============================================================================
 // Export Hook
 // =============================================================================
@@ -358,6 +389,44 @@ export async function publishApplication(
 	if (error) {
 		throw new Error(
 			getErrorMessage(error, "Failed to queue application publish"),
+		);
+	}
+	return data;
+}
+
+/**
+ * Queue one application SDK update (imperative).
+ */
+export async function updateApplicationSdk(
+	appId: string,
+): Promise<PlatformJobAccepted> {
+	const { data, error } = await apiClient.POST(
+		"/api/applications/{app_id}/sdk/update",
+		{
+			params: { path: { app_id: appId } },
+		},
+	);
+	if (error) {
+		throw new Error(getErrorMessage(error, "Failed to queue SDK update"));
+	}
+	return data;
+}
+
+/**
+ * Queue SDK updates for selected applications (imperative).
+ */
+export async function batchUpdateApplicationSdks(
+	applicationIds?: string[],
+): Promise<ApplicationSdkUpdateBatchResponse> {
+	const { data, error } = await apiClient.POST(
+		"/api/applications/sdk/update",
+		{
+			body: { application_ids: applicationIds ?? null },
+		},
+	);
+	if (error) {
+		throw new Error(
+			getErrorMessage(error, "Failed to queue SDK updates"),
 		);
 	}
 	return data;

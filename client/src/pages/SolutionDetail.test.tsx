@@ -5,11 +5,34 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
+import {
+	renderWithProviders,
+	screen,
+	waitFor,
+	within,
+} from "@/test-utils";
+import { act } from "@testing-library/react";
 import { SolutionDetail } from "./SolutionDetail";
 
 const APP_LOGO_DATA_URL =
 	"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
+
+const wsMocks = vi.hoisted(() => ({
+	platformJobCallback: undefined as
+		| ((job: Record<string, unknown>) => void)
+		| undefined,
+}));
+
+vi.mock("@/services/websocket", () => ({
+	webSocketService: {
+		onAnyPlatformJobUpdate: vi.fn(
+			(callback: (job: Record<string, unknown>) => void) => {
+				wsMocks.platformJobCallback = callback;
+				return vi.fn();
+			},
+		),
+	},
+}));
 
 let mobileAccess = false;
 vi.mock("@/hooks/useMediaQuery", () => ({
@@ -76,12 +99,17 @@ const mockGetSolutionCaptureCandidates = vi.fn();
 const mockCaptureSolutionEntities = vi.fn();
 const mockSyncSolution = vi.fn();
 const mockGetSolutionReadme = vi.fn();
+const mockGetSolutionSdkStatus = vi.fn();
+const mockUpdateSolutionAppSdks = vi.fn();
 const mockCreateWorkflowKey = vi.fn();
 const mockRevokeWorkflowKey = vi.fn();
 vi.mock("@/services/solutions", () => ({
 	getSolutionEntities: (...a: unknown[]) => mockGetSolutionEntities(...a),
 	getSolutionSetup: (...a: unknown[]) => mockGetSolutionSetup(...a),
 	getSolutionReadme: (...a: unknown[]) => mockGetSolutionReadme(...a),
+	getSolutionSdkStatus: (...a: unknown[]) => mockGetSolutionSdkStatus(...a),
+	updateSolutionAppSdks: (...a: unknown[]) =>
+		mockUpdateSolutionAppSdks(...a),
 	updateSolution: (...a: unknown[]) => mockUpdateSolution(...a),
 	deleteSolution: (...a: unknown[]) => mockDeleteSolution(...a),
 	uninstallSolution: (...a: unknown[]) => mockUninstallSolution(...a),
@@ -199,6 +227,17 @@ beforeEach(() => {
 	mockGetSolutionEntities.mockResolvedValue(makeEntities());
 	mockGetSolutionSetup.mockResolvedValue({ setup_complete: true, items: [] });
 	mockGetSolutionReadme.mockResolvedValue({ readme: null });
+	mockGetSolutionSdkStatus.mockResolvedValue({
+		solution_id: "sol-1",
+		sdk_status: "current",
+		actionable_count: 0,
+		apps: [],
+	});
+	mockUpdateSolutionAppSdks.mockResolvedValue({
+		solution_id: "sol-1",
+		accepted: [],
+		skipped: [],
+	});
 	mockListSolutionExportJobs.mockResolvedValue({ jobs: [] });
 	mockCreateSolutionExportJob.mockResolvedValue({
 		id: "job-1",
@@ -775,6 +814,84 @@ describe("SolutionDetail", () => {
 			expect(mockGetSolutionEntities.mock.calls.length).toBeGreaterThan(
 				1,
 			),
+		);
+	});
+
+	it("keeps Solution app SDK update action busy until durable jobs reach terminal state", async () => {
+		mockGetSolutionSdkStatus.mockResolvedValue({
+			solution_id: "sol-1",
+			sdk_status: "update_available",
+			actionable_count: 1,
+			apps: [
+				{
+					application_id: "app-1",
+					slug: "dispatch-board",
+					sdk_status: "update_available",
+					sdk_source_available: true,
+					actionable: true,
+				},
+			],
+		});
+		mockUpdateSolutionAppSdks.mockResolvedValue({
+			solution_id: "sol-1",
+			accepted: [
+				{
+					application_id: "app-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+					notification_id: null,
+				},
+			],
+			skipped: [],
+		});
+		const { user } = await renderPage();
+		await screen.findByTestId("solution-detail");
+
+		await user.click(screen.getByTestId("solution-actions"));
+		await user.click(screen.getByTestId("update-solution-app-sdks"));
+		await user.click(screen.getByTestId("solution-actions"));
+		expect(screen.getByTestId("update-solution-app-sdks")).toHaveTextContent(
+			"Updating app SDKs",
+		);
+		expect(screen.getByTestId("update-solution-app-sdks")).toHaveAttribute(
+			"aria-disabled",
+			"true",
+		);
+
+		act(() => {
+			wsMocks.platformJobCallback?.({
+				id: "job-1",
+				job_type: "application.sdk_update",
+				resource_type: "application",
+				resource_id: "app-1",
+				status: "running",
+				title: "Update app SDK",
+			});
+		});
+		expect(screen.getByTestId("update-solution-app-sdks")).toHaveTextContent(
+			"Updating app SDKs",
+		);
+
+		act(() => {
+			wsMocks.platformJobCallback?.({
+				id: "job-1",
+				job_type: "application.sdk_update",
+				resource_type: "application",
+				resource_id: "app-1",
+				status: "succeeded",
+				title: "Update app SDK",
+			});
+		});
+
+		await waitFor(() =>
+			expect(
+				screen.getByTestId("update-solution-app-sdks"),
+			).toHaveTextContent("Update app SDKs"),
+		);
+		expect(screen.getByTestId("update-solution-app-sdks")).not.toHaveAttribute(
+			"aria-disabled",
+			"true",
 		);
 	});
 

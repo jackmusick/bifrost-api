@@ -8,6 +8,7 @@ from src.core.pubsub import (
     publish_document_change,
     publish_file_change,
     publish_file_policy_changed,
+    publish_table_invalidated,
 )
 
 
@@ -54,6 +55,20 @@ async def test_publish_delete_carries_old_row_only():
         assert payload["action"] == "delete"
         assert payload["old_row"]["id"] == "r1"
         assert payload.get("new_row") is None
+
+
+@pytest.mark.asyncio
+async def test_publish_table_invalidated_uses_table_channel():
+    with patch("src.core.pubsub.publisher.publish", new=AsyncMock()) as mock_pub:
+        await publish_table_invalidated("table-id")
+
+        mock_pub.assert_awaited_once_with(
+            "table:table-id",
+            payload={
+                "type": "table_invalidated",
+                "table_id": "table-id",
+            },
+        )
 
 
 @pytest.mark.asyncio

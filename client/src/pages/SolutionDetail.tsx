@@ -68,6 +68,7 @@ import {
 	ApplicationListSurface,
 	type ApplicationListItem,
 } from "@/components/applications/ApplicationListSurface";
+import { ApplicationSdkStatusBadge } from "@/components/applications/ApplicationSdkStatusBadge";
 import {
 	FormListSurface,
 	type FormListItem,
@@ -117,8 +118,11 @@ import {
 	createSolutionExportJob,
 	listSolutionExportJobs,
 	downloadSolutionExportJob,
+	getSolutionSdkStatus,
+	updateSolutionAppSdks,
 	type SolutionExportOptions,
 	type SolutionExportJob,
+	type SolutionSdkStatus,
 	setSolutionConfig,
 	syncSolution,
 	previewSolutionFromRepo,
@@ -129,6 +133,8 @@ import { SolutionReadmeTab } from "@/components/solutions/SolutionReadmeTab";
 import { workflowKeysService } from "@/services/workflowKeys";
 import { useUser } from "@/hooks/useUsers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useApplicationSdkUpdateJobs } from "@/hooks/useApplicationSdkUpdateJobs";
+import { useUpdateApplicationSdk } from "@/hooks/useApplications";
 import type { components } from "@/lib/v1";
 
 type EntitySummary = components["schemas"]["SolutionEntitySummary"];
@@ -967,6 +973,7 @@ function EntityTabContent({
 	solutionId,
 	solutionName,
 	fileCount,
+	sdkStatus,
 }: {
 	kind: EntityKind;
 	items: EntitySummary[];
@@ -974,9 +981,12 @@ function EntityTabContent({
 	solutionName: string;
 	/** Actual file count from SolutionEntities.files (files kind only). */
 	fileCount?: number;
+	sdkStatus?: SolutionSdkStatus;
 }) {
 	const navigate = useNavigate();
 	const isMobile = useMediaQuery("(max-width: 1023px)");
+	const updateApplicationSdk = useUpdateApplicationSdk();
+	const sdkUpdateJobs = useApplicationSdkUpdateJobs({ solutionId });
 	const [search, setSearch] = useState("");
 	const [shareForm, setShareForm] = useState<{
 		id: string;
@@ -1008,6 +1018,19 @@ function EntityTabContent({
 		is_solution_managed: true,
 		solution_id: solutionId,
 	}));
+	const solutionAppSdkStatus = new Map(
+		(sdkStatus?.apps ?? []).map((entry) => [entry.application_id, entry]),
+	);
+	const managedAppVisible = managedVisible.map((entity) => {
+		const appSdk = solutionAppSdkStatus.get(entity.id);
+		return appSdk
+			? {
+					...entity,
+					sdk_status: appSdk.sdk_status,
+					sdk_source_available: appSdk.sdk_source_available,
+				}
+			: entity;
+	});
 	const formValidation = new Map<string, FormValidationState>(
 		visible.map((entity) => [
 			entity.id,
@@ -1099,7 +1122,7 @@ function EntityTabContent({
 				/>
 			) : kind === "apps" ? (
 				<ApplicationListSurface
-					apps={managedVisible as ApplicationListItem[]}
+					apps={managedAppVisible as ApplicationListItem[]}
 					viewMode={isMobile ? "grid" : viewMode}
 					isPlatformAdmin={false}
 					canManageApps={true}
@@ -1113,6 +1136,26 @@ function EntityTabContent({
 						navigate(
 							`/apps/${app.slug ?? app.id}/preview?from=solution:${solutionId}`,
 						)
+					}
+					onUpdateSdk={(app) => {
+						void updateApplicationSdk
+							.mutateAsync({
+								params: { path: { app_id: app.id } },
+							})
+							.then((operation) =>
+								sdkUpdateJobs.trackAccepted([
+									{
+										...operation,
+										application_id: app.id,
+									},
+								]),
+							)
+							.catch(() => {
+								// useUpdateApplicationSdk owns the user-facing error toast.
+							});
+					}}
+					getSdkUpdateState={(app) =>
+						sdkUpdateJobs.getUpdateState(app.id)
 					}
 					emptySearchActive={Boolean(search.trim())}
 				/>
@@ -2319,6 +2362,14 @@ export function SolutionDetail() {
 		enabled: !!solutionId,
 	});
 
+	const { data: solutionSdkStatus } = useQuery({
+		queryKey: ["solutions", solutionId, "sdk-status"],
+		queryFn: () => getSolutionSdkStatus(solutionId!),
+		enabled: !!solutionId,
+		staleTime: 60_000,
+	});
+	const sdkUpdateJobs = useApplicationSdkUpdateJobs({ solutionId });
+
 	const exportJobsQuery = useQuery({
 		queryKey: ["solutions", solutionId, "export-jobs"],
 		queryFn: () => listSolutionExportJobs(solutionId!),
@@ -2472,6 +2523,26 @@ export function SolutionDetail() {
 		},
 	});
 
+	const updateSolutionAppSdksMut = useMutation({
+		mutationFn: () => updateSolutionAppSdks(solutionId!),
+		onSuccess: (result) => {
+			sdkUpdateJobs.trackAccepted(result.accepted ?? []);
+			const accepted = result.accepted?.length ?? 0;
+			const skipped = result.skipped?.length ?? 0;
+			toast.success("App SDK updates queued", {
+				description:
+					skipped > 0
+						? `${accepted} queued, ${skipped} already current or unavailable.`
+						: `${accepted} app${accepted === 1 ? "" : "s"} queued. Progress will appear in notifications.`,
+			});
+		},
+		onError: (err) => {
+			toast.error("Failed to queue app SDK updates", {
+				description: err instanceof Error ? err.message : String(err),
+			});
+		},
+	});
+
 	// Lazily preview the connected repo when the Update-now dialog opens, so the
 	// operator sees WHAT the full-replace will change (added/removed/changed
 	// entities + config) before confirming — the git update path previously gave
@@ -2543,6 +2614,11 @@ export function SolutionDetail() {
 	};
 
 	const requiredUnset = data?.required_configs_unset ?? [];
+	const solutionAppIds =
+		solutionSdkStatus?.apps?.map((app) => app.application_id) ?? [];
+	const solutionSdkUpdating =
+		updateSolutionAppSdksMut.isPending ||
+		sdkUpdateJobs.isAnyUpdating(solutionAppIds);
 	// Contents tab: "All" shows a combined per-type summary; a specific chip
 	// renders that kind's full surface (with its specialized actions — workflow
 	// execute, form launch, app open — which a merged column list would lose).
@@ -2664,6 +2740,12 @@ export function SolutionDetail() {
 										{sol.update_available_version}
 									</Badge>
 								)}
+								{solutionSdkStatus && (
+									<ApplicationSdkStatusBadge
+										status={solutionSdkStatus.sdk_status}
+										showCurrent
+									/>
+								)}
 							</div>
 							{sol.git_connected && sol.git_repo_url && (
 								<p
@@ -2738,6 +2820,16 @@ export function SolutionDetail() {
 									backupExportMut.isPending
 								}
 								isInactive={sol.status === "inactive"}
+								onUpdateAppSdks={() => {
+									updateSolutionAppSdksMut.mutate();
+								}}
+								appSdkUpdateDisabled={
+									!solutionSdkStatus ||
+									solutionSdkStatus.actionable_count === 0
+								}
+								appSdkUpdating={
+									solutionSdkUpdating
+								}
 								onCapture={() => setCaptureOpen(true)}
 								onExport={() => setExportDialogOpen(true)}
 								onEdit={() => setEditOpen(true)}
@@ -2954,6 +3046,7 @@ export function SolutionDetail() {
 										solutionId={sol.id}
 										solutionName={sol.name}
 										fileCount={entityCounts.files}
+										sdkStatus={solutionSdkStatus}
 									/>
 								) : (
 									<ContentsSummary

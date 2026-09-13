@@ -96,11 +96,42 @@ export function useInfiniteTable(
   }, [name, whereKey, pageSize, order_by, order_dir, scope, hasMore]);
 
   useEffect(() => {
+    let effectCancelled = false;
     cancelledRef.current = false;
     offsetRef.current = 0;
     tableIdRef.current = null;
 
     let unsubscribe: (() => void) | null = null;
+    let refreshInFlight = false;
+    let refreshDirty = false;
+
+    async function loadInitialPage() {
+      if (effectCancelled) return;
+      try {
+        const snap = await tables.query(
+          name,
+          {
+            where,
+            limit: pageSize,
+            offset: offsetRef.current,
+            order_by,
+            order_dir,
+          },
+          scope,
+        );
+        if (effectCancelled) return;
+        tableIdRef.current = snap.table_id;
+        const newRows = snap.documents.map(flattenDocument);
+        setRows(newRows);
+        offsetRef.current = newRows.length;
+        setHasMore(newRows.length === pageSize);
+        setLoading(false);
+      } catch (e) {
+        if (effectCancelled) return;
+        setError(e instanceof Error ? e : new Error(String(e)));
+        setLoading(false);
+      }
+    }
 
     async function refreshLoadedSnapshot() {
       const targetCount = Math.max(offsetRef.current, pageSize);
@@ -122,7 +153,7 @@ export function useInfiniteTable(
           },
           scope,
         );
-        if (cancelledRef.current) return;
+        if (effectCancelled) return;
         if (refreshOffset === 0) total = snap.total;
         const pageRows = snap.documents.map(flattenDocument);
         refreshedRows.push(...pageRows);
@@ -130,11 +161,36 @@ export function useInfiniteTable(
         if (pageRows.length < limit) break;
       }
 
-      if (cancelledRef.current) return;
+      if (effectCancelled) return;
       setRows(refreshedRows);
       offsetRef.current = refreshedRows.length;
       setHasMore(refreshedRows.length < total);
       setError(null);
+    }
+
+    function refreshAuthoritativeSnapshot() {
+      if (refreshInFlight) {
+        refreshDirty = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      void (async () => {
+        try {
+          do {
+            refreshDirty = false;
+            try {
+              await refreshLoadedSnapshot();
+            } catch (e) {
+              if (!effectCancelled) {
+                setError(e instanceof Error ? e : new Error(String(e)));
+              }
+            }
+          } while (refreshDirty && !effectCancelled);
+        } finally {
+          refreshInFlight = false;
+        }
+      })();
     }
 
     async function init() {
@@ -153,8 +209,8 @@ export function useInfiniteTable(
         setError(null);
         setLoading(true);
 
-        await loadMore();
-        if (cancelledRef.current) return;
+        await loadInitialPage();
+        if (effectCancelled) return;
 
         if (tableIdRef.current) {
           unsubscribe = tables.subscribe(
@@ -162,22 +218,22 @@ export function useInfiniteTable(
             subscribeFilter,
             (evt) => {
               if (evt.type === "error") {
-                if (!cancelledRef.current) setError(new Error(evt.message));
+                if (!effectCancelled) setError(new Error(evt.message));
+                return;
+              }
+              if (evt.type === "table_invalidated") {
+                refreshAuthoritativeSnapshot();
                 return;
               }
               applyEvent(evt, setRows);
             },
             () => {
-              void refreshLoadedSnapshot().catch((e) => {
-                if (!cancelledRef.current) {
-                  setError(e instanceof Error ? e : new Error(String(e)));
-                }
-              });
+              refreshAuthoritativeSnapshot();
             },
           );
         }
       } catch (e) {
-        if (cancelledRef.current) return;
+        if (effectCancelled) return;
         setError(e instanceof Error ? e : new Error(String(e)));
         setLoading(false);
       }
@@ -185,6 +241,7 @@ export function useInfiniteTable(
 
     init();
     return () => {
+      effectCancelled = true;
       cancelledRef.current = true;
       unsubscribe?.();
     };

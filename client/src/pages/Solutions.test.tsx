@@ -9,9 +9,12 @@ import { Solutions } from "./Solutions";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, within } from "@/test-utils";
 import { waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 
 const mockIsDesktop = vi.fn(() => true);
-vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => mockIsDesktop() }));
+vi.mock("@/hooks/useMediaQuery", () => ({
+	useIsDesktop: () => mockIsDesktop(),
+}));
 const mockNavigate = vi.fn();
 const mockSetSearchParams = vi.fn();
 let mockSearchParams = new URLSearchParams();
@@ -23,13 +26,12 @@ vi.mock("react-router-dom", async () => {
 	return {
 		...actual,
 		useNavigate: () => mockNavigate,
-		useSearchParams: () =>
-			[mockSearchParams, mockSetSearchParams] as const,
+		useSearchParams: () => [mockSearchParams, mockSetSearchParams] as const,
 	};
 });
 
 vi.mock("sonner", () => ({
-	toast: { success: vi.fn(), error: vi.fn() },
+	toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock("@/hooks/useOrganizations", () => ({
@@ -51,6 +53,7 @@ vi.mock("@/hooks/useGitHub", () => ({
 }));
 
 const mockListSolutions = vi.fn();
+const mockUpdateSelectedSolutionAppSdks = vi.fn();
 const mockPreviewInstall = vi.fn();
 const mockInstallSolution = vi.fn();
 const mockUpdateSolution = vi.fn();
@@ -58,6 +61,8 @@ const mockPreviewSolutionFromRepo = vi.fn();
 const mockInstallSolutionFromRepo = vi.fn();
 vi.mock("@/services/solutions", () => ({
 	listSolutions: (...a: unknown[]) => mockListSolutions(...a),
+	updateSelectedSolutionAppSdks: (...a: unknown[]) =>
+		mockUpdateSelectedSolutionAppSdks(...a),
 	previewInstall: (...a: unknown[]) => mockPreviewInstall(...a),
 	installSolution: (...a: unknown[]) => mockInstallSolution(...a),
 	updateSolution: (...a: unknown[]) => mockUpdateSolution(...a),
@@ -65,6 +70,22 @@ vi.mock("@/services/solutions", () => ({
 		mockPreviewSolutionFromRepo(...a),
 	installSolutionFromRepo: (...a: unknown[]) =>
 		mockInstallSolutionFromRepo(...a),
+}));
+
+const mockTrackAccepted = vi.fn();
+let mockSdkStates: Record<string, string> = {};
+vi.mock("@/hooks/useApplicationSdkUpdateJobs", () => ({
+	useApplicationSdkUpdateJobs: () => ({
+		trackAccepted: mockTrackAccepted,
+		getUpdateState: (id: string) => mockSdkStates[id] ?? "idle",
+		hasUpdateState: (id: string) => id in mockSdkStates,
+		isAnyUpdating: (ids: string[]) =>
+			ids.some(
+				(id) =>
+					mockSdkStates[id] === "queued" ||
+					mockSdkStates[id] === "updating",
+			),
+	}),
 }));
 
 function makeSolution(overrides: Record<string, unknown> = {}) {
@@ -76,6 +97,10 @@ function makeSolution(overrides: Record<string, unknown> = {}) {
 		global_repo_access: false,
 		git_connected: false,
 		git_repo_url: null,
+		setup_complete: true,
+		status: "active",
+		sdk_status: "not_applicable",
+		sdk_actionable_count: 0,
 		scope: "global",
 		...overrides,
 	};
@@ -84,7 +109,16 @@ function makeSolution(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockListSolutions.mockResolvedValue({ solutions: [] });
+	mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+		accepted: [],
+		skipped: [],
+	});
+	mockTrackAccepted.mockReset();
+	mockSdkStates = {};
 	mockSearchParams = new URLSearchParams();
+	vi.mocked(toast.success).mockClear();
+	vi.mocked(toast.warning).mockClear();
+	vi.mocked(toast.error).mockClear();
 });
 
 async function renderPage() {
@@ -140,9 +174,7 @@ describe("Solutions — list", () => {
 		expect(screen.getByText("Git")).toBeInTheDocument();
 		expect(screen.getByText("Manual")).toBeInTheDocument();
 		// Uninstall moved to the detail page — no per-card delete affordance.
-		expect(
-			screen.queryByRole("button", { name: /uninstall/i }),
-		).toBeNull();
+		expect(screen.queryByRole("button", { name: /uninstall/i })).toBeNull();
 	});
 
 	it("shows an empty state when there are no installs", async () => {
@@ -163,6 +195,27 @@ describe("Solutions — list", () => {
 		await renderPage();
 		await screen.findByText("Versioned");
 		expect(screen.getByText("v1.2.3")).toBeInTheDocument();
+	});
+
+	it("renders Solution SDK aggregate status from the list response without per-Solution status calls", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sdk",
+					name: "SDK Solution",
+					slug: "sdk-solution",
+					sdk_status: "update_available",
+					sdk_actionable_count: 2,
+				}),
+			],
+		});
+		await renderPage();
+
+		await screen.findByText("SDK Solution");
+		expect(screen.getByLabelText("SDK update available")).toBeVisible();
+		expect(
+			screen.getByLabelText("2 apps can update SDK"),
+		).toHaveTextContent("2 updates");
 	});
 
 	it("renders colored entity count badges in a wrapping card footer", async () => {
@@ -186,26 +239,28 @@ describe("Solutions — list", () => {
 		});
 		await renderPage();
 
-		const card = (await screen.findByTestId("install-card"));
+		const card = await screen.findByTestId("install-card");
 		const footer = within(card).getByTestId("solution-card-counts");
 		expect(footer).toHaveClass("flex-wrap");
-		expect(within(footer).getByTestId("solution-count-workflows")).toHaveTextContent(
-			"2",
-		);
-		expect(within(footer).getByTestId("solution-count-apps")).toHaveTextContent(
-			"1",
-		);
-		expect(within(footer).getByTestId("solution-count-agents")).toHaveTextContent(
-			"1",
-		);
-		expect(within(footer).getByTestId("solution-count-tables")).toHaveTextContent(
-			"3",
-		);
-		expect(within(footer).getByTestId("solution-count-files")).toHaveTextContent(
-			"4",
-		);
+		expect(
+			within(footer).getByTestId("solution-count-workflows"),
+		).toHaveTextContent("2");
+		expect(
+			within(footer).getByTestId("solution-count-apps"),
+		).toHaveTextContent("1");
+		expect(
+			within(footer).getByTestId("solution-count-agents"),
+		).toHaveTextContent("1");
+		expect(
+			within(footer).getByTestId("solution-count-tables"),
+		).toHaveTextContent("3");
+		expect(
+			within(footer).getByTestId("solution-count-files"),
+		).toHaveTextContent("4");
 		expect(within(footer).queryByTestId("solution-count-forms")).toBeNull();
-		expect(within(footer).queryByTestId("solution-count-claims")).toBeNull();
+		expect(
+			within(footer).queryByTestId("solution-count-claims"),
+		).toBeNull();
 	});
 
 	it("shows an inactive badge for solutions with status=inactive", async () => {
@@ -307,13 +362,555 @@ describe("Solutions — list", () => {
 		const { user } = await renderPage();
 		await screen.findAllByTestId("install-card");
 
-		await user.type(screen.getByRole("textbox", { name: "Search solutions" }), "alp");
+		await user.type(
+			screen.getByRole("textbox", { name: "Search solutions" }),
+			"alp",
+		);
 
 		await waitFor(() =>
 			expect(screen.getAllByTestId("install-card")).toHaveLength(1),
 		);
 		expect(screen.getByText("Alpha")).toBeInTheDocument();
 		expect(screen.queryByText("Beta")).toBeNull();
+	});
+});
+
+describe("Solutions — bulk SDK updates", () => {
+	it("updates every actionable active solution in organization scope while ignoring search text", async () => {
+		let resolveBatch: (
+			value: Awaited<
+				ReturnType<typeof mockUpdateSelectedSolutionAppSdks>
+			>,
+		) => void = () => {};
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Visible SDK",
+					slug: "visible-sdk",
+					organization_id: "org-1",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-2",
+					name: "Hidden SDK",
+					slug: "hidden-sdk",
+					organization_id: "org-1",
+					sdk_status: "unknown",
+					sdk_actionable_count: 2,
+				}),
+				makeSolution({
+					id: "sol-3",
+					name: "Current SDK",
+					slug: "current-sdk",
+					organization_id: "org-1",
+					sdk_status: "current",
+					sdk_actionable_count: 0,
+				}),
+				makeSolution({
+					id: "sol-4",
+					name: "Inactive SDK",
+					slug: "inactive-sdk",
+					organization_id: "org-1",
+					status: "inactive",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-5",
+					name: "Other Org SDK",
+					slug: "other-org-sdk",
+					organization_id: "org-2",
+					sdk_status: "current",
+					sdk_actionable_count: 0,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockReturnValue(
+			new Promise((resolve) => {
+				resolveBatch = resolve;
+			}),
+		);
+		const { user } = await renderPage();
+
+		await screen.findByText("Visible SDK");
+		await user.type(
+			screen.getByRole("textbox", { name: "Search solutions" }),
+			"Visible",
+		);
+		await waitFor(() =>
+			expect(
+				screen.getByRole("button", { name: "Update all SDKs (2)" }),
+			).toHaveAccessibleDescription(
+				"Includes all actionable Solutions in the current organization scope, including 1 hidden by search.",
+			),
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		expect(
+			screen.getByRole("button", { name: "Queueing…" }),
+		).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Select" })).toBeDisabled();
+		expect(mockUpdateSelectedSolutionAppSdks).toHaveBeenCalledWith([
+			"sol-1",
+			"sol-2",
+		]);
+		resolveBatch({
+			accepted: [
+				{
+					application_id: "app-1",
+					solution_id: "sol-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [{ application_id: "app-2", reason: "current" }],
+		});
+		await waitFor(() =>
+			expect(toast.success).toHaveBeenCalledWith(
+				"Queued SDK updates for 1 App. 1 skipped.",
+			),
+		);
+		expect(mockTrackAccepted).toHaveBeenCalledWith([
+			expect.objectContaining({ application_id: "app-1" }),
+		]);
+	});
+
+	it("selects only actionable visible solutions and clears selection after success", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-2",
+					name: "Runbook Solution",
+					slug: "runbook",
+					sdk_status: "unknown",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-3",
+					name: "Current Solution",
+					slug: "current",
+					sdk_status: "current",
+					sdk_actionable_count: 0,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+			accepted: [
+				{
+					application_id: "app-1",
+					solution_id: "sol-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [],
+		});
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(screen.getByRole("button", { name: "Select all" }));
+
+		expect(
+			screen.getByRole("button", { name: "Dispatch Solution" }),
+		).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("button", { name: "Runbook Solution" }),
+		).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("button", { name: "Current Solution" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await user.click(
+			screen.getByRole("button", { name: "Update selected (2)" }),
+		);
+
+		expect(mockUpdateSelectedSolutionAppSdks).toHaveBeenCalledWith([
+			"sol-1",
+			"sol-2",
+		]);
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("button", { name: "Update selected (2)" }),
+			).not.toBeInTheDocument(),
+		);
+		expect(screen.getByRole("button", { name: "Select" })).toBeVisible();
+	});
+
+	it("does not nest interactive links or actions inside selection cards", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		const { user } = await renderPage();
+		const normalCard = await screen.findByRole("article", {
+			name: "Dispatch Solution",
+		});
+
+		expect(
+			within(normalCard).getByRole("link", {
+				name: "Dispatch Solution",
+			}),
+		).toBeInTheDocument();
+		expect(
+			within(normalCard).getByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).toBeInTheDocument();
+		await user.click(normalCard);
+		expect(mockNavigate).toHaveBeenCalledWith("/solutions/sol-1");
+		mockNavigate.mockClear();
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		const selectionCard = screen.getByRole("button", {
+			name: "Dispatch Solution",
+		});
+
+		expect(
+			within(selectionCard).queryByRole("link", {
+				name: "Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+		expect(
+			within(selectionCard).queryByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+	});
+
+	it("marks accepted solutions as updating and removes them from bulk actions", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-2",
+					name: "Runbook Solution",
+					slug: "runbook",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+			accepted: [
+				{
+					application_id: "app-1",
+					solution_id: "sol-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+				{
+					application_id: "app-2",
+					solution_id: "sol-2",
+					job_id: "job-2",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [],
+		});
+		const { user, rerender } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		await waitFor(() =>
+			expect(screen.getAllByLabelText("SDK update queued")).toHaveLength(2),
+		);
+		expect(
+			screen.queryByRole("button", { name: "Update all SDKs (2)" }),
+		).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Select" })).toBeDisabled();
+		expect(
+			screen.queryByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+
+		mockSdkStates = { "app-1": "idle", "app-2": "updating" };
+		rerender(<Solutions />);
+		await waitFor(() =>
+			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
+		);
+		expect(
+			screen.getByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("button", {
+				name: "Update SDKs for Runbook Solution",
+			}),
+		).not.toBeInTheDocument();
+	});
+
+	it("moves submitted solutions from queued to updating and clears them after completion", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-2",
+					name: "Runbook Solution",
+					slug: "runbook",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+			accepted: [
+				{
+					application_id: "app-1",
+					solution_id: "sol-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [{ application_id: "app-2", reason: "current" }],
+		});
+		const { user, rerender } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		await waitFor(() =>
+			expect(screen.getAllByLabelText("SDK update queued")).toHaveLength(1),
+		);
+		expect(
+			screen.getByRole("button", { name: "Update all SDKs (1)" }),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: "Update SDKs for Runbook Solution",
+			}),
+		).toBeVisible();
+		mockSdkStates = { "app-1": "updating" };
+		rerender(<Solutions />);
+		await waitFor(() =>
+			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
+		);
+
+		mockSdkStates = { "app-1": "idle" };
+		rerender(<Solutions />);
+
+		await waitFor(() =>
+			expect(
+				screen.queryByLabelText("Updating SDK"),
+			).not.toBeInTheDocument(),
+		);
+		expect(
+			screen.queryByLabelText("SDK update queued"),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		).toBeVisible();
+	});
+
+	it("does not mark a solution as updating when every app is skipped", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+			accepted: [],
+			skipped: [{ application_id: "app-1", reason: "conflict" }],
+		});
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (1)" }),
+		);
+
+		await waitFor(() =>
+			expect(toast.warning).toHaveBeenCalledWith(
+				"No SDK updates were queued. 1 skipped.",
+			),
+		);
+		expect(screen.queryByLabelText("Updating SDK")).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Update all SDKs (1)" }),
+		).toBeVisible();
+	});
+
+	it("keeps selection after a batch request failure", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockRejectedValue(new Error("boom"));
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(
+			screen.getByRole("button", { name: "Dispatch Solution" }),
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Update selected (1)" }),
+		);
+
+		expect(toast.error).toHaveBeenCalledWith(
+			"Failed to queue Solution app SDK updates",
+		);
+		expect(
+			screen.getByRole("button", { name: "Dispatch Solution" }),
+		).toHaveAttribute("aria-pressed", "true");
+	});
+
+	it("warns when every requested Solution SDK update is skipped", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		mockUpdateSelectedSolutionAppSdks.mockResolvedValue({
+			accepted: [],
+			skipped: [{ application_id: "app-1", reason: "conflict" }],
+		});
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (1)" }),
+		);
+
+		await waitFor(() =>
+			expect(toast.warning).toHaveBeenCalledWith(
+				"No SDK updates were queued. 1 skipped.",
+			),
+		);
+		expect(toast.success).not.toHaveBeenCalled();
+	});
+
+	it("uses semantic checkboxes in table selection mode", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+				makeSolution({
+					id: "sol-2",
+					name: "Current Solution",
+					slug: "current",
+					sdk_status: "current",
+					sdk_actionable_count: 0,
+				}),
+			],
+		});
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(screen.getByRole("radio", { name: /table view/i }));
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(
+			screen.getByRole("checkbox", {
+				name: "Select Dispatch Solution for SDK update",
+			}),
+		);
+
+		expect(
+			screen.getByRole("checkbox", {
+				name: "Select Dispatch Solution for SDK update",
+			}),
+		).toBeChecked();
+		expect(
+			screen.getByRole("checkbox", {
+				name: "Select Current Solution for SDK update",
+			}),
+		).toBeDisabled();
+	});
+
+	it("exposes a direct per-card SDK update action outside selection mode", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sol-1",
+					name: "Dispatch Solution",
+					slug: "dispatch",
+					sdk_status: "update_available",
+					sdk_actionable_count: 1,
+				}),
+			],
+		});
+		const { user } = await renderPage();
+		await screen.findByText("Dispatch Solution");
+
+		await user.click(
+			screen.getByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		);
+
+		expect(mockUpdateSelectedSolutionAppSdks).toHaveBeenCalledWith([
+			"sol-1",
+		]);
 	});
 });
 
@@ -497,7 +1094,9 @@ describe("Solutions — upgrade flow", () => {
 		expect(within(dialog).getByText(/NEW_KEY/)).toBeInTheDocument();
 		expect(within(dialog).getByText(/DEAD_KEY/)).toBeInTheDocument();
 		expect(
-			within(dialog).getByText(/API_KEY: secret→string, required→optional/),
+			within(dialog).getByText(
+				/API_KEY: secret→string, required→optional/,
+			),
 		).toBeInTheDocument();
 		expect(within(dialog).getByTestId("confirm-install")).toHaveTextContent(
 			"Upgrade",
@@ -536,10 +1135,14 @@ describe("Solutions — upgrade flow", () => {
 		);
 
 		const confirm = await screen.findByTestId("downgrade-confirm");
-		expect(confirm).toHaveTextContent("This is a DOWNGRADE: v1.0.0 → v0.9.0");
+		expect(confirm).toHaveTextContent(
+			"This is a DOWNGRADE: v1.0.0 → v0.9.0",
+		);
 		await user.click(screen.getByTestId("confirm-downgrade"));
 
-		await waitFor(() => expect(mockInstallSolution).toHaveBeenCalledTimes(2));
+		await waitFor(() =>
+			expect(mockInstallSolution).toHaveBeenCalledTimes(2),
+		);
 		expect(mockInstallSolution).toHaveBeenLastCalledWith(
 			expect.objectContaining({ file, force: true }),
 		);

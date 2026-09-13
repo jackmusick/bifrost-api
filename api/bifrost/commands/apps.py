@@ -39,9 +39,11 @@ Two-call orchestration for ``apps create --deps``:
 
 from __future__ import annotations
 
-import asyncio
-import time
+import os
+import tempfile
+from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import click
 import httpx
@@ -54,6 +56,7 @@ from bifrost.dto_flags import (
     build_cli_flags,
     load_dict_value,
 )
+from bifrost.platform_jobs import poll_platform_job
 from bifrost.refs import RefResolver
 from bifrost.contracts import (
     ApplicationCreate,
@@ -133,8 +136,8 @@ def _select_bound_app(
 
     matches = [i for i in items if _matches(i)]
     own = [i for i in matches if str(i.get("solution_id") or "") == solution_id]
-    foreign = [i for i in matches if str(i.get("solution_id") or "") != solution_id]
-    return (own[0] if own else None), (foreign if own else [])
+    foreign = [i for i in matches if i.get("solution_id") is None]
+    return (own[0] if own else None), foreign
 
 
 @apps_group.command("get")
@@ -402,67 +405,9 @@ async def set_deps(
     """
     app_uuid = await resolver.resolve("app", ref)
     deps = _parse_deps(deps_raw)
-    response = await client.put(
-        f"/api/applications/{app_uuid}/dependencies", json=deps
-    )
+    response = await client.put(f"/api/applications/{app_uuid}/dependencies", json=deps)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
-
-
-async def _poll_publish_job(
-    client: BifrostClient,
-    job_id: str,
-    *,
-    interval: float = 2.0,
-    timeout_seconds: float = APPLICATION_PUBLISH_TIMEOUT_SECONDS,
-) -> dict[str, Any]:
-    """Poll one publish job without holding any HTTP request open."""
-    started = time.monotonic()
-    last_progress: tuple[str | None, int, int | None] | None = None
-    while True:
-        try:
-            response = await client.get(
-                f"/api/platform-jobs/{job_id}"
-            )
-        except httpx.TimeoutException as exc:
-            raise click.ClickException(
-                f"Timed out reading application publish job {job_id}. "
-                "The durable operation may still be running; retry the command "
-                "to follow the existing job."
-            ) from exc
-        response.raise_for_status()
-        body = response.json()
-        status_value = body.get("status")
-        if status_value == "succeeded":
-            return body
-        if status_value in ("failed", "cancelled"):
-            error = body.get("error") or {}
-            raise click.ClickException(
-                f"Application publish failed (job {job_id}): "
-                f"{error.get('message') or status_value}"
-            )
-
-        progress_body = body.get("progress") or {}
-        phase = progress_body.get("phase")
-        current = int(progress_body.get("current") or 0)
-        total = progress_body.get("total")
-        progress = (phase, current, total)
-        if progress != last_progress:
-            count = f" ({current}/{total})" if total is not None else ""
-            click.echo(
-                f"Publish {phase or status_value or 'in progress'}{count}",
-                err=True,
-            )
-            last_progress = progress
-
-        if time.monotonic() - started >= timeout_seconds:
-            raise click.ClickException(
-                f"Application publish polling timed out after "
-                f"{int(timeout_seconds)}s (job {job_id}). "
-                "The durable operation may still be running; check its status "
-                "before retrying."
-            )
-        await asyncio.sleep(interval)
 
 
 @apps_group.command("publish")
@@ -510,8 +455,243 @@ async def publish_app(
         f"{'Following existing' if reused else 'Queued'} publish job {job_id}",
         err=True,
     )
-    completed = await _poll_publish_job(client, job_id)
+    completed = await poll_platform_job(
+        client,
+        job_id,
+        label="Publish",
+        failure_label="Application publish",
+        timeout_seconds=APPLICATION_PUBLISH_TIMEOUT_SECONDS,
+        timeout_operation="application publish",
+    )
     output_result(completed, ctx=ctx)
+
+
+def _app_sdk_status(app: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": app.get("id"),
+        "slug": app.get("slug"),
+        "name": app.get("name"),
+        "app_model": app.get("app_model"),
+        "sdk_package_version": app.get("sdk_package_version"),
+        "sdk_fingerprint": app.get("sdk_fingerprint"),
+        "sdk_contract_version": app.get("sdk_contract_version"),
+        "sdk_built_at": app.get("sdk_built_at"),
+        "sdk_status": app.get("sdk_status"),
+        "sdk_source_available": app.get("sdk_source_available"),
+    }
+
+
+async def _load_app_by_ref(
+    client: BifrostClient, resolver: RefResolver, ref: str
+) -> dict[str, Any]:
+    bound_solution = os.getenv("BIFROST_SOLUTION_ID")
+    try:
+        UUID(ref)
+    except (TypeError, ValueError):
+        is_uuid = False
+    else:
+        is_uuid = True
+
+    if bound_solution and not is_uuid:
+        list_response = await client.get("/api/applications")
+        list_response.raise_for_status()
+        data = list_response.json()
+        items = data.get("applications", []) if isinstance(data, dict) else data
+        own, foreign = _select_bound_app(items, ref, bound_solution)
+        if own is not None:
+            for other in foreign:
+                click.echo(
+                    f"Warning: {ref!r} also matches app {other.get('slug')!r} "
+                    f"({other.get('id')}) outside this solution — targeting this "
+                    "workspace's own app. Use the UUID to target the other one.",
+                    err=True,
+                )
+            return own
+        if foreign:
+            raise click.ClickException(
+                f"{ref!r} matches an app outside this bound Solution, but no "
+                "app in this Solution. Use the UUID outside a bound Solution "
+                "workspace if you intend to target that app."
+            )
+
+    app_uuid = await resolver.resolve("app", ref)
+    response = await client.get("/api/applications")
+    response.raise_for_status()
+    data = response.json()
+    items = data.get("applications", []) if isinstance(data, dict) else data
+    for item in items:
+        if str(item.get("id")) == app_uuid:
+            return item
+    raise click.ClickException(
+        f"application {ref!r} resolved to {app_uuid} but is not in the accessible list"
+    )
+
+
+@apps_group.group("sdk")
+def sdk_group() -> None:
+    """Inspect or update deployed App SDK bundles."""
+
+
+@sdk_group.command("status")
+@click.argument("ref", required=False)
+@click.pass_context
+@pass_resolver
+@run_async
+async def sdk_status(
+    ctx: click.Context,
+    ref: str | None,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Show SDK provenance/status for one deployed App, or all visible Apps."""
+    if ref:
+        app = await _load_app_by_ref(client, resolver, ref)
+        output_result(_app_sdk_status(app), ctx=ctx)
+        return
+
+    response = await client.get("/api/applications")
+    response.raise_for_status()
+    data = response.json()
+    items = data.get("applications", []) if isinstance(data, dict) else data
+    output_result(
+        {"applications": [_app_sdk_status(app) for app in items], "total": len(items)},
+        ctx=ctx,
+    )
+
+
+@sdk_group.command("update")
+@click.argument("ref", required=False)
+@click.option(
+    "--all", "all_apps", is_flag=True, help="Update every actionable visible App."
+)
+@click.pass_context
+@pass_resolver
+@run_async
+async def sdk_update(
+    ctx: click.Context,
+    ref: str | None,
+    all_apps: bool,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Queue deployed App SDK rebuild/update jobs and follow their progress."""
+    if bool(ref) == all_apps:
+        raise click.UsageError("Pass either REF or --all.")
+
+    if ref:
+        app = await _load_app_by_ref(client, resolver, ref)
+        app_uuid = str(app["id"])
+        response = await client.post(f"/api/applications/{app_uuid}/sdk/update")
+        response.raise_for_status()
+        accepted = response.json()
+        job_id = str(accepted["job_id"])
+        click.echo(f"Queued App SDK update job {job_id}", err=True)
+        completed = await poll_platform_job(
+            client,
+            job_id,
+            label="SDK update",
+            failure_label="App SDK update",
+        )
+        output_result({"accepted": accepted, "job": completed}, ctx=ctx)
+        return
+
+    response = await client.post(
+        "/api/applications/sdk/update", json={"application_ids": None}
+    )
+    response.raise_for_status()
+    body = response.json()
+    accepted_jobs = body.get("accepted", [])
+    skipped = body.get("skipped", [])
+    for item in skipped:
+        click.echo(
+            f"Skipped {item.get('application_id')}: {item.get('reason')}",
+            err=True,
+        )
+
+    completed_jobs: list[dict[str, Any]] = []
+    failed_jobs: list[str] = []
+    for item in accepted_jobs:
+        job_id = str(item["job_id"])
+        click.echo(f"Queued App SDK update job {job_id}", err=True)
+        try:
+            completed_jobs.append(
+                await poll_platform_job(
+                    client,
+                    job_id,
+                    label="SDK update",
+                    failure_label="App SDK update",
+                )
+            )
+        except click.ClickException as exc:
+            failed_jobs.append(f"{job_id}: {exc.message}")
+
+    output_result(
+        {"accepted": accepted_jobs, "skipped": skipped, "jobs": completed_jobs},
+        ctx=ctx,
+    )
+    if failed_jobs:
+        raise click.ClickException(
+            f"{len(failed_jobs)} App SDK update job(s) failed: "
+            + "; ".join(failed_jobs)
+        )
+
+
+@apps_group.group("source")
+def source_group() -> None:
+    """Download retained deployed App source artifacts."""
+
+
+@source_group.command("export")
+@click.argument("ref")
+@click.argument("destination", type=click.Path(dir_okay=False, path_type=Path))
+@click.pass_context
+@pass_resolver
+@run_async
+async def source_export(
+    ctx: click.Context,
+    ref: str,
+    destination: Path,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Write the retained deployed source zip for an independent App."""
+    if destination.exists():
+        if destination.is_dir():
+            raise click.ClickException(f"Destination is a directory: {destination}")
+        if destination.stat().st_size > 0:
+            raise click.ClickException(
+                f"Refusing to overwrite non-empty destination: {destination}"
+            )
+
+    app = await _load_app_by_ref(client, resolver, ref)
+    app_uuid = str(app["id"])
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    tmp_path = Path(tmp_name)
+    bytes_written = 0
+    try:
+        with os.fdopen(fd, "wb") as tmp_file:
+            async with client.stream(
+                "GET", f"/api/applications/{app_uuid}/source"
+            ) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    tmp_file.write(chunk)
+                    bytes_written += len(chunk)
+        tmp_path.replace(destination)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    output_result({"path": str(destination), "bytes": bytes_written}, ctx=ctx)
 
 
 @apps_group.command("delete")
@@ -576,9 +756,7 @@ async def replace_app(
     """
     app_uuid = await resolver.resolve("app", ref)
     body: dict[str, Any] = {"repo_path": repo_path, "force": force}
-    response = await client.post(
-        f"/api/applications/{app_uuid}/replace", json=body
-    )
+    response = await client.post(f"/api/applications/{app_uuid}/replace", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
 

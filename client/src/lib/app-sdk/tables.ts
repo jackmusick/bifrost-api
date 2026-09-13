@@ -149,6 +149,7 @@ export type TableChangeEvent =
       row_id: string;
       table_id: string;
     }
+  | { type: "table_invalidated"; table_id: string }
   | { type: "subscription_revoked"; channel: string }
   | { type: "error"; channel?: string; message: string };
 

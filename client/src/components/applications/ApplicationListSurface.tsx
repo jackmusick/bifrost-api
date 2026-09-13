@@ -2,10 +2,13 @@ import {
 	AppWindow,
 	Building2,
 	Code2,
+	CircleSlash,
 	Eye,
 	Globe,
 	Pencil,
 	PlayCircle,
+	RefreshCw,
+	Check,
 	Trash2,
 } from "lucide-react";
 
@@ -15,9 +18,15 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ResourceIcon } from "@/components/ResourceIcon";
 import { PageLoader } from "@/components/PageLoader";
 import { SolutionManagedBadge } from "@/components/solutions/SolutionManagedBadge";
+import {
+	ApplicationSdkStatusBadge,
+	canUpdateApplicationSdk,
+	type ApplicationSdkUpdateState,
+} from "@/components/applications/ApplicationSdkStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	DataTable,
 	DataTableBody,
@@ -47,7 +56,13 @@ export interface ApplicationListSurfaceProps {
 	onPreview?: (app: ApplicationListItem) => void;
 	onOpenSettings?: (app: ApplicationListItem) => void;
 	onOpenCode?: (app: ApplicationListItem) => void;
+	onUpdateSdk?: (app: ApplicationListItem) => void;
 	onDelete?: (app: ApplicationListItem) => void;
+	getSdkUpdateState?: (app: ApplicationListItem) => ApplicationSdkUpdateState;
+	selectionMode?: boolean;
+	selectedIds?: Set<string>;
+	onToggleSelection?: (app: ApplicationListItem) => void;
+	onToggleSelectAllVisible?: () => void;
 	onCreateEmpty?: () => void;
 	emptySearchActive?: boolean;
 }
@@ -76,19 +91,35 @@ function ApplicationActions({
 	onPreview,
 	onOpenSettings,
 	onOpenCode,
+	onUpdateSdk,
 	onDelete,
+	updateState = "idle",
 }: { app: ApplicationListItem } & Pick<
 	ApplicationListSurfaceProps,
-	"onLaunch" | "onPreview" | "onOpenSettings" | "onOpenCode" | "onDelete"
->) {
+	| "onLaunch"
+	| "onPreview"
+	| "onOpenSettings"
+	| "onOpenCode"
+	| "onUpdateSdk"
+	| "onDelete"
+> & { updateState?: ApplicationSdkUpdateState }) {
 	const showPublished = canLaunchApp(app);
 	const showPreview =
 		!isV2App(app) && app.has_unpublished_changes && onPreview;
+	const sdkUpdateAllowed = canUpdateApplicationSdk(app, updateState);
+	const sdkStatusNeedsMenu =
+		updateState === "failed" ||
+		updateState === "queued" ||
+		updateState === "updating" ||
+		app.sdk_status === "update_available" ||
+		app.sdk_status === "update_required" ||
+		app.sdk_status === "unknown";
 	if (
 		!showPublished &&
 		!showPreview &&
 		!onOpenSettings &&
 		(!onOpenCode || isV2App(app)) &&
+		!sdkStatusNeedsMenu &&
 		!onDelete
 	)
 		return null;
@@ -130,6 +161,35 @@ function ApplicationActions({
 					Code editor
 				</DropdownMenuItem>
 			)}
+			{sdkStatusNeedsMenu && onUpdateSdk && (
+				<DropdownMenuItem
+					className="min-h-11"
+					disabled={!sdkUpdateAllowed}
+					onSelect={() => {
+						if (sdkUpdateAllowed) onUpdateSdk(app);
+					}}
+				>
+					{app.sdk_source_available ? (
+						<RefreshCw aria-hidden="true" className="size-4" />
+					) : (
+						<CircleSlash
+							aria-hidden="true"
+							className="size-4"
+						/>
+					)}
+					{!app.sdk_source_available
+						? "Source unavailable — cannot rebuild SDK"
+						: updateState === "queued"
+							? "SDK update queued…"
+							: updateState === "updating"
+								? "Updating SDK…"
+								: updateState === "failed"
+									? "Retry SDK update"
+									: app.sdk_status === "unknown"
+										? "Rebuild SDK"
+										: "Update SDK"}
+				</DropdownMenuItem>
+			)}
 			{onDelete && (
 				<DropdownMenuItem
 					variant="destructive"
@@ -155,11 +215,55 @@ export function ApplicationListSurface({
 	onPreview,
 	onOpenSettings,
 	onOpenCode,
+	onUpdateSdk,
 	onDelete,
+	getSdkUpdateState,
+	selectionMode = false,
+	selectedIds = new Set(),
+	onToggleSelection,
+	onToggleSelectAllVisible,
 	onCreateEmpty,
 	emptySearchActive = false,
 }: ApplicationListSurfaceProps) {
 	const terminology = useTerminology();
+	const isSelectable = (app: ApplicationListItem) =>
+		canUpdateApplicationSdk(app, getSdkUpdateState?.(app) ?? "idle");
+	const selectableApps = apps.filter(isSelectable);
+	const allVisibleSelected =
+		selectableApps.length > 0 &&
+		selectableApps.every((app) => selectedIds.has(app.id));
+	const someVisibleSelected = selectableApps.some((app) =>
+		selectedIds.has(app.id),
+	);
+	const renderSdkBadge = (app: ApplicationListItem, showCurrent = false) => (
+		<ApplicationSdkStatusBadge
+			status={app.sdk_status}
+			showCurrent={showCurrent}
+			updateState={getSdkUpdateState?.(app) ?? "idle"}
+		/>
+	);
+	const renderSourceUnavailableBadge = (app: ApplicationListItem) => {
+		if (
+			app.sdk_source_available ||
+			!(
+				app.sdk_status === "update_available" ||
+				app.sdk_status === "update_required" ||
+				app.sdk_status === "unknown"
+			)
+		) {
+			return null;
+		}
+		return (
+			<Badge
+				variant="outline"
+				aria-label="Source unavailable"
+				className="gap-1 border-muted-foreground/30 bg-muted text-xs text-muted-foreground"
+			>
+				<CircleSlash aria-hidden="true" className="h-3 w-3" />
+				Source unavailable
+			</Badge>
+		);
+	};
 	const renderName = (app: ApplicationListItem) => {
 		const open = getApplicationPrimaryAction(app, { onLaunch, onPreview });
 		return (
@@ -218,6 +322,24 @@ export function ApplicationListSurface({
 				<DataTable className="max-h-full">
 					<DataTableHeader>
 						<DataTableRow>
+							{selectionMode && (
+								<DataTableHead className="w-12">
+									<Checkbox
+										aria-label={`Select all visible ${term(terminology, "app", "formalPlural")} with SDK updates`}
+										checked={
+											allVisibleSelected
+												? true
+												: someVisibleSelected
+													? "indeterminate"
+													: false
+										}
+										disabled={selectableApps.length === 0}
+										onCheckedChange={() =>
+											onToggleSelectAllVisible?.()
+										}
+									/>
+								</DataTableHead>
+							)}
 							{isPlatformAdmin && (
 								<DataTableHead className="w-0 whitespace-nowrap">
 									Organization
@@ -233,10 +355,19 @@ export function ApplicationListSurface({
 					</DataTableHeader>
 					<DataTableBody>
 						{apps.map((app) => {
+							const selectable = isSelectable(app);
 							const opensPreview =
 								!isV2App(app) &&
 								!canLaunchApp(app) &&
 								Boolean(onPreview);
+							const updateState =
+								getSdkUpdateState?.(app) ?? "idle";
+							const sdkStatusNeedsMenu =
+								updateState === "failed" ||
+								updateState === "updating" ||
+								app.sdk_status === "update_available" ||
+								app.sdk_status === "update_required" ||
+								app.sdk_status === "unknown";
 							const open = getApplicationPrimaryAction(app, {
 								onLaunch,
 								onPreview,
@@ -244,8 +375,12 @@ export function ApplicationListSurface({
 							return (
 								<DataTableRow
 									key={app.id}
-									clickable={Boolean(open)}
-									onClick={open}
+									clickable={
+										!selectionMode && Boolean(open)
+									}
+									onClick={
+										selectionMode ? undefined : open
+									}
 									onPointerEnter={() =>
 										prefetchApplicationDetail(
 											app,
@@ -259,6 +394,28 @@ export function ApplicationListSurface({
 										)
 									}
 								>
+									{selectionMode && (
+										<DataTableCell
+											onClick={(event) =>
+												event.stopPropagation()
+											}
+										>
+											<Checkbox
+												aria-label={`Select ${app.name}`}
+												checked={selectedIds.has(
+													app.id,
+												)}
+												disabled={!selectable}
+												onCheckedChange={() => {
+													if (selectable) {
+														onToggleSelection?.(
+															app,
+														);
+													}
+												}}
+											/>
+										</DataTableCell>
+									)}
 									{isPlatformAdmin && (
 										<DataTableCell className="w-0 whitespace-nowrap">
 											{app.organization_id ? (
@@ -331,6 +488,8 @@ export function ApplicationListSurface({
 															: "Empty"}
 													</Badge>
 												)}
+											{renderSdkBadge(app, true)}
+											{renderSourceUnavailableBadge(app)}
 										</div>
 									</DataTableCell>
 									<DataTableCell
@@ -377,16 +536,29 @@ export function ApplicationListSurface({
 												/>
 											)}
 											{canManageApps &&
-												!app.is_solution_managed && (
+												(!app.is_solution_managed ||
+													sdkStatusNeedsMenu) && (
 													<ApplicationActions
 														app={app}
 														onLaunch={onLaunch}
 														onPreview={onPreview}
 														onOpenSettings={
-															onOpenSettings
+															app.is_solution_managed
+																? undefined
+																: onOpenSettings
 														}
-														onOpenCode={onOpenCode}
-														onDelete={onDelete}
+														onOpenCode={
+															app.is_solution_managed
+																? undefined
+																: onOpenCode
+														}
+														onUpdateSdk={onUpdateSdk}
+														onDelete={
+															app.is_solution_managed
+																? undefined
+																: onDelete
+														}
+														updateState={updateState}
 													/>
 												)}
 										</div>
@@ -403,6 +575,8 @@ export function ApplicationListSurface({
 	return (
 		<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))]">
 			{apps.map((app) => {
+				const selectable = isSelectable(app);
+				const selected = selectedIds.has(app.id);
 				const opensPreview =
 					!isV2App(app) && !canLaunchApp(app) && Boolean(onPreview);
 				const defaultTarget = getApplicationPrimaryAction(app, {
@@ -414,7 +588,7 @@ export function ApplicationListSurface({
 						? getOrgName(app.organization_id)
 						: "Global"
 					: null;
-				return (
+				const card = (
 					<div
 						key={app.id}
 						onPointerEnter={() =>
@@ -450,6 +624,7 @@ export function ApplicationListSurface({
 								)
 							}
 							action={
+								selectionMode ? undefined :
 								<div className="flex items-center gap-1">
 									{app.is_solution_managed ? (
 										<SolutionManagedBadge
@@ -471,10 +646,15 @@ export function ApplicationListSurface({
 													? undefined
 													: onOpenCode
 											}
+											onUpdateSdk={onUpdateSdk}
 											onDelete={
 												app.is_solution_managed
 													? undefined
 													: onDelete
+											}
+											updateState={
+												getSdkUpdateState?.(app) ??
+												"idle"
 											}
 										/>
 									) : null}
@@ -495,7 +675,8 @@ export function ApplicationListSurface({
 								) : undefined
 							}
 							onOpen={() => defaultTarget?.()}
-							disabled={!defaultTarget}
+							disabled={selectionMode || !defaultTarget}
+							titleInteractive={!selectionMode}
 						>
 							<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 								{app.is_published && (
@@ -527,9 +708,50 @@ export function ApplicationListSurface({
 												: "Empty"}
 										</Badge>
 									)}
+								{renderSdkBadge(app)}
+								{renderSourceUnavailableBadge(app)}
 							</div>
 						</ResourceCatalogCard>
 					</div>
+				);
+				if (!selectionMode) return card;
+				const toggle = () => {
+					if (selectable) onToggleSelection?.(app);
+				};
+				return (
+					<article
+						key={app.id}
+						role={selectable ? "button" : undefined}
+						tabIndex={selectable ? 0 : undefined}
+						aria-label={app.name}
+						aria-pressed={selectable ? selected : undefined}
+						aria-disabled={!selectable}
+						onClick={toggle}
+						onKeyDown={(event) => {
+							if (
+								event.key === "Enter" ||
+								event.key === " "
+							) {
+								event.preventDefault();
+								toggle();
+							}
+						}}
+						className={
+							selectable
+								? "relative cursor-pointer rounded-[var(--bf-radius-surface)] outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+								: "relative rounded-[var(--bf-radius-surface)] opacity-70"
+						}
+					>
+						{selected && (
+							<span
+								aria-label={`${app.name} selected`}
+								className="absolute right-3 top-3 z-10 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm"
+							>
+								<Check aria-hidden="true" className="size-4" />
+							</span>
+						)}
+						{card}
+					</article>
 				);
 			})}
 		</div>

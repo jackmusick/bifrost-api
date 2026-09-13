@@ -4,8 +4,9 @@ SolutionAppBuilder — server-side Vite build for v2 standalone apps (criterion 
 A v2 app's transient ``src/`` is built into a ``dist/`` and uploaded to
 ``_apps/{app_id}/dist/``, from which the platform serves the standalone app. A
 deploy bundle may instead ship a prebuilt ``dist/`` (the disconnected fast-path),
-in which case the Vite build is skipped. App ``src/`` is NEVER persisted under
-``_solutions/`` — it is transient build input only (success-criteria §3.6).
+in which case the Vite build is skipped. Solution app ``src/`` is not persisted
+under ``_solutions/`` by this builder; independent deploy source retention is
+owned by ``ApplicationSourceArtifactStorage``.
 
 This is the ONE canonical build path: git-connected installs always build here
 (from the clone); disconnected installs build here too unless they pre-ship
@@ -278,3 +279,25 @@ class SolutionAppBuilder:
                     Bucket=self._bucket,
                     Key=self._dist_key(app_id, rel, deployment_id=deployment_id),
                 )
+
+    async def delete_all_app_artifacts(self, app_id: UUID | str) -> None:
+        """Delete every artifact under ``_apps/{app_id}/``.
+
+        Used when the app row itself is removed. This clears both the legacy
+        unversioned dist prefix and every immutable versioned deployment.
+        """
+        prefix = f"{APPS_PREFIX}{app_id}/"
+        token = None
+        async with self._client() as c:
+            while True:
+                kwargs: dict = {"Bucket": self._bucket, "Prefix": prefix}
+                if token:
+                    kwargs["ContinuationToken"] = token
+                resp = await c.list_objects_v2(**kwargs)
+                for obj in resp.get("Contents", []):
+                    key = obj.get("Key")
+                    if key:
+                        await c.delete_object(Bucket=self._bucket, Key=key)
+                if not resp.get("IsTruncated"):
+                    break
+                token = resp.get("NextContinuationToken")
