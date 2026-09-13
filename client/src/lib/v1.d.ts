@@ -25021,6 +25021,17 @@ export interface components {
              */
             status: string;
             entity_counts?: components["schemas"]["SolutionEntityCounts"];
+            /**
+             * Sdk Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            sdk_status: "not_applicable" | "unknown" | "current" | "update_available" | "update_required";
+            /**
+             * Sdk Actionable Count
+             * @default 0
+             */
+            sdk_actionable_count: number;
             /** Logo Url */
             logo_url?: string | null;
             /** Logo Version */

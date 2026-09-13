@@ -225,6 +225,61 @@ async def test_solution_sdk_status_and_update_enqueue_app_jobs(
     assert job.resource_lock_key == f"application:{app.id}"
 
 
+async def test_solution_list_and_get_include_sdk_aggregates(
+    e2e_client, platform_admin, db_session
+):
+    actionable_solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-list-action-{uuid4().hex[:8]}",
+        name="SDK List Action",
+    )
+    no_app_solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-list-empty-{uuid4().hex[:8]}",
+        name="SDK List Empty",
+    )
+    inactive_solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-list-inactive-{uuid4().hex[:8]}",
+        name="SDK List Inactive",
+        status="inactive",
+    )
+    db_session.add_all([actionable_solution, no_app_solution, inactive_solution])
+    await db_session.flush()
+    actionable_app = await _seed_app(
+        db_session,
+        slug=f"sdk-list-app-{uuid4().hex[:8]}",
+        active_deployment_id=uuid4(),
+        solution_id=actionable_solution.id,
+    )
+    await _seed_app(
+        db_session,
+        slug=f"sdk-list-inactive-app-{uuid4().hex[:8]}",
+        active_deployment_id=uuid4(),
+        solution_id=inactive_solution.id,
+    )
+
+    listed = e2e_client.get("/api/solutions", headers=platform_admin.headers)
+
+    assert listed.status_code == 200, listed.text
+    by_id = {item["id"]: item for item in listed.json()["solutions"]}
+    assert by_id[str(actionable_solution.id)]["sdk_status"] == "update_available"
+    assert by_id[str(actionable_solution.id)]["sdk_actionable_count"] == 1
+    assert by_id[str(no_app_solution.id)]["sdk_status"] == "not_applicable"
+    assert by_id[str(no_app_solution.id)]["sdk_actionable_count"] == 0
+    assert by_id[str(inactive_solution.id)]["sdk_status"] == "not_applicable"
+    assert by_id[str(inactive_solution.id)]["sdk_actionable_count"] == 0
+
+    got = e2e_client.get(
+        f"/api/solutions/{actionable_solution.id}", headers=platform_admin.headers
+    )
+
+    assert got.status_code == 200, got.text
+    assert got.json()["sdk_status"] == "update_available"
+    assert got.json()["sdk_actionable_count"] == 1
+    assert actionable_app.solution_id == actionable_solution.id
+
+
 async def test_solution_deploy_and_solution_app_sdk_update_conflict(
     e2e_client, platform_admin, db_session
 ):

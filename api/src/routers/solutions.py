@@ -99,6 +99,7 @@ from src.jobs.platform.solution_deploy import (
 from src.services.platform_jobs import enqueue_platform_job, publish_platform_job_update
 from src.services.platform_jobs import ACTIVE_PLATFORM_JOB_STATUSES
 from src.services.application_sdk_status import (
+    CurrentApplicationSdkMetadata,
     application_sdk_status,
     load_current_sdk_metadata,
     sdk_source_available,
@@ -323,6 +324,101 @@ async def _solution_entity_counts(
     return counts
 
 
+def _solution_sdk_status_from_apps(
+    *,
+    solution_id: UUID,
+    solution_status: str,
+    apps: list[Application],
+    current_sdk: CurrentApplicationSdkMetadata,
+) -> tuple[SolutionSdkStatus, list[Application]]:
+    summaries: list[SolutionAppSdkStatus] = []
+    actionable_apps: list[Application] = []
+    solution_is_active = solution_status == "active"
+    for app in apps:
+        status_value = application_sdk_status(app, current_sdk)
+        source_available = sdk_source_available(app)
+        actionable = (
+            solution_is_active
+            and app.app_model == "standalone_v2"
+            and source_available
+            and status_value in ("unknown", "update_available", "update_required")
+        )
+        if actionable:
+            actionable_apps.append(app)
+        summaries.append(
+            SolutionAppSdkStatus(
+                application_id=app.id,
+                slug=app.slug,
+                sdk_status=status_value,
+                sdk_source_available=source_available,
+                actionable=actionable,
+            )
+        )
+    if not solution_is_active:
+        aggregate = "not_applicable"
+    elif any(item.sdk_status == "update_required" for item in summaries):
+        aggregate = "update_required"
+    elif any(item.sdk_status == "update_available" for item in summaries):
+        aggregate = "update_available"
+    elif any(item.sdk_status == "unknown" for item in summaries):
+        aggregate = "unknown"
+    elif any(item.sdk_status == "current" for item in summaries):
+        aggregate = "current"
+    else:
+        aggregate = "not_applicable"
+    return (
+        SolutionSdkStatus(
+            solution_id=solution_id,
+            sdk_status=aggregate,
+            actionable_count=len(actionable_apps),
+            apps=summaries,
+        ),
+        actionable_apps,
+    )
+
+
+def _default_solution_sdk_status(solution_id: UUID) -> SolutionSdkStatus:
+    return SolutionSdkStatus(
+        solution_id=solution_id,
+        sdk_status="not_applicable",
+        actionable_count=0,
+        apps=[],
+    )
+
+
+async def _solution_sdk_statuses_for_rows(
+    ctx: Context, rows: list[SolutionORM]
+) -> dict[UUID, SolutionSdkStatus]:
+    if not rows:
+        return {}
+    solution_ids = [row.id for row in rows]
+    apps = (
+        (
+            await ctx.db.execute(
+                select(Application).where(Application.solution_id.in_(solution_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    apps_by_solution: dict[UUID, list[Application]] = {
+        solution_id: [] for solution_id in solution_ids
+    }
+    for app in apps:
+        if app.solution_id is not None:
+            apps_by_solution.setdefault(app.solution_id, []).append(app)
+    current_sdk = await load_current_sdk_metadata()
+    return {
+        row.id: _solution_sdk_status_from_apps(
+            solution_id=row.id,
+            solution_status=row.status,
+            apps=apps_by_solution.get(row.id, []),
+            current_sdk=current_sdk,
+        )[0]
+        for row in rows
+    }
+
+
 @router.get("", response_model=SolutionsList, summary="List Solution installs (admin only)")
 async def list_solutions(ctx: Context, user: CurrentSuperuser) -> SolutionsList:
     rows = (
@@ -341,20 +437,35 @@ async def list_solutions(ctx: Context, user: CurrentSuperuser) -> SolutionsList:
     )
     ids = [row.id for row in rows]
     counts = await _solution_entity_counts(ctx, ids)
+    sdk_statuses = await _solution_sdk_statuses_for_rows(ctx, rows)
     return SolutionsList(
         solutions=[
-            SolutionDTO.model_validate(row).model_copy(
-                update={
-                    "entity_counts": counts.get(row.id, SolutionEntityCounts()),
-                    "logo_url": _entity_logo_url(
-                        "solutions", row.id, row.logo_thumbnail_version
-                    ),
-                    "logo_version": _entity_logo_version(row.logo_thumbnail_version),
-                }
+            _solution_to_public(
+                row,
+                entity_counts=counts.get(row.id, SolutionEntityCounts()),
+                sdk_status=sdk_statuses.get(row.id),
             )
             for row in rows
         ]
     )
+
+
+def _solution_to_public(
+    row: SolutionORM,
+    *,
+    entity_counts: SolutionEntityCounts | None = None,
+    sdk_status: SolutionSdkStatus | None = None,
+) -> SolutionDTO:
+    sdk_status = sdk_status or _default_solution_sdk_status(row.id)
+    update_payload: dict[str, object] = {
+        "sdk_status": sdk_status.sdk_status,
+        "sdk_actionable_count": sdk_status.actionable_count,
+        "logo_url": _entity_logo_url("solutions", row.id, row.logo_thumbnail_version),
+        "logo_version": _entity_logo_version(row.logo_thumbnail_version),
+    }
+    if entity_counts is not None:
+        update_payload["entity_counts"] = entity_counts
+    return SolutionDTO.model_validate(row).model_copy(update=update_payload)
 
 
 async def _solution_deploy_in_progress(ctx: Context, solution_id: UUID) -> bool:
@@ -384,43 +495,11 @@ async def _solution_sdk_status(
         )
     ).scalars().all()
     current_sdk = await load_current_sdk_metadata()
-    summaries: list[SolutionAppSdkStatus] = []
-    actionable_apps: list[Application] = []
-    for app in apps:
-        status_value = application_sdk_status(app, current_sdk)
-        source_available = sdk_source_available(app)
-        actionable = (
-            app.app_model == "standalone_v2"
-            and source_available
-            and status_value in ("unknown", "update_available")
-        )
-        if actionable:
-            actionable_apps.append(app)
-        summaries.append(
-            SolutionAppSdkStatus(
-                application_id=app.id,
-                slug=app.slug,
-                sdk_status=status_value,
-                sdk_source_available=source_available,
-                actionable=actionable,
-            )
-        )
-    if actionable_apps:
-        aggregate = "update_available"
-    elif any(item.sdk_status == "unknown" for item in summaries):
-        aggregate = "unknown"
-    elif any(item.sdk_status == "current" for item in summaries):
-        aggregate = "current"
-    else:
-        aggregate = "not_applicable"
-    return (
-        SolutionSdkStatus(
-            solution_id=solution_id,
-            sdk_status=aggregate,
-            actionable_count=len(actionable_apps),
-            apps=summaries,
-        ),
-        actionable_apps,
+    return _solution_sdk_status_from_apps(
+        solution_id=solution_id,
+        solution_status=row.status,
+        apps=list(apps),
+        current_sdk=current_sdk,
     )
 
 
@@ -481,13 +560,11 @@ async def get_solution(solution_id: UUID, ctx: Context, user: CurrentSuperuser) 
     row = await ctx.db.get(SolutionORM, solution_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solution not found")
-    return SolutionDTO.model_validate(row).model_copy(
-        update={
-            "logo_url": _entity_logo_url(
-                "solutions", row.id, row.logo_thumbnail_version
-            ),
-            "logo_version": _entity_logo_version(row.logo_thumbnail_version),
-        }
+    sdk_statuses = await _solution_sdk_statuses_for_rows(ctx, [row])
+    sdk_status = sdk_statuses.get(row.id)
+    return _solution_to_public(
+        row,
+        sdk_status=sdk_status,
     )
 
 

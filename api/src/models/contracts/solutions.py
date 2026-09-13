@@ -151,6 +151,8 @@ class Solution(BaseModel):
     # (status flip only — data frozen in place under solution_id, dormant).
     status: str = "active"
     entity_counts: SolutionEntityCounts = Field(default_factory=SolutionEntityCounts)
+    sdk_status: ApplicationSdkStatus = "not_applicable"
+    sdk_actionable_count: int = 0
     logo_url: str | None = None
     logo_version: str | None = None
 

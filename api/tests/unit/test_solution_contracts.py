@@ -34,3 +34,10 @@ def test_org_install_serializes_scope_org() -> None:
     dto = SolutionDTO.model_validate(_row(uuid.uuid4()))
     assert dto.scope == "org"
     assert dto.model_dump()["scope"] == "org"
+
+
+def test_solution_sdk_aggregate_fields_default_not_applicable() -> None:
+    dto = SolutionDTO.model_validate(_row(uuid.uuid4()))
+
+    assert dto.sdk_status == "not_applicable"
+    assert dto.sdk_actionable_count == 0
