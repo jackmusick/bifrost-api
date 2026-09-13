@@ -291,6 +291,10 @@ class EventProcessor:
 
         try:
             await self.queue_event_deliveries(delivery.event_id)
+            if delivery.status == EventDeliveryStatus.FAILED:
+                delivery.completed_at = datetime.now(timezone.utc)
+                await self.session.flush()
+                return f"Failed to queue retry: {delivery.error_message}"
             return "Delivery queued for retry"
         except Exception as exc:
             error_message = format_exception_message(exc, context="queueing event delivery retry")
