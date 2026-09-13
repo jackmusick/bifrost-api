@@ -36,8 +36,11 @@ import click
 import yaml
 
 from bifrost.client import BifrostClient
+from bifrost.commands.base import output_result
 from bifrost.credentials import resolve_environment_url
 from bifrost.org_target import org_option, resolve_org_target
+from bifrost.platform_jobs import poll_platform_job
+from bifrost.refs import RefResolver
 from bifrost.solution_jobs import DEPLOY_JOB_TIMEOUT_SECONDS
 from bifrost.solution_binding import (
     SolutionBindingError,
@@ -3277,6 +3280,71 @@ def sdk_update_cmd(path: str, app_slug: str | None, api_url: str | None) -> None
         )
 
     click.echo(f"SDK updated: {old_fingerprint} -> {new_fingerprint}")
+
+
+@sdk_group.command("deployed-status")
+@click.argument("solution_ref")
+@click.pass_context
+def sdk_deployed_status_cmd(ctx: click.Context, solution_ref: str) -> None:
+    """Show deployed SDK status for Apps owned by a Solution install."""
+
+    async def run() -> dict[str, Any]:
+        client = BifrostClient.get_instance(require_auth=True)
+        solution_id = await RefResolver(client).resolve("solution", solution_ref)
+        response = await client.get(f"/api/solutions/{solution_id}/sdk/status")
+        response.raise_for_status()
+        return response.json()
+
+    output_result(asyncio.run(run()), ctx=ctx)
+
+
+@sdk_group.command("deployed-update")
+@click.argument("solution_ref")
+@click.pass_context
+def sdk_deployed_update_cmd(ctx: click.Context, solution_ref: str) -> None:
+    """Queue deployed SDK update jobs for Apps owned by a Solution install."""
+
+    async def run() -> dict[str, Any]:
+        client = BifrostClient.get_instance(require_auth=True)
+        solution_id = await RefResolver(client).resolve("solution", solution_ref)
+        response = await client.post(f"/api/solutions/{solution_id}/sdk/update")
+        response.raise_for_status()
+        body = response.json()
+
+        skipped = body.get("skipped", [])
+        for item in skipped:
+            click.echo(
+                f"Skipped {item.get('application_id')}: {item.get('reason')}",
+                err=True,
+            )
+
+        completed_jobs: list[dict[str, Any]] = []
+        failed_jobs: list[str] = []
+        for item in body.get("accepted", []):
+            job_id = str(item["job_id"])
+            click.echo(f"Queued Solution App SDK update job {job_id}", err=True)
+            try:
+                completed_jobs.append(
+                    await poll_platform_job(
+                        client,
+                        job_id,
+                        label="SDK update",
+                        failure_label="Solution App SDK update",
+                    )
+                )
+            except click.ClickException as exc:
+                failed_jobs.append(f"{job_id}: {exc.message}")
+
+        result = dict(body)
+        result["jobs"] = completed_jobs
+        if failed_jobs:
+            raise click.ClickException(
+                f"{len(failed_jobs)} Solution App SDK update job(s) failed: "
+                + "; ".join(failed_jobs)
+            )
+        return result
+
+    output_result(asyncio.run(run()), ctx=ctx)
 
 
 def _ensure_port_free(port: int) -> None:

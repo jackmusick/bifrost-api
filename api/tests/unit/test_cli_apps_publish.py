@@ -72,7 +72,7 @@ def test_apps_publish_polls_short_requests_to_success(
         classmethod(lambda cls, require_auth=False: fake),
     )
     sleep = AsyncMock()
-    monkeypatch.setattr("bifrost.commands.apps.asyncio.sleep", sleep)
+    monkeypatch.setattr("bifrost.platform_jobs.asyncio.sleep", sleep)
 
     result = CliRunner().invoke(
         apps_group,

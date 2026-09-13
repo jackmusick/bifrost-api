@@ -77,6 +77,7 @@
 | POST | `/api/agents/{agent_id}/tuning-session/dry-run` |
 | GET | `/api/applications` |
 | POST | `/api/applications` |
+| POST | `/api/applications/sdk/update` |
 | POST | `/api/applications/swap-slugs` |
 | DELETE | `/api/applications/{app_id}` |
 | PATCH | `/api/applications/{app_id}` |
@@ -104,6 +105,8 @@
 | GET | `/api/applications/{app_id}/render` |
 | POST | `/api/applications/{app_id}/replace` |
 | POST | `/api/applications/{app_id}/rollback` |
+| POST | `/api/applications/{app_id}/sdk/update` |
+| GET | `/api/applications/{app_id}/source` |
 | POST | `/api/applications/{app_id}/validate` |
 | GET | `/api/applications/{slug}` |
 | GET | `/api/audit` |
@@ -518,6 +521,8 @@
 | POST | `/api/solutions/{solution_id}/pull/ack` |
 | GET | `/api/solutions/{solution_id}/readme` |
 | PUT | `/api/solutions/{solution_id}/readme` |
+| GET | `/api/solutions/{solution_id}/sdk/status` |
+| POST | `/api/solutions/{solution_id}/sdk/update` |
 | GET | `/api/solutions/{solution_id}/setup` |
 | POST | `/api/solutions/{solution_id}/sync` |
 | POST | `/api/solutions/{solution_id}/uninstall` |

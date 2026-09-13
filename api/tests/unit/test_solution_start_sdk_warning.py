@@ -8,11 +8,14 @@ Rules (see sdk_staleness_warning docstring / task-6 brief):
 - fingerprints differ, contracts equal/missing -> gentle "warn" (yellow).
 - installed_fp None (unstamped old SDK) with server_fp present -> "warn".
 """
+
 import json
 
 import yaml
 from click.testing import CliRunner
+from unittest.mock import AsyncMock
 
+import bifrost.client as client_mod
 from bifrost.commands.solution import sdk_staleness_warning, solution_group
 
 
@@ -22,13 +25,127 @@ def _solutions_response():
         text = ""
 
         def json(self):
-            return {"solutions": [{
-                "id": "11111111-1111-1111-1111-111111111111",
-                "slug": "s",
-                "organization_id": "org-1",
-            }]}
+            return {
+                "solutions": [
+                    {
+                        "id": "11111111-1111-1111-1111-111111111111",
+                        "slug": "s",
+                        "organization_id": "org-1",
+                    }
+                ]
+            }
+
+        def raise_for_status(self):
+            return None
 
     return _Response()
+
+
+class _SdkResponse:
+    def __init__(self, body, status_code=200):
+        self._body = body
+        self.status_code = status_code
+        self.text = str(body)
+
+    def json(self):
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.text)
+
+
+class _SolutionSdkClient:
+    api_url = "http://localhost:8000"
+    _access_token = "tok"
+
+    def __init__(self):
+        self.calls = []
+        self.jobs = []
+
+    async def get(self, path, **kwargs):
+        self.calls.append(("GET", path, None))
+        if path == "/api/solutions":
+            return _solutions_response()
+        if path == "/api/solutions/11111111-1111-1111-1111-111111111111/sdk/status":
+            return _SdkResponse(
+                {
+                    "solution_id": "11111111-1111-1111-1111-111111111111",
+                    "sdk_status": "update_available",
+                    "actionable_count": 1,
+                    "apps": [
+                        {
+                            "application_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                            "slug": "dash",
+                            "sdk_status": "update_available",
+                            "sdk_source_available": True,
+                            "actionable": True,
+                        }
+                    ],
+                }
+            )
+        if path.startswith("/api/platform-jobs/"):
+            return _SdkResponse(self.jobs.pop(0))
+        raise AssertionError(path)
+
+    async def post(self, path, **kwargs):
+        self.calls.append(("POST", path, kwargs.get("json")))
+        assert path == "/api/solutions/11111111-1111-1111-1111-111111111111/sdk/update"
+        return _SdkResponse(
+            {
+                "solution_id": "11111111-1111-1111-1111-111111111111",
+                "accepted": [
+                    {
+                        "application_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                        "job_id": "job-solution",
+                        "status": "queued",
+                        "reused": False,
+                    }
+                ],
+                "skipped": [],
+            }
+        )
+
+
+def test_solution_sdk_deployed_status_uses_explicit_command(monkeypatch):
+    fake = _SolutionSdkClient()
+    monkeypatch.setattr(
+        client_mod.BifrostClient,
+        "get_instance",
+        staticmethod(lambda **_kwargs: fake),
+    )
+
+    result = CliRunner().invoke(solution_group, ["sdk", "deployed-status", "s"])
+
+    assert result.exit_code == 0, result.output
+    assert "update_available" in result.output
+    assert "dash" in result.output
+    assert ("GET", "/api/solutions", None) in fake.calls
+
+
+def test_solution_sdk_deployed_update_polls_app_jobs_without_repurposing_local_update(
+    monkeypatch,
+):
+    fake = _SolutionSdkClient()
+    fake.jobs = [
+        {"status": "succeeded", "progress": {"phase": "Done"}, "result": {}},
+    ]
+    monkeypatch.setattr(
+        client_mod.BifrostClient,
+        "get_instance",
+        staticmethod(lambda **_kwargs: fake),
+    )
+    monkeypatch.setattr("bifrost.platform_jobs.asyncio.sleep", AsyncMock())
+
+    result = CliRunner().invoke(solution_group, ["sdk", "deployed-update", "s"])
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "POST",
+        "/api/solutions/11111111-1111-1111-1111-111111111111/sdk/update",
+        None,
+    ) in fake.calls
+    assert "job-solution" in result.output
 
 
 class TestSdkStalenessWarningHelper:
@@ -98,9 +215,18 @@ def _start_workspace(tmp_path, monkeypatch):
     )
     (tmp_path / ".bifrost").mkdir()
     (tmp_path / ".bifrost" / "apps.yaml").write_text(
-        yaml.safe_dump({"apps": {
-            "a": {"id": "a", "slug": "dash", "path": "apps/dash", "app_model": "standalone_v2"},
-        }})
+        yaml.safe_dump(
+            {
+                "apps": {
+                    "a": {
+                        "id": "a",
+                        "slug": "dash",
+                        "path": "apps/dash",
+                        "app_model": "standalone_v2",
+                    },
+                }
+            }
+        )
     )
     app_dir = tmp_path / "apps" / "dash"
     app_dir.mkdir(parents=True)
@@ -116,7 +242,9 @@ def _start_workspace(tmp_path, monkeypatch):
             return _solutions_response()
 
     fake_client = _FakeClient()
-    monkeypatch.setattr(client_mod.BifrostClient, "get_instance", staticmethod(lambda **k: fake_client))
+    monkeypatch.setattr(
+        client_mod.BifrostClient, "get_instance", staticmethod(lambda **k: fake_client)
+    )
     monkeypatch.setattr(function_host, "set_dev_execution_context", lambda **k: None)
 
     class _FakeHost:
@@ -133,7 +261,9 @@ def _start_workspace(tmp_path, monkeypatch):
             return {}
 
     monkeypatch.setattr(function_host, "FunctionHost", _FakeHost)
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/npm" if name == "npm" else None)
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/npm" if name == "npm" else None
+    )
     monkeypatch.setattr(subprocess, "run", lambda argv, **k: None)
 
     class _FakeProc:
@@ -148,9 +278,15 @@ def _start_workspace(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr("bifrost.commands.solution._serve", _fake_serve)
-    monkeypatch.setattr("bifrost.commands.solution._ensure_port_free", lambda port: None)
-    monkeypatch.setattr("bifrost.commands.solution._wait_for_vite", lambda proc, port: None)
-    monkeypatch.setattr("bifrost.commands.solution._terminate_process_group", lambda proc: None)
+    monkeypatch.setattr(
+        "bifrost.commands.solution._ensure_port_free", lambda port: None
+    )
+    monkeypatch.setattr(
+        "bifrost.commands.solution._wait_for_vite", lambda proc, port: None
+    )
+    monkeypatch.setattr(
+        "bifrost.commands.solution._terminate_process_group", lambda proc: None
+    )
 
     return app_dir, served, fake_client
 
@@ -162,9 +298,13 @@ class TestStartWiresInStalenessWarning:
         # Installed SDK is stamped and stale relative to the server.
         node_modules_bifrost = app_dir / "node_modules" / "bifrost"
         node_modules_bifrost.mkdir(parents=True)
-        (node_modules_bifrost / "package.json").write_text(json.dumps({
-            "bifrost": {"fingerprint": "old-fp", "contract": 1},
-        }))
+        (node_modules_bifrost / "package.json").write_text(
+            json.dumps(
+                {
+                    "bifrost": {"fingerprint": "old-fp", "contract": 1},
+                }
+            )
+        )
 
         class _VersionResp:
             status_code = 200
@@ -192,9 +332,13 @@ class TestStartWiresInStalenessWarning:
 
         node_modules_bifrost = app_dir / "node_modules" / "bifrost"
         node_modules_bifrost.mkdir(parents=True)
-        (node_modules_bifrost / "package.json").write_text(json.dumps({
-            "bifrost": {"fingerprint": "old-fp", "contract": 1},
-        }))
+        (node_modules_bifrost / "package.json").write_text(
+            json.dumps(
+                {
+                    "bifrost": {"fingerprint": "old-fp", "contract": 1},
+                }
+            )
+        )
 
         async def _fake_get(path, **kwargs):
             if path == "/api/solutions":
