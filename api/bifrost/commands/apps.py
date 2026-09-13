@@ -39,8 +39,11 @@ Two-call orchestration for ``apps create --deps``:
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import click
 import httpx
@@ -134,7 +137,7 @@ def _select_bound_app(
     matches = [i for i in items if _matches(i)]
     own = [i for i in matches if str(i.get("solution_id") or "") == solution_id]
     foreign = [i for i in matches if str(i.get("solution_id") or "") != solution_id]
-    return (own[0] if own else None), (foreign if own else [])
+    return (own[0] if own else None), foreign
 
 
 @apps_group.command("get")
@@ -481,6 +484,36 @@ def _app_sdk_status(app: dict[str, Any]) -> dict[str, Any]:
 async def _load_app_by_ref(
     client: BifrostClient, resolver: RefResolver, ref: str
 ) -> dict[str, Any]:
+    bound_solution = os.getenv("BIFROST_SOLUTION_ID")
+    is_uuid = False
+    try:
+        UUID(ref)
+        is_uuid = True
+    except (TypeError, ValueError):
+        pass
+
+    if bound_solution and not is_uuid:
+        list_response = await client.get("/api/applications")
+        list_response.raise_for_status()
+        data = list_response.json()
+        items = data.get("applications", []) if isinstance(data, dict) else data
+        own, foreign = _select_bound_app(items, ref, bound_solution)
+        if own is not None:
+            for other in foreign:
+                click.echo(
+                    f"Warning: {ref!r} also matches app {other.get('slug')!r} "
+                    f"({other.get('id')}) outside this solution — targeting this "
+                    "workspace's own app. Use the UUID to target the other one.",
+                    err=True,
+                )
+            return own
+        if foreign:
+            raise click.ClickException(
+                f"{ref!r} matches an app outside this bound Solution, but no "
+                "app in this Solution. Use the UUID outside a bound Solution "
+                "workspace if you intend to target that app."
+            )
+
     app_uuid = await resolver.resolve("app", ref)
     response = await client.get("/api/applications")
     response.raise_for_status()
@@ -548,7 +581,8 @@ async def sdk_update(
         raise click.UsageError("Pass either REF or --all.")
 
     if ref:
-        app_uuid = await resolver.resolve("app", ref)
+        app = await _load_app_by_ref(client, resolver, ref)
+        app_uuid = str(app["id"])
         response = await client.post(f"/api/applications/{app_uuid}/sdk/update")
         response.raise_for_status()
         accepted = response.json()
@@ -632,12 +666,35 @@ async def source_export(
                 f"Refusing to overwrite non-empty destination: {destination}"
             )
 
-    app_uuid = await resolver.resolve("app", ref)
-    response = await client.get(f"/api/applications/{app_uuid}/source")
-    response.raise_for_status()
+    app = await _load_app_by_ref(client, resolver, ref)
+    app_uuid = str(app["id"])
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(response.content)
-    output_result({"path": str(destination), "bytes": len(response.content)}, ctx=ctx)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    tmp_path = Path(tmp_name)
+    bytes_written = 0
+    try:
+        with os.fdopen(fd, "wb") as tmp_file:
+            async with client.stream(
+                "GET", f"/api/applications/{app_uuid}/source"
+            ) as response:
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    tmp_file.write(chunk)
+                    bytes_written += len(chunk)
+        tmp_path.replace(destination)
+    except Exception:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    output_result({"path": str(destination), "bytes": bytes_written}, ctx=ctx)
 
 
 @apps_group.command("delete")

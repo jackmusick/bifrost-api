@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import httpx
+import pytest
 from click.testing import CliRunner
 from unittest.mock import AsyncMock
 
@@ -52,14 +54,18 @@ class _Response:
 
 
 class _FakeClient:
-    def __init__(self, *, app: dict[str, Any]) -> None:
+    def __init__(
+        self, *, app: dict[str, Any], applications: list[dict[str, Any]] | None = None
+    ) -> None:
         self.api_url = "http://test.local"
         self._access_token = "token"
         self.app = app
+        self.applications = applications or [app]
         self.jobs: list[dict[str, Any]] = []
         self.batch_response: dict[str, Any] | None = None
         self.source_content = b"PK\x03\x04source"
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
+        self.streamed_paths: list[str] = []
 
     async def get(self, path: str):
         self.calls.append(("GET", path, None))
@@ -70,7 +76,10 @@ class _FakeClient:
                 "GET",
                 self.api_url,
                 path,
-                json_body={"applications": [self.app], "total": 1},
+                json_body={
+                    "applications": self.applications,
+                    "total": len(self.applications),
+                },
             )
         if path == f"/api/applications/{self.app['id']}/source":
             return _Response(
@@ -86,16 +95,27 @@ class _FakeClient:
             return _Response("GET", self.api_url, path, json_body=self.jobs.pop(0))
         return _Response("GET", self.api_url, path, status_code=404, json_body={})
 
+    @asynccontextmanager
+    async def stream(self, method: str, path: str):
+        self.streamed_paths.append(path)
+        self.calls.append((method.upper(), path, None))
+
+        class _StreamResponse:
+            status_code = 200
+            text = ""
+
+            def raise_for_status(self) -> None:
+                return None
+
+            async def aiter_bytes(self):
+                yield self_source[:4]
+                yield self_source[4:]
+
+        self_source = self.source_content
+        yield _StreamResponse()
+
     async def post(self, path: str, *, json: dict[str, Any] | None = None):
         self.calls.append(("POST", path, json))
-        if path == f"/api/applications/{self.app['id']}/sdk/update":
-            return _Response(
-                "POST",
-                self.api_url,
-                path,
-                status_code=202,
-                json_body={"job_id": "job-single", "status": "queued", "reused": False},
-            )
         if path == "/api/applications/sdk/update":
             assert self.batch_response is not None
             return _Response(
@@ -103,6 +123,14 @@ class _FakeClient:
                 self.api_url,
                 path,
                 json_body=self.batch_response,
+            )
+        if path.startswith("/api/applications/") and path.endswith("/sdk/update"):
+            return _Response(
+                "POST",
+                self.api_url,
+                path,
+                status_code=202,
+                json_body={"job_id": "job-single", "status": "queued", "reused": False},
             )
         return _Response("POST", self.api_url, path, status_code=404, json_body={})
 
@@ -120,6 +148,14 @@ def _app(app_id: str | None = None) -> dict[str, Any]:
         "sdk_status": "update_available",
         "sdk_source_available": True,
     }
+
+
+def _solution_app(
+    app_id: str | None = None, *, solution_id: str | None = None
+) -> dict[str, Any]:
+    app = _app(app_id)
+    app["solution_id"] = solution_id
+    return app
 
 
 def _install_client(monkeypatch, fake: _FakeClient) -> None:
@@ -223,3 +259,61 @@ def test_apps_source_export_writes_retained_zip_without_overwriting(
 
     assert result.exit_code == 1
     assert "Refusing to overwrite" in result.output
+
+
+def test_apps_source_export_streams_without_reading_response_content(
+    monkeypatch, tmp_path: Path
+) -> None:
+    app = _app()
+    fake = _FakeClient(app=app)
+    _install_client(monkeypatch, fake)
+    destination = tmp_path / "portal-source.zip"
+
+    result = CliRunner().invoke(
+        apps_group, ["source", "export", "portal", str(destination)]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert destination.read_bytes() == fake.source_content
+    assert fake.streamed_paths == [f"/api/applications/{app['id']}/source"]
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_call"),
+    [
+        (["sdk", "status", "portal"], None),
+        (["sdk", "update", "portal"], "POST"),
+        (["source", "export", "portal", "{dest}"], "GET"),
+    ],
+)
+def test_app_ref_commands_prefer_bound_solution_app_over_same_slug_foreign_app(
+    monkeypatch,
+    tmp_path: Path,
+    args: list[str],
+    expected_call: str | None,
+) -> None:
+    bound_solution_id = "solution-bound"
+    own = _solution_app(str(uuid4()), solution_id=bound_solution_id)
+    foreign = _solution_app(str(uuid4()), solution_id="solution-foreign")
+    fake = _FakeClient(app=foreign, applications=[foreign, own])
+    fake.jobs = [{"status": "succeeded", "progress": {"phase": "Done"}, "result": {}}]
+    _install_client(monkeypatch, fake)
+    monkeypatch.setenv("BIFROST_SOLUTION_ID", bound_solution_id)
+    monkeypatch.setattr("bifrost.platform_jobs.asyncio.sleep", AsyncMock())
+
+    destination = tmp_path / "portal-source.zip"
+    rendered_args = [str(destination) if arg == "{dest}" else arg for arg in args]
+
+    result = CliRunner().invoke(apps_group, rendered_args)
+
+    assert result.exit_code == 0, result.output
+    assert str(own["id"]) in result.output or expected_call is not None
+    assert str(foreign["id"]) not in [
+        path.split("/")[3]
+        for method, path, _body in fake.calls
+        if method in {"POST", "GET"} and path.startswith("/api/applications/")
+    ]
+    if expected_call == "POST":
+        assert ("POST", f"/api/applications/{own['id']}/sdk/update", None) in fake.calls
+    if expected_call == "GET":
+        assert fake.streamed_paths == [f"/api/applications/{own['id']}/source"]
