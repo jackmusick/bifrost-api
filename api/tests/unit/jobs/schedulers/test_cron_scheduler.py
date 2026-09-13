@@ -174,6 +174,18 @@ async def test_schedule_evaluates_cron_in_configured_timezone(db_session):
     assert events[0].data["timezone"] == "America/New_York"
 
 
+def test_scheduler_resolves_legacy_indianapolis_alias():
+    from src.jobs.schedulers.cron_scheduler import _latest_due_run_utc
+
+    due = _latest_due_run_utc(
+        "0 9 * * *",
+        datetime(2026, 7, 22, 13, 0, 30, tzinfo=timezone.utc),
+        "America/Indianapolis",
+    )
+
+    assert due == datetime(2026, 7, 22, 13, 0, tzinfo=timezone.utc)
+
+
 @pytest.mark.asyncio
 async def test_schedule_fires_when_no_active_executions(db_session):
     """Happy path: no prior executions → event is created for this source."""
