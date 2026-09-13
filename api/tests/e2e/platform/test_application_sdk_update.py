@@ -24,6 +24,7 @@ async def _seed_app(
     app_model: str = "standalone_v2",
     active_deployment_id=None,
     solution_id=None,
+    has_repo_source: bool = True,
     sdk_fingerprint: str | None = "old-fingerprint",
     sdk_built_at: datetime | None = datetime(2026, 1, 1, tzinfo=timezone.utc),
 ) -> Application:
@@ -31,7 +32,7 @@ async def _seed_app(
         id=uuid4(),
         name=slug.replace("-", " ").title(),
         slug=slug,
-        repo_path=f"apps/{slug}" if solution_id else None,
+        repo_path=f"apps/{slug}" if solution_id and has_repo_source else None,
         solution_id=solution_id,
         app_model=app_model,
         active_deployment_id=active_deployment_id,
@@ -257,10 +258,9 @@ async def test_batch_solution_sdk_update_enqueues_actionable_apps_from_selected_
         slug=f"sdk-bulk-nosource-{uuid4().hex[:8]}",
         active_deployment_id=None,
         solution_id=second_solution.id,
+        has_repo_source=False,
         sdk_built_at=None,
     )
-    unavailable_app.repo_path = None
-    await db_session.commit()
 
     response = e2e_client.post(
         "/api/solutions/sdk/update",

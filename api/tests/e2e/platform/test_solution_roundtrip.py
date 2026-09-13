@@ -19,7 +19,6 @@ Design notes:
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import uuid
 
@@ -197,19 +196,18 @@ def test_shareable_export_installs_into_fresh_org(e2e_client, platform_admin):
     )
 
     # --- The binary dist asset must round-trip BYTE-FOR-BYTE ---
-    # Read the installed app's dist asset straight from S3 (the same store the
-    # platform serves the standalone app from) and compare to the original PNG.
+    # Read the installed app's active, immutable deployment through the same
+    # dist route the standalone app uses and compare to the original PNG.
     # If bin_dist_files were folded into dist_files, the deployer would have
     # UTF-8-encoded the base64 TEXT and written that to S3, so these bytes would
     # NOT equal TINY_PNG — this assertion fails before the bin_dist_files fix.
     installed_app_id = entities["apps"][0]["id"]
 
-    async def _read_installed_asset() -> bytes:
-        from src.services.solutions.app_build import SolutionAppBuilder
-
-        return await SolutionAppBuilder().read_dist(installed_app_id, ASSET_REL)
-
-    stored = asyncio.run(_read_installed_asset())
+    asset_r = e2e_client.get(
+        f"/api/applications/{installed_app_id}/dist/{ASSET_REL}", headers=headers
+    )
+    assert asset_r.status_code == 200, asset_r.text
+    stored = asset_r.content
     assert stored == TINY_PNG, (
         "binary dist asset was corrupted on round-trip: "
         f"stored {len(stored)} bytes, expected {len(TINY_PNG)}"
