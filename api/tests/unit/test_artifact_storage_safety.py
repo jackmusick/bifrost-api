@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,7 @@ class _FakeStorage:
     def __init__(self) -> None:
         self.raw_writes = []
         self.chunk_writes = []
+        self.download_urls = []
 
     async def write_raw_to_s3(self, path: str, content: bytes) -> None:
         self.raw_writes.append((path, content))
@@ -37,6 +39,10 @@ class _FakeStorage:
 
     async def delete_raw_from_s3(self, path: str) -> None:
         return None
+
+    async def generate_presigned_download_url(self, path: str, **kwargs) -> str:
+        self.download_urls.append((path, kwargs))
+        return "https://files.example.test/artifact"
 
 
 @pytest.mark.parametrize(
@@ -128,3 +134,51 @@ async def test_non_html_artifacts_keep_existing_storage_path(monkeypatch):
     assert len(storage.raw_writes) == 1
     assert storage.raw_writes[0][1] == b"# Safe"
     assert storage.chunk_writes == []
+
+
+@pytest.mark.asyncio
+async def test_existing_html_artifact_download_url_overrides_active_metadata(
+    monkeypatch,
+):
+    """Legacy objects must be inert even when their stored S3 metadata is active."""
+    storage = _FakeStorage()
+    monkeypatch.setattr(
+        "src.services.artifacts.get_file_storage_service",
+        lambda _db: storage,
+    )
+    artifact = SimpleNamespace(
+        s3_key="_artifacts/legacy_unsafe.html",
+        filename="unsafe.html",
+        content_type="text/html; charset=utf-8",
+    )
+
+    url = await ArtifactService(_FakeDB()).generate_download_url(artifact)
+
+    assert url == "https://files.example.test/artifact"
+    assert storage.download_urls == [
+        (
+            "_artifacts/legacy_unsafe.html",
+            {
+                "response_content_type": "application/octet-stream",
+                "response_content_disposition": "attachment",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_safe_artifact_download_url_preserves_existing_metadata(monkeypatch):
+    storage = _FakeStorage()
+    monkeypatch.setattr(
+        "src.services.artifacts.get_file_storage_service",
+        lambda _db: storage,
+    )
+    artifact = SimpleNamespace(
+        s3_key="_artifacts/report.pdf",
+        filename="report.pdf",
+        content_type="application/pdf",
+    )
+
+    await ArtifactService(_FakeDB()).generate_download_url(artifact)
+
+    assert storage.download_urls == [("_artifacts/report.pdf", {})]

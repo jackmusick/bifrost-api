@@ -209,6 +209,22 @@ class ArtifactService:
             artifact.s3_key
         )
 
+    async def generate_download_url(self, artifact: Artifact) -> str:
+        """Generate a URL that keeps browser-active artifacts inert."""
+        storage = get_file_storage_service(self.db)
+        if artifact_requires_inert_storage(
+            artifact.filename,
+            artifact.content_type,
+        ):
+            return await storage.generate_presigned_download_url(
+                artifact.s3_key,
+                response_content_type="application/octet-stream",
+                response_content_disposition="attachment",
+            )
+        return await storage.generate_presigned_download_url(
+            artifact.s3_key,
+        )
+
     async def delete(self, artifact: Artifact) -> None:
         await get_file_storage_service(self.db).delete_raw_from_s3(artifact.s3_key)
         await self.db.delete(artifact)

@@ -6,6 +6,7 @@ Requires LLM configuration to be set for message sending tests.
 """
 
 import logging
+from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
 
 import pytest
@@ -349,6 +350,15 @@ class TestChatAttachments:
         assert content.status_code == 200, content.text
         assert content.headers["content-type"] == "text/html; charset=utf-8"
         assert content.headers["content-disposition"] == "attachment"
+
+        download = e2e_client.get(
+            f"/api/sdk/artifacts/{stored.json()['id']}/download-url",
+            headers=platform_admin.headers,
+        )
+        assert download.status_code == 200, download.text
+        query = parse_qs(urlparse(download.json()["url"]).query)
+        assert query["response-content-type"] == ["application/octet-stream"]
+        assert query["response-content-disposition"] == ["attachment"]
 
     def test_sdk_serves_browser_active_xml_artifacts_as_downloads(
         self,

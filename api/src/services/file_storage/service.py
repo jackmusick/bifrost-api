@@ -237,11 +237,16 @@ class FileStorageService:
         self,
         path: str,
         expires_in: int = 600,
+        *,
+        response_content_type: str | None = None,
+        response_content_disposition: str | None = None,
     ) -> str:
         """Generate a presigned GET URL for direct S3 download."""
         return await self._s3_storage.generate_presigned_download_url(
             path=path,
             expires_in=expires_in,
+            response_content_type=response_content_type,
+            response_content_disposition=response_content_disposition,
         )
 
     async def record_signed_upload_metadata(
