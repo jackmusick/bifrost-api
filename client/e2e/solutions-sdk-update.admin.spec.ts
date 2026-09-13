@@ -109,6 +109,9 @@ async function mockSolutionSdkFixtures(page: Page) {
 			},
 		});
 	});
+	await page.route("**/api/notifications", async (route) => {
+		await route.fulfill({ json: { notifications: [] } });
+	});
 	await page.route(`**/api/solutions/${SOLUTION_ID}/entities`, async (route) => {
 		await route.fulfill({ json: entities() });
 	});
@@ -172,7 +175,7 @@ async function mockSolutionSdkFixtures(page: Page) {
 					resource_id: APP_ID,
 					resource_lock_key: `application:${APP_ID}`,
 					priority: 100,
-					title: "Update application SDK",
+					title: "Updating SDK for Solution Console",
 					requested_by_user_id: "fixture-user",
 					requested_by_name: "Fixture Admin",
 					status: "running",
@@ -183,6 +186,23 @@ async function mockSolutionSdkFixtures(page: Page) {
 					can_cancel: false,
 					created_at: NOW,
 					updated_at: NOW,
+				},
+			});
+			sendSocketMessage({
+				type: "notification_updated",
+				notification: {
+					id: "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
+					category: "system",
+					title: "Updating SDK for Solution Console",
+					description: "Rebuilding App",
+					status: "running",
+					percent: null,
+					error: null,
+					result: null,
+					metadata: { job_id: JOB_ID },
+					created_at: NOW,
+					updated_at: NOW,
+					user_id: "fixture-user",
 				},
 			});
 		},
@@ -224,6 +244,20 @@ test.describe("Solutions SDK aggregate UI", () => {
 		await page.screenshot({
 			path: test.info().outputPath("solution-sdk-detail-updating.png"),
 			fullPage: true,
+		});
+
+		await page.keyboard.press("Escape");
+		await page.getByRole("button", { name: "Notifications" }).click();
+		const notification = page.getByRole("article", {
+			name: "Updating SDK for Solution Console",
+			exact: true,
+		});
+		await expect(notification).toBeVisible();
+		await expect(notification.getByText("Rebuilding App")).toBeVisible();
+		await page.screenshot({
+			path: test.info().outputPath("solution-sdk-notification-progress.png"),
+			fullPage: true,
+			animations: "disabled",
 		});
 	});
 });
