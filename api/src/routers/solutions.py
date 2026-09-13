@@ -24,7 +24,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Body, File, HTTPException, Response, UploadFile, status
 from fastapi import Form as FastapiForm
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, noload
@@ -65,6 +65,9 @@ from src.models.contracts.solutions import (
     SolutionReadmeUpdate,
     SolutionRepoPreviewRequest,
     SolutionSetupStatus,
+    SolutionSdkStatus,
+    SolutionSdkUpdateResponse,
+    SolutionAppSdkStatus,
     SolutionsList,
     SolutionUpdate,
     SolutionUpgradeDiff,
@@ -80,6 +83,7 @@ from src.models.orm.solution_config_schema import SolutionConfigSchema
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.solution_export_jobs import SolutionExportJob
 from src.models.orm.solutions import Solution as SolutionORM
+from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.tables import Table
 from src.models.orm.users import Role, User, UserRole
 from src.models.orm.workflow_roles import WorkflowRole
@@ -93,6 +97,12 @@ from src.jobs.platform.solution_deploy import (
     SolutionDeployPayload,
 )
 from src.services.platform_jobs import enqueue_platform_job, publish_platform_job_update
+from src.services.platform_jobs import ACTIVE_PLATFORM_JOB_STATUSES
+from src.services.application_sdk_status import (
+    application_sdk_status,
+    load_current_sdk_metadata,
+    sdk_source_available,
+)
 from src.services.platform_job_memory_profiles import build_solution_memory_profile_key
 from src.services.solutions.deploy_job_storage import SolutionDeployJobStorage
 from src.services.solutions.deploy import (
@@ -161,6 +171,39 @@ async def _enqueue_solution_deploy_job(
     """Stage one validated input and atomically expose its central job row."""
     if (input_path is None) == (input_bytes is None):
         raise ValueError("exactly one staged input is required")
+    if install_id is not None:
+        await db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext('bifrost:solution-operation:' || :solution_id))"
+            ),
+            {"solution_id": str(install_id)},
+        )
+        app_ids = [
+            str(app_id)
+            for app_id in (
+                await db.execute(
+                    select(Application.id).where(Application.solution_id == install_id)
+                )
+            ).scalars().all()
+        ]
+        if app_ids:
+            active_app_update = (
+                await db.execute(
+                    select(PlatformJob.id)
+                    .where(
+                        PlatformJob.job_type == "application.sdk_update",
+                        PlatformJob.resource_id.in_(app_ids),
+                        PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if active_app_update is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An App SDK update is already in progress for this Solution.",
+                )
     job_id = uuid4()
     storage = SolutionDeployJobStorage(job_id)
     if input_path is not None:
@@ -311,6 +354,125 @@ async def list_solutions(ctx: Context, user: CurrentSuperuser) -> SolutionsList:
             )
             for row in rows
         ]
+    )
+
+
+async def _solution_deploy_in_progress(ctx: Context, solution_id: UUID) -> bool:
+    return (
+        await ctx.db.execute(
+            select(PlatformJob.id)
+            .where(
+                PlatformJob.resource_lock_key == f"solution:{solution_id}",
+                PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none() is not None
+
+
+async def _solution_sdk_status(
+    ctx: Context, solution_id: UUID
+) -> tuple[SolutionSdkStatus, list[Application]]:
+    row = await ctx.db.get(SolutionORM, solution_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Solution not found"
+        )
+    apps = (
+        await ctx.db.execute(
+            select(Application).where(Application.solution_id == solution_id)
+        )
+    ).scalars().all()
+    current_sdk = await load_current_sdk_metadata()
+    summaries: list[SolutionAppSdkStatus] = []
+    actionable_apps: list[Application] = []
+    for app in apps:
+        status_value = application_sdk_status(app, current_sdk)
+        source_available = sdk_source_available(app)
+        actionable = (
+            app.app_model == "standalone_v2"
+            and source_available
+            and status_value in ("unknown", "update_available")
+        )
+        if actionable:
+            actionable_apps.append(app)
+        summaries.append(
+            SolutionAppSdkStatus(
+                application_id=app.id,
+                slug=app.slug,
+                sdk_status=status_value,
+                sdk_source_available=source_available,
+                actionable=actionable,
+            )
+        )
+    if actionable_apps:
+        aggregate = "update_available"
+    elif any(item.sdk_status == "unknown" for item in summaries):
+        aggregate = "unknown"
+    elif any(item.sdk_status == "current" for item in summaries):
+        aggregate = "current"
+    else:
+        aggregate = "not_applicable"
+    return (
+        SolutionSdkStatus(
+            solution_id=solution_id,
+            sdk_status=aggregate,
+            actionable_count=len(actionable_apps),
+            apps=summaries,
+        ),
+        actionable_apps,
+    )
+
+
+@router.get(
+    "/{solution_id}/sdk/status",
+    response_model=SolutionSdkStatus,
+    summary="Get Solution App SDK status",
+)
+async def get_solution_sdk_status(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> SolutionSdkStatus:
+    status_response, _ = await _solution_sdk_status(ctx, solution_id)
+    return status_response
+
+
+@router.post(
+    "/{solution_id}/sdk/update",
+    response_model=SolutionSdkUpdateResponse,
+    summary="Enqueue SDK updates for Solution Apps",
+)
+async def update_solution_app_sdks(
+    solution_id: UUID, ctx: Context, user: CurrentSuperuser
+) -> SolutionSdkUpdateResponse:
+    if await _solution_deploy_in_progress(ctx, solution_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A Solution deployment is already in progress.",
+        )
+    _status_response, actionable_apps = await _solution_sdk_status(ctx, solution_id)
+    from src.routers.applications import (
+        _accepted_item,
+        _enqueue_sdk_update_for_application,
+    )
+
+    accepted = []
+    jobs = []
+    for app in actionable_apps:
+        job_accepted, job = await _enqueue_sdk_update_for_application(
+            ctx=ctx,
+            user=user,
+            application=app,
+        )
+        accepted.append(_accepted_item(app.id, job_accepted))
+        jobs.append(job)
+    await ctx.db.commit()
+    for job in jobs:
+        await ctx.db.refresh(job)
+        await publish_platform_job_update(job)
+    return SolutionSdkUpdateResponse(
+        solution_id=solution_id,
+        accepted=accepted,
+        skipped=[],
     )
 
 

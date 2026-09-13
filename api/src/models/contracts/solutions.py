@@ -8,6 +8,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from src.models.contracts.applications import (
+    ApplicationSdkStatus,
+    ApplicationSdkUpdateBatchResponse,
+)
+
 SolutionScope = Literal["org", "global"]
 
 
@@ -74,6 +79,25 @@ class SolutionReadme(BaseModel):
     """GET/PUT response shape for an install's README markdown."""
 
     readme: str | None = None
+
+
+class SolutionAppSdkStatus(BaseModel):
+    application_id: UUID
+    slug: str
+    sdk_status: ApplicationSdkStatus
+    sdk_source_available: bool
+    actionable: bool
+
+
+class SolutionSdkStatus(BaseModel):
+    solution_id: UUID
+    sdk_status: ApplicationSdkStatus
+    actionable_count: int
+    apps: list[SolutionAppSdkStatus] = Field(default_factory=list)
+
+
+class SolutionSdkUpdateResponse(ApplicationSdkUpdateBatchResponse):
+    solution_id: UUID
 
 
 class SolutionEntityCounts(BaseModel):

@@ -216,6 +216,39 @@ class ApplicationListResponse(BaseModel):
     total: int
 
 
+class ApplicationSdkUpdateBatchRequest(BaseModel):
+    """Request to enqueue SDK updates for a selected set of Apps.
+
+    When omitted, the server evaluates every visible App in the caller's scope.
+    """
+
+    application_ids: list[UUID] | None = None
+
+
+class ApplicationSdkUpdateAccepted(BaseModel):
+    """One App SDK update operation accepted by the platform-job system."""
+
+    application_id: UUID
+    job_id: UUID
+    status: str
+    reused: bool = False
+    notification_id: UUID | None = None
+
+
+class ApplicationSdkUpdateSkipped(BaseModel):
+    """One App skipped by a batch SDK update request."""
+
+    application_id: UUID
+    reason: str
+
+
+class ApplicationSdkUpdateBatchResponse(BaseModel):
+    """Batch SDK update enqueue result."""
+
+    accepted: list[ApplicationSdkUpdateAccepted] = Field(default_factory=list)
+    skipped: list[ApplicationSdkUpdateSkipped] = Field(default_factory=list)
+
+
 # ==================== DEFINITION MODELS ====================
 
 
