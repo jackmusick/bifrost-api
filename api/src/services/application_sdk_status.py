@@ -35,6 +35,7 @@ class CurrentApplicationSdkMetadata:
 class ApplicationSdkStatusInput(Protocol):
     app_model: str
     solution_id: UUID | None
+    repo_path: str | None
     active_deployment_id: UUID | None
     sdk_package_version: str | None
     sdk_fingerprint: str | None
@@ -88,7 +89,7 @@ def sdk_source_available(application: ApplicationSdkStatusInput) -> bool:
     if application.app_model == "inline_v1":
         return False
     if application.solution_id is not None:
-        return True
+        return application.repo_path is not None
     return (
         application.active_deployment_id is not None
         and application.sdk_built_at is not None

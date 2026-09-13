@@ -225,6 +225,118 @@ async def test_solution_sdk_status_and_update_enqueue_app_jobs(
     assert job.resource_lock_key == f"application:{app.id}"
 
 
+async def test_batch_solution_sdk_update_enqueues_actionable_apps_from_selected_solutions(
+    e2e_client, platform_admin, db_session
+):
+    first_solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-bulk-sol-a-{uuid4().hex[:8]}",
+        name="SDK Bulk Sol A",
+    )
+    second_solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-bulk-sol-b-{uuid4().hex[:8]}",
+        name="SDK Bulk Sol B",
+    )
+    db_session.add_all([first_solution, second_solution])
+    await db_session.flush()
+    first_actionable = await _seed_app(
+        db_session,
+        slug=f"sdk-bulk-action-a-{uuid4().hex[:8]}",
+        active_deployment_id=uuid4(),
+        solution_id=first_solution.id,
+    )
+    second_actionable = await _seed_app(
+        db_session,
+        slug=f"sdk-bulk-action-b-{uuid4().hex[:8]}",
+        active_deployment_id=uuid4(),
+        solution_id=second_solution.id,
+    )
+    unavailable_app = await _seed_app(
+        db_session,
+        slug=f"sdk-bulk-nosource-{uuid4().hex[:8]}",
+        active_deployment_id=None,
+        solution_id=second_solution.id,
+        sdk_built_at=None,
+    )
+    unavailable_app.repo_path = None
+    await db_session.commit()
+
+    response = e2e_client.post(
+        "/api/solutions/sdk/update",
+        headers=platform_admin.headers,
+        json={"solution_ids": [str(first_solution.id), str(second_solution.id)]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert {item["application_id"] for item in body["accepted"]} == {
+        str(first_actionable.id),
+        str(second_actionable.id),
+    }, body
+    skipped = {item["application_id"]: item["reason"] for item in body["skipped"]}
+    assert skipped[str(unavailable_app.id)] == "source_unavailable"
+    jobs = (
+        await db_session.execute(
+            select(PlatformJob).where(
+                PlatformJob.job_type == "application.sdk_update",
+                PlatformJob.resource_id.in_(
+                    [str(first_actionable.id), str(second_actionable.id)]
+                ),
+            )
+        )
+    ).scalars().all()
+    assert {job.resource_id for job in jobs} == {
+        str(first_actionable.id),
+        str(second_actionable.id),
+    }
+
+
+async def test_batch_solution_sdk_update_preserves_solution_deploy_conflict(
+    e2e_client, platform_admin, db_session
+):
+    solution = Solution(
+        id=uuid4(),
+        slug=f"sdk-bulk-lock-{uuid4().hex[:8]}",
+        name="SDK Bulk Lock",
+    )
+    db_session.add(solution)
+    await db_session.flush()
+    await _seed_app(
+        db_session,
+        slug=f"sdk-bulk-lock-app-{uuid4().hex[:8]}",
+        active_deployment_id=uuid4(),
+        solution_id=solution.id,
+    )
+    solution_job = PlatformJob(
+        job_type="solution.deploy",
+        payload_version=1,
+        payload={},
+        dedupe_key=str(uuid4()),
+        resource_lock_key=f"solution:{solution.id}",
+        organization_id=None,
+        requested_by_user_id=str(platform_admin.user_id),
+        requested_by_email=platform_admin.email,
+        requested_by_name=platform_admin.email,
+        resource_type="solution_deploy",
+        resource_id=str(uuid4()),
+        title="Deploying solution",
+        action_url=f"/solutions/{solution.id}",
+        status="running",
+    )
+    db_session.add(solution_job)
+    await db_session.commit()
+
+    response = e2e_client.post(
+        "/api/solutions/sdk/update",
+        headers=platform_admin.headers,
+        json={"solution_ids": [str(solution.id)]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A Solution deployment is already in progress."
+
+
 async def test_solution_list_and_get_include_sdk_aggregates(
     e2e_client, platform_admin, db_session
 ):

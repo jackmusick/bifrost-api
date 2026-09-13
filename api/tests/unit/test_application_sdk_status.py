@@ -7,6 +7,7 @@ def _app(
     *,
     app_model: str = "standalone_v2",
     solution_id=None,
+    repo_path: str | None = None,
     active_deployment_id=None,
     sdk_package_version: str | None = "1.2.3",
     sdk_fingerprint: str | None = None,
@@ -16,6 +17,7 @@ def _app(
     return SimpleNamespace(
         app_model=app_model,
         solution_id=solution_id,
+        repo_path=repo_path,
         active_deployment_id=active_deployment_id,
         sdk_package_version=sdk_package_version,
         sdk_fingerprint=sdk_fingerprint,
@@ -133,7 +135,8 @@ def test_sdk_source_available_is_cheap_capability_hint() -> None:
     built_at = datetime(2026, 9, 12, tzinfo=timezone.utc)
 
     assert sdk_source_available(_app(app_model="inline_v1")) is False
-    assert sdk_source_available(_app(solution_id=uuid4())) is True
+    assert sdk_source_available(_app(solution_id=uuid4(), repo_path="apps/example")) is True
+    assert sdk_source_available(_app(solution_id=uuid4(), repo_path=None)) is False
     assert (
         sdk_source_available(
             _app(active_deployment_id=uuid4(), sdk_built_at=built_at)

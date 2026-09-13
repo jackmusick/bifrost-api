@@ -100,6 +100,16 @@ class SolutionSdkUpdateResponse(ApplicationSdkUpdateBatchResponse):
     solution_id: UUID
 
 
+class SolutionSdkUpdateBatchRequest(BaseModel):
+    """Request to enqueue SDK updates for Apps in selected Solutions."""
+
+    solution_ids: list[UUID] = Field(min_length=1)
+
+
+class SolutionSdkUpdateBatchResponse(ApplicationSdkUpdateBatchResponse):
+    """Batch SDK update enqueue result across selected Solutions."""
+
+
 class SolutionEntityCounts(BaseModel):
     """Per-install inventory counts for lightweight list/catalog views."""
 

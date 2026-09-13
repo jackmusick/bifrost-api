@@ -36,6 +36,10 @@ from bifrost.solution_jobs import (
 )
 from shared.logo_processing import is_logo_thumbnail_version
 from src.core.auth import Context, CurrentSuperuser
+from src.models.contracts.applications import (
+    ApplicationSdkUpdateAccepted,
+    ApplicationSdkUpdateSkipped,
+)
 from src.models.contracts.solutions import (
     Solution as SolutionDTO,
     SolutionAccessUserSummary,
@@ -65,6 +69,8 @@ from src.models.contracts.solutions import (
     SolutionReadmeUpdate,
     SolutionRepoPreviewRequest,
     SolutionSetupStatus,
+    SolutionSdkUpdateBatchRequest,
+    SolutionSdkUpdateBatchResponse,
     SolutionSdkStatus,
     SolutionSdkUpdateResponse,
     SolutionAppSdkStatus,
@@ -513,6 +519,90 @@ async def get_solution_sdk_status(
 ) -> SolutionSdkStatus:
     status_response, _ = await _solution_sdk_status(ctx, solution_id)
     return status_response
+
+
+@router.post(
+    "/sdk/update",
+    response_model=SolutionSdkUpdateBatchResponse,
+    summary="Enqueue SDK updates for Apps in selected Solutions",
+)
+async def batch_update_solution_app_sdks(
+    data: SolutionSdkUpdateBatchRequest, ctx: Context, user: CurrentSuperuser
+) -> SolutionSdkUpdateBatchResponse:
+    solution_ids = data.solution_ids
+    rows = (
+        (
+            await ctx.db.execute(
+                select(SolutionORM).where(SolutionORM.id.in_(solution_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {row.id for row in rows}
+    missing_ids = [
+        solution_id for solution_id in solution_ids if solution_id not in found_ids
+    ]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Solution not found: {missing_ids[0]}",
+        )
+    for solution_id in solution_ids:
+        if await _solution_deploy_in_progress(ctx, solution_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A Solution deployment is already in progress.",
+            )
+
+    apps = (
+        (
+            await ctx.db.execute(
+                select(Application).where(Application.solution_id.in_(solution_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    solutions_by_id = {row.id: row for row in rows}
+    current_sdk = await load_current_sdk_metadata()
+    from src.routers.applications import (
+        _accepted_item,
+        _enqueue_sdk_update_for_application,
+        _sdk_update_action_skip_reason,
+    )
+
+    accepted: list[ApplicationSdkUpdateAccepted] = []
+    skipped: list[ApplicationSdkUpdateSkipped] = []
+    jobs = []
+    for app in apps:
+        solution = solutions_by_id.get(app.solution_id) if app.solution_id else None
+        reason = (
+            "not_applicable"
+            if solution is not None and solution.status != "active"
+            else _sdk_update_action_skip_reason(app, current_sdk=current_sdk)
+        )
+        if reason is not None:
+            skipped.append(
+                ApplicationSdkUpdateSkipped(
+                    application_id=app.id,
+                    reason=reason,
+                )
+            )
+            continue
+        job_accepted, job = await _enqueue_sdk_update_for_application(
+            ctx=ctx,
+            user=user,
+            application=app,
+        )
+        accepted.append(_accepted_item(app.id, job_accepted))
+        jobs.append(job)
+
+    await ctx.db.commit()
+    for job in jobs:
+        await ctx.db.refresh(job)
+        await publish_platform_job_update(job)
+    return SolutionSdkUpdateBatchResponse(accepted=accepted, skipped=skipped)
 
 
 @router.post(

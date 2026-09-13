@@ -8456,6 +8456,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/solutions/sdk/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue SDK updates for Apps in selected Solutions */
+        post: operations["batch_update_solution_app_sdks_api_solutions_sdk_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/solutions/{solution_id}/sdk/update": {
         parameters: {
             query?: never;
@@ -25842,6 +25859,24 @@ export interface components {
             actionable_count: number;
             /** Apps */
             apps?: components["schemas"]["SolutionAppSdkStatus"][];
+        };
+        /**
+         * SolutionSdkUpdateBatchRequest
+         * @description Request to enqueue SDK updates for Apps in selected Solutions.
+         */
+        SolutionSdkUpdateBatchRequest: {
+            /** Solution Ids */
+            solution_ids: string[];
+        };
+        /**
+         * SolutionSdkUpdateBatchResponse
+         * @description Batch SDK update enqueue result across selected Solutions.
+         */
+        SolutionSdkUpdateBatchResponse: {
+            /** Accepted */
+            accepted?: components["schemas"]["ApplicationSdkUpdateAccepted"][];
+            /** Skipped */
+            skipped?: components["schemas"]["ApplicationSdkUpdateSkipped"][];
         };
         /** SolutionSdkUpdateResponse */
         SolutionSdkUpdateResponse: {
@@ -43600,6 +43635,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SolutionSdkStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_update_solution_app_sdks_api_solutions_sdk_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionSdkUpdateBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionSdkUpdateBatchResponse"];
                 };
             };
             /** @description Validation Error */

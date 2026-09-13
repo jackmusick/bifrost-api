@@ -9,7 +9,14 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
-from src.models.contracts.solutions import Solution as SolutionDTO
+import pytest
+from pydantic import ValidationError
+
+from src.models.contracts.solutions import (
+    Solution as SolutionDTO,
+    SolutionSdkUpdateBatchRequest,
+    SolutionSdkUpdateBatchResponse,
+)
 
 
 def _row(org_id):
@@ -41,3 +48,42 @@ def test_solution_sdk_aggregate_fields_default_not_applicable() -> None:
 
     assert dto.sdk_status == "not_applicable"
     assert dto.sdk_actionable_count == 0
+
+
+def test_solution_sdk_update_batch_request_requires_explicit_solution_ids() -> None:
+    solution_id = uuid.uuid4()
+
+    request = SolutionSdkUpdateBatchRequest(solution_ids=[solution_id])
+
+    assert request.solution_ids == [solution_id]
+    with pytest.raises(ValidationError):
+        SolutionSdkUpdateBatchRequest(solution_ids=[])
+
+
+def test_solution_sdk_update_batch_response_contains_per_app_results() -> None:
+    accepted_app_id = uuid.uuid4()
+    skipped_app_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+
+    response = SolutionSdkUpdateBatchResponse(
+        accepted=[
+            {
+                "application_id": accepted_app_id,
+                "job_id": job_id,
+                "status": "queued",
+                "reused": False,
+                "notification_id": None,
+            }
+        ],
+        skipped=[
+            {
+                "application_id": skipped_app_id,
+                "reason": "current",
+            }
+        ],
+    )
+
+    assert response.accepted[0].application_id == accepted_app_id
+    assert response.accepted[0].job_id == job_id
+    assert response.skipped[0].application_id == skipped_app_id
+    assert response.skipped[0].reason == "current"
