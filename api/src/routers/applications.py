@@ -21,7 +21,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -924,13 +924,19 @@ async def deploy_application(
 
 @router.get(
     "/{app_id}/source",
+    response_class=StreamingResponse,
     summary="Download retained App source",
+    responses={
+        200: {"content": {"application/zip": {}}},
+        409: {"description": "Retained source is unavailable"},
+        503: {"description": "Retained source storage is unavailable"},
+    },
 )
 async def download_application_source(
     app_id: UUID,
     ctx: Context,
     user: CurrentSuperuser,
-) -> Response:
+) -> StreamingResponse:
     application = await get_application_by_id_or_404(ctx, app_id)
     if (
         application.solution_id is not None
@@ -942,22 +948,28 @@ async def download_application_source(
             status_code=status.HTTP_409_CONFLICT,
             detail="Retained source is not available for this App.",
         )
+    source = ApplicationSourceArtifactStorage()
     try:
-        body = await ApplicationSourceArtifactStorage().read_deployment_source(
+        source_exists = await source.deployment_source_exists(
             application.id, application.active_deployment_id
         )
     except Exception as exc:
         logger.warning(
-            "Retained App source download failed",
+            "Retained App source availability check failed",
             extra={"application_id": str(application.id)},
             exc_info=True,
         )
         raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Retained source could not be accessed.",
+        ) from exc
+    if not source_exists:
+        raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Retained source is not available for this App.",
-        ) from exc
-    return Response(
-        content=body,
+        )
+    return StreamingResponse(
+        source.iter_deployment_source(application.id, application.active_deployment_id),
         media_type="application/zip",
         headers={
             "Content-Disposition": (

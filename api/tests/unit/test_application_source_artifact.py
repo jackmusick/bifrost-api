@@ -43,6 +43,11 @@ class MemoryS3:
             raise KeyError(Key)
         return {"Body": MemoryBody(self.objects[Key])}
 
+    async def head_object(self, *, Bucket, Key):
+        if Key not in self.objects:
+            raise KeyError(Key)
+        return {"ContentLength": len(self.objects[Key])}
+
     async def delete_object(self, *, Bucket, Key):
         self.deleted.append(Key)
         self.objects.pop(Key, None)
@@ -130,6 +135,10 @@ async def test_source_artifact_writes_reads_and_deletes_exact_deployment_key(
     assert copied.read_bytes() == b"zip-bytes"
 
     assert await storage.read_deployment_source(app_id, deployment_id) == b"zip-bytes"
+    assert await storage.deployment_source_exists(app_id, deployment_id) is True
+    assert b"".join(
+        [chunk async for chunk in storage.iter_deployment_source(app_id, deployment_id)]
+    ) == b"zip-bytes"
 
     await storage.delete_deployment_source(app_id, deployment_id)
     assert memory.deleted == [key]

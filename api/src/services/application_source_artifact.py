@@ -6,6 +6,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from uuid import UUID
 
+from botocore.exceptions import ClientError
+
 from src.config import Settings, get_settings
 from src.services.application_deploy_storage import CHUNK_SIZE
 from src.services.file_storage.s3_client import S3StorageClient
@@ -70,6 +72,32 @@ class ApplicationSourceArtifactStorage:
             body = response["Body"]
             async with body:
                 return await body.read()
+
+    def iter_deployment_source(
+        self, app_id: UUID | str, deployment_id: UUID | str
+    ) -> AsyncIterator[bytes]:
+        """Stream a retained source archive without buffering it in API memory."""
+        return self._storage.iter_object_chunks(
+            self.deployment_source_key(app_id, deployment_id),
+            chunk_size=CHUNK_SIZE,
+        )
+
+    async def deployment_source_exists(
+        self, app_id: UUID | str, deployment_id: UUID | str
+    ) -> bool:
+        """Check that a retained source object exists before starting a response."""
+        async with self._storage.get_client() as s3:
+            try:
+                await s3.head_object(
+                    Bucket=self._bucket,
+                    Key=self.deployment_source_key(app_id, deployment_id),
+                )
+            except ClientError as exc:
+                error = exc.response.get("Error", {})
+                if error.get("Code") in {"NoSuchKey", "404", "NotFound"}:
+                    return False
+                raise
+        return True
 
     async def delete_deployment_source(
         self, app_id: UUID | str, deployment_id: UUID | str
