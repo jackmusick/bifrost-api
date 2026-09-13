@@ -70,6 +70,10 @@ async function mockSdkUpdateFixtures(page: Page) {
 	});
 
 	await page.route("**/api/applications**", async (route) => {
+		if (route.request().method() !== "GET") {
+			await route.fallback();
+			return;
+		}
 		await route.fulfill({
 			json: {
 				applications: [
@@ -108,6 +112,28 @@ async function mockSdkUpdateFixtures(page: Page) {
 					}),
 				],
 				total: 5,
+			},
+		});
+	});
+	await page.route("**/api/applications/sdk/update", async (route) => {
+		const body = route.request().postDataJSON() as {
+			application_ids?: string[];
+		};
+		await route.fulfill({
+			json: {
+				accepted: (body.application_ids ?? []).map((applicationId) => ({
+					application_id: applicationId,
+					job_id:
+						applicationId === DISPATCH_APP_ID
+							? "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+							: applicationId === MONITOR_APP_ID
+								? "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+								: RUNBOOK_JOB_ID,
+					status: "queued",
+					reused: false,
+					notification_id: null,
+				})),
+				skipped: [],
 			},
 		});
 	});
@@ -171,6 +197,48 @@ async function mockSdkUpdateFixtures(page: Page) {
 }
 
 test.describe("Applications SDK update UI", () => {
+	test("desktop supports Update All and selection-mode SDK updates", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await mockSdkUpdateFixtures(page);
+
+		await page.goto("/apps");
+		await expect(
+			page.getByRole("button", { name: "Update all SDKs (3)" }),
+		).toBeVisible();
+		await page.getByLabel(/search apps/i).fill("Dispatch");
+		await page.getByRole("button", { name: "Update all SDKs (3)" }).click();
+		await expect(
+			page
+				.getByRole("article")
+				.filter({ hasText: "Workflow Monitor" })
+				.getByLabel("Updating SDK"),
+		).toBeVisible();
+		await page.screenshot({
+			path: test.info().outputPath("sdk-update-all-desktop.png"),
+			fullPage: true,
+		});
+
+		await page.reload();
+		await page.getByRole("button", { name: "Select" }).click();
+		await page.getByRole("button", { name: "Select all" }).click();
+		await expect(
+			page.getByRole("button", { name: "Update selected (3)" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("article", { name: "Asset Intake" }),
+		).toHaveAttribute("aria-disabled", "true");
+		await page.screenshot({
+			path: test.info().outputPath("sdk-update-selection-desktop.png"),
+			fullPage: true,
+		});
+		await page
+			.getByRole("button", { name: "Update selected (3)" })
+			.click();
+		await expect(page.getByRole("button", { name: "Select" })).toBeVisible();
+	});
+
 	test("desktop shows update available, updating, and source-unavailable states", async ({
 		page,
 	}) => {

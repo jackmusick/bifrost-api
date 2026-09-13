@@ -8,9 +8,14 @@ import { Applications } from "./Applications";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useLocation } from "react-router-dom";
 import { renderWithProviders, screen, within } from "@/test-utils";
+import { toast } from "sonner";
 
 const mockUseApplications = vi.fn();
 const mockUseDeleteApplication = vi.fn();
+const mockUseUpdateApplicationSdk = vi.fn();
+const mockBatchUpdateApplicationSdks = vi.fn();
+const mockTrackAccepted = vi.fn();
+let mockSdkStates: Record<string, string> = {};
 vi.mock("@/lib/detail-route-loaders", () => ({
 	prefetchApplicationDetail: vi.fn(),
 }));
@@ -19,6 +24,23 @@ vi.mock("@/hooks/useMediaQuery", () => ({ useIsDesktop: () => true }));
 vi.mock("@/hooks/useApplications", () => ({
 	useApplications: () => mockUseApplications(),
 	useDeleteApplication: () => mockUseDeleteApplication(),
+	useUpdateApplicationSdk: () => mockUseUpdateApplicationSdk(),
+	batchUpdateApplicationSdks: (ids: string[]) =>
+		mockBatchUpdateApplicationSdks(ids),
+}));
+
+vi.mock("@/hooks/useApplicationSdkUpdateJobs", () => ({
+	useApplicationSdkUpdateJobs: () => ({
+		trackAccepted: mockTrackAccepted,
+		getUpdateState: (id: string) => mockSdkStates[id] ?? "idle",
+	}),
+}));
+
+vi.mock("sonner", () => ({
+	toast: {
+		success: vi.fn(),
+		error: vi.fn(),
+	},
 }));
 
 const mockUseAuth = vi.fn();
@@ -39,7 +61,26 @@ vi.mock("@/components/EntityLogo", () => ({
 vi.mock("@/components/app-builder/AppInfoDialog", () => ({
 	AppInfoDialog: () => null,
 }));
-vi.mock("@/components/search/SearchBox", () => ({ SearchBox: () => null }));
+vi.mock("@/components/search/SearchBox", () => ({
+	SearchBox: ({
+		value,
+		onChange,
+		"aria-label": ariaLabel,
+		placeholder,
+	}: {
+		value: string;
+		onChange: (value: string) => void;
+		"aria-label"?: string;
+		placeholder?: string;
+	}) => (
+		<input
+			aria-label={ariaLabel ?? "Search"}
+			placeholder={placeholder}
+			value={value}
+			onChange={(event) => onChange(event.currentTarget.value)}
+		/>
+	),
+}));
 vi.mock("@/components/forms/OrganizationSelect", () => ({
 	OrganizationSelect: () => null,
 }));
@@ -57,6 +98,12 @@ function makeApp(overrides: Partial<Record<string, unknown>> = {}) {
 		solution_id: null,
 		logo_url: "/api/applications/app-1/logo",
 		app_model: "legacy",
+		sdk_status: "update_available",
+		sdk_source_available: true,
+		sdk_package_version: "1.0.0",
+		sdk_fingerprint: "old",
+		sdk_contract_version: 1,
+		sdk_built_at: "2026-09-12T12:00:00Z",
 		...overrides,
 	};
 }
@@ -67,10 +114,176 @@ beforeEach(() => {
 		mutateAsync: vi.fn(),
 		isPending: false,
 	});
+	mockUseUpdateApplicationSdk.mockReturnValue({
+		mutateAsync: vi.fn(),
+	});
+	mockBatchUpdateApplicationSdks.mockResolvedValue({
+		accepted: [],
+		skipped: [],
+	});
+	mockTrackAccepted.mockReset();
+	mockSdkStates = {};
+	vi.mocked(toast.success).mockClear();
+	vi.mocked(toast.error).mockClear();
 	mockUseApplications.mockReturnValue({
 		data: { applications: [] },
 		isLoading: false,
 		refetch: vi.fn(),
+	});
+});
+
+describe("Applications — bulk SDK updates", () => {
+	it("updates every actionable app in organization scope while ignoring search text", async () => {
+		mockUseApplications.mockReturnValue({
+			data: {
+				applications: [
+					makeApp({ id: "app-1", name: "Live Dash" }),
+					makeApp({
+						id: "app-2",
+						name: "Workflow Monitor",
+						sdk_status: "unknown",
+					}),
+					makeApp({
+						id: "app-3",
+						name: "Client Portal",
+						sdk_status: "current",
+					}),
+					makeApp({
+						id: "app-4",
+						name: "Asset Intake",
+						sdk_status: "update_required",
+						sdk_source_available: false,
+					}),
+				],
+			},
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		mockBatchUpdateApplicationSdks.mockResolvedValue({
+			accepted: [
+				{
+					application_id: "app-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [{ application_id: "app-2", reason: "conflict" }],
+		});
+		const { user } = await renderPage();
+
+		await user.type(screen.getByLabelText(/search applications/i), "Live");
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
+			"app-1",
+			"app-2",
+		]);
+		expect(mockTrackAccepted).toHaveBeenCalledWith([
+			expect.objectContaining({ application_id: "app-1" }),
+		]);
+		expect(toast.success).toHaveBeenCalledWith(
+			"Queued SDK updates for 1 App. 1 skipped.",
+		);
+	});
+
+	it("keeps selection after a batch request failure", async () => {
+		mockUseApplications.mockReturnValue({
+			data: {
+				applications: [
+					makeApp({ id: "app-1", name: "Live Dash" }),
+					makeApp({ id: "app-2", name: "Workflow Monitor" }),
+				],
+			},
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		mockBatchUpdateApplicationSdks.mockRejectedValue(new Error("boom"));
+		const { user } = await renderPage();
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(screen.getByRole("button", { name: "Live Dash" }));
+		await user.click(
+			screen.getByRole("button", { name: "Update selected (1)" }),
+		);
+
+		expect(toast.error).toHaveBeenCalledWith("Failed to queue SDK updates");
+		expect(
+			screen.getByRole("button", { name: "Live Dash" }),
+		).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("button", { name: "Update selected (1)" }),
+		).toBeVisible();
+	});
+
+	it("clears and exits selection mode after accepted selected updates", async () => {
+		mockUseApplications.mockReturnValue({
+			data: {
+				applications: [
+					makeApp({ id: "app-1", name: "Live Dash" }),
+					makeApp({
+						id: "app-2",
+						name: "Client Portal",
+						sdk_status: "current",
+					}),
+					makeApp({ id: "app-3", name: "Workflow Monitor" }),
+				],
+			},
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		mockBatchUpdateApplicationSdks.mockResolvedValue({
+			accepted: [
+				{
+					application_id: "app-1",
+					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+				{
+					application_id: "app-3",
+					job_id: "job-3",
+					status: "queued",
+					reused: false,
+				},
+			],
+			skipped: [],
+		});
+		const { user } = await renderPage();
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(screen.getByRole("button", { name: "Select all" }));
+		await user.click(
+			screen.getByRole("button", { name: "Update selected (2)" }),
+		);
+
+		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
+			"app-1",
+			"app-3",
+		]);
+		expect(mockTrackAccepted).toHaveBeenCalledWith([
+			expect.objectContaining({ application_id: "app-1" }),
+			expect.objectContaining({ application_id: "app-3" }),
+		]);
+		expect(
+			screen.queryByRole("button", { name: "Update selected (2)" }),
+		).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Select" })).toBeVisible();
+	});
+
+	it("passes accepted SDK jobs back into the list badges", async () => {
+		mockSdkStates = { "app-1": "updating" };
+		mockUseApplications.mockReturnValue({
+			data: { applications: [makeApp({ id: "app-1" })] },
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+
+		await renderPage();
+
+		expect(screen.getByLabelText("Updating SDK")).toBeVisible();
 	});
 });
 

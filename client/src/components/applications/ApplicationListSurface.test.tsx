@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -69,6 +69,87 @@ function renderSurface(
 }
 
 describe("ApplicationListSurface SDK update affordances", () => {
+	it("toggles actionable cards as whole-card controls in selection mode", async () => {
+		const user = userEvent.setup();
+		const onToggleSelection = vi.fn();
+		renderSurface({
+			apps: [
+				makeApp({ id: "app-1", name: "Dispatch Board" }),
+				makeApp({
+					id: "app-2",
+					name: "Asset Intake",
+					sdk_status: "update_required",
+					sdk_source_available: false,
+				}),
+			],
+			selectionMode: true,
+			selectedIds: new Set(["app-1"]),
+			onToggleSelection,
+		});
+
+		const selectedCard = screen.getByRole("button", {
+			name: /dispatch board/i,
+		});
+		expect(selectedCard).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByLabelText("Dispatch Board selected")).toBeVisible();
+
+		await user.click(selectedCard);
+		fireEvent.keyDown(selectedCard, { key: "Enter" });
+
+		expect(onToggleSelection).toHaveBeenCalledTimes(2);
+		expect(onToggleSelection).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ id: "app-1" }),
+		);
+		expect(
+			screen.getByRole("article", { name: /asset intake/i }),
+		).toHaveAttribute("aria-disabled", "true");
+		expect(
+			screen.queryByRole("button", { name: /asset intake/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("uses semantic checkboxes for table selection and only selects actionable apps", async () => {
+		const user = userEvent.setup();
+		const onToggleSelection = vi.fn();
+		const onToggleSelectAllVisible = vi.fn();
+		renderSurface({
+			viewMode: "table",
+			apps: [
+				makeApp({ id: "app-1", name: "Dispatch Board" }),
+				makeApp({
+					id: "app-2",
+					name: "Client Portal",
+					sdk_status: "current",
+					sdk_source_available: true,
+				}),
+			],
+			selectionMode: true,
+			selectedIds: new Set(["app-1"]),
+			onToggleSelection,
+			onToggleSelectAllVisible,
+		});
+
+		const selectAll = screen.getByRole("checkbox", {
+			name: "Select all visible Applications with SDK updates",
+		});
+		expect(selectAll).toBeChecked();
+		await user.click(selectAll);
+		expect(onToggleSelectAllVisible).toHaveBeenCalledOnce();
+
+		const rowCheckbox = screen.getByRole("checkbox", {
+			name: "Select Dispatch Board",
+		});
+		expect(rowCheckbox).toBeChecked();
+		await user.click(rowCheckbox);
+		expect(onToggleSelection).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "app-1" }),
+		);
+		expect(
+			screen.getByRole("checkbox", { name: "Select Client Portal" }),
+		).toBeDisabled();
+	});
+
 	it("shows SDK drift in the status cluster and queues updates from the overflow menu", async () => {
 		const user = userEvent.setup();
 		const onUpdateSdk = vi.fn();
