@@ -121,6 +121,11 @@ class _FakeDb:
         self.commits += 1
 
 
+def _compiled_statement(statement: object) -> tuple[str, dict[str, object]]:
+    compiled = statement.compile(compile_kwargs={"render_postcompile": True})
+    return str(compiled), dict(compiled.params)
+
+
 @pytest.mark.asyncio
 async def test_solution_sdk_update_batch_uses_bounded_set_based_queries() -> None:
     from src.routers.solutions import batch_update_solution_app_sdks
@@ -143,3 +148,13 @@ async def test_solution_sdk_update_batch_uses_bounded_set_based_queries() -> Non
     assert response.skipped == []
     assert db.commits == 1
     assert len(db.statements) == 3
+    app_loads = [
+        (sql, params)
+        for sql, params in (_compiled_statement(statement) for statement in db.statements)
+        if "FROM applications" in sql
+    ]
+    assert len(app_loads) == 1
+    app_load_sql, app_load_params = app_loads[0]
+    assert "applications.solution_id IN" in app_load_sql
+    assert "applications.solution_id =" not in app_load_sql
+    assert set(app_load_params.values()) == set(request.solution_ids)
