@@ -717,7 +717,7 @@ async def delete_application(
     except Exception:
         logger.warning(
             "Failed to remove retained App source artifacts for %s",
-            app_id,
+            log_safe(app_id),
             exc_info=True,
         )
     if active_deployment_id is not None:

@@ -485,12 +485,12 @@ async def _load_app_by_ref(
     client: BifrostClient, resolver: RefResolver, ref: str
 ) -> dict[str, Any]:
     bound_solution = os.getenv("BIFROST_SOLUTION_ID")
-    is_uuid = False
     try:
         UUID(ref)
-        is_uuid = True
     except (TypeError, ValueError):
-        pass
+        is_uuid = False
+    else:
+        is_uuid = True
 
     if bound_solution and not is_uuid:
         list_response = await client.get("/api/applications")
@@ -689,10 +689,7 @@ async def source_export(
                     bytes_written += len(chunk)
         tmp_path.replace(destination)
     except Exception:
-        try:
-            tmp_path.unlink()
-        except FileNotFoundError:
-            pass
+        tmp_path.unlink(missing_ok=True)
         raise
     output_result({"path": str(destination), "bytes": bytes_written}, ctx=ctx)
 
