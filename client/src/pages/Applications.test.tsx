@@ -7,7 +7,7 @@ import { Applications } from "./Applications";
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useLocation } from "react-router-dom";
-import { renderWithProviders, screen, within } from "@/test-utils";
+import { renderWithProviders, screen, waitFor, within } from "@/test-utils";
 import { toast } from "sonner";
 
 const mockUseApplications = vi.fn();
@@ -134,6 +134,9 @@ beforeEach(() => {
 
 describe("Applications — bulk SDK updates", () => {
 	it("updates every actionable app in organization scope while ignoring search text", async () => {
+		let resolveBatch: (
+			value: Awaited<ReturnType<typeof mockBatchUpdateApplicationSdks>>,
+		) => void = () => {};
 		mockUseApplications.mockReturnValue({
 			data: {
 				applications: [
@@ -159,7 +162,25 @@ describe("Applications — bulk SDK updates", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		mockBatchUpdateApplicationSdks.mockResolvedValue({
+		mockBatchUpdateApplicationSdks.mockReturnValue(
+			new Promise((resolve) => {
+				resolveBatch = resolve;
+			}),
+		);
+		const { user } = await renderPage();
+
+		await user.type(screen.getByLabelText(/search applications/i), "Live");
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		expect(screen.getByRole("button", { name: "Queueing…" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Select" })).toBeDisabled();
+		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
+			"app-1",
+			"app-2",
+		]);
+		resolveBatch({
 			accepted: [
 				{
 					application_id: "app-1",
@@ -170,23 +191,14 @@ describe("Applications — bulk SDK updates", () => {
 			],
 			skipped: [{ application_id: "app-2", reason: "conflict" }],
 		});
-		const { user } = await renderPage();
-
-		await user.type(screen.getByLabelText(/search applications/i), "Live");
-		await user.click(
-			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		await waitFor(() =>
+			expect(toast.success).toHaveBeenCalledWith(
+				"Queued SDK updates for 1 App. 1 skipped.",
+			),
 		);
-
-		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
-			"app-1",
-			"app-2",
-		]);
 		expect(mockTrackAccepted).toHaveBeenCalledWith([
 			expect.objectContaining({ application_id: "app-1" }),
 		]);
-		expect(toast.success).toHaveBeenCalledWith(
-			"Queued SDK updates for 1 App. 1 skipped.",
-		);
 	});
 
 	it("keeps selection after a batch request failure", async () => {
@@ -219,6 +231,9 @@ describe("Applications — bulk SDK updates", () => {
 	});
 
 	it("clears and exits selection mode after accepted selected updates", async () => {
+		let resolveBatch: (
+			value: Awaited<ReturnType<typeof mockBatchUpdateApplicationSdks>>,
+		) => void = () => {};
 		mockUseApplications.mockReturnValue({
 			data: {
 				applications: [
@@ -234,7 +249,27 @@ describe("Applications — bulk SDK updates", () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		});
-		mockBatchUpdateApplicationSdks.mockResolvedValue({
+		mockBatchUpdateApplicationSdks.mockReturnValue(
+			new Promise((resolve) => {
+				resolveBatch = resolve;
+			}),
+		);
+		const { user } = await renderPage();
+
+		await user.click(screen.getByRole("button", { name: "Select" }));
+		await user.click(screen.getByRole("button", { name: "Select all" }));
+		await user.click(
+			screen.getByRole("button", { name: "Update selected (2)" }),
+		);
+
+		expect(screen.getByRole("button", { name: "Select all" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Queueing…" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
+		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
+			"app-1",
+			"app-3",
+		]);
+		resolveBatch({
 			accepted: [
 				{
 					application_id: "app-1",
@@ -251,18 +286,12 @@ describe("Applications — bulk SDK updates", () => {
 			],
 			skipped: [],
 		});
-		const { user } = await renderPage();
-
-		await user.click(screen.getByRole("button", { name: "Select" }));
-		await user.click(screen.getByRole("button", { name: "Select all" }));
-		await user.click(
-			screen.getByRole("button", { name: "Update selected (2)" }),
+		await waitFor(() =>
+			expect(mockTrackAccepted).toHaveBeenCalledWith([
+				expect.objectContaining({ application_id: "app-1" }),
+				expect.objectContaining({ application_id: "app-3" }),
+			]),
 		);
-
-		expect(mockBatchUpdateApplicationSdks).toHaveBeenCalledWith([
-			"app-1",
-			"app-3",
-		]);
 		expect(mockTrackAccepted).toHaveBeenCalledWith([
 			expect.objectContaining({ application_id: "app-1" }),
 			expect.objectContaining({ application_id: "app-3" }),

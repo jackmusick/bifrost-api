@@ -165,6 +165,34 @@ async function mockSdkUpdateFixtures(page: Page) {
 	);
 
 	return {
+		runMonitorUpdate() {
+			if (!sendSocketMessage) {
+				throw new Error("SDK update websocket did not connect");
+			}
+			sendSocketMessage({
+				type: "platform_job_updated",
+				job: {
+					id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+					job_type: "application.sdk_update",
+					payload_version: 1,
+					resource_type: "application",
+					resource_id: MONITOR_APP_ID,
+					resource_lock_key: `application:${MONITOR_APP_ID}`,
+					priority: 100,
+					title: "Update application SDK",
+					requested_by_user_id: "fixture-user",
+					requested_by_name: "Fixture Admin",
+					status: "running",
+					progress: { current: 0, total: 1, percent: 0 },
+					revision: 2,
+					attempt: 1,
+					max_attempts: 1,
+					can_cancel: false,
+					created_at: NOW,
+					updated_at: NOW,
+				},
+			});
+		},
 		failRunbookUpdate() {
 			if (!sendSocketMessage) {
 				throw new Error("SDK update websocket did not connect");
@@ -201,7 +229,7 @@ test.describe("Applications SDK update UI", () => {
 		page,
 	}) => {
 		await page.setViewportSize({ width: 1280, height: 900 });
-		await mockSdkUpdateFixtures(page);
+		const sdkFixture = await mockSdkUpdateFixtures(page);
 
 		await page.goto("/apps");
 		await expect(
@@ -209,6 +237,7 @@ test.describe("Applications SDK update UI", () => {
 		).toBeVisible();
 		await page.getByLabel(/search apps/i).fill("Dispatch");
 		await page.getByRole("button", { name: "Update all SDKs (3)" }).click();
+		sdkFixture.runMonitorUpdate();
 		await expect(
 			page
 				.getByRole("article")

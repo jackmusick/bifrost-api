@@ -402,7 +402,10 @@ export function Applications() {
 									variant="outline"
 									size="lg"
 									onClick={() => setSelectionMode(true)}
-									disabled={actionableCount === 0}
+									disabled={
+										actionableCount === 0 ||
+										batchUpdatePending
+									}
 								>
 									<CheckSquare
 										aria-hidden="true"
