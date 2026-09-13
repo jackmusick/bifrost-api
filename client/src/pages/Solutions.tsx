@@ -224,7 +224,7 @@ export function Solutions() {
 						aria-label={`${sol.sdk_actionable_count} app${sol.sdk_actionable_count === 1 ? "" : "s"} can update SDK`}
 					>
 						{sol.sdk_actionable_count}{" "}
-						{sol.sdk_actionable_count === 1 ? "app" : "apps"}
+						{sol.sdk_actionable_count === 1 ? "update" : "updates"}
 					</Badge>
 				)}
 			</span>

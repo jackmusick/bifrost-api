@@ -187,7 +187,7 @@ describe("Solutions — list", () => {
 		expect(screen.getByLabelText("SDK update available")).toBeVisible();
 		expect(
 			screen.getByLabelText("2 apps can update SDK"),
-		).toHaveTextContent("2 apps");
+		).toHaveTextContent("2 updates");
 	});
 
 	it("renders colored entity count badges in a wrapping card footer", async () => {
