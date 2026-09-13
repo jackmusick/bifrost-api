@@ -572,7 +572,7 @@ async def get_attachment_content(
     if attachment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
 
-    from src.services.artifacts import ArtifactService
+    from src.services.artifacts import ArtifactService, is_browser_active_content_type
 
     artifact = await db.get(Artifact, attachment.artifact_id)
     if artifact is None:
@@ -597,7 +597,11 @@ async def get_attachment_content(
                     "X-Content-Type-Options": "nosniff",
                 },
             )
-    disposition = "attachment" if download else "inline"
+    disposition = (
+        "attachment"
+        if download or is_browser_active_content_type(attachment.content_type)
+        else "inline"
+    )
     encoded_filename = quote(attachment.filename, safe="")
     return Response(
         content=content,

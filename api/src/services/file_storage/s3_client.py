@@ -132,6 +132,9 @@ class S3StorageClient:
         self,
         path: str,
         expires_in: int = 600,
+        *,
+        response_content_type: str | None = None,
+        response_content_disposition: str | None = None,
     ) -> str:
         """
         Generate a presigned GET URL for direct S3 download.
@@ -143,13 +146,19 @@ class S3StorageClient:
         Returns:
             Presigned GET URL for direct download
         """
+        params = {
+            "Bucket": self.settings.s3_bucket,
+            "Key": path,
+        }
+        if response_content_type is not None:
+            params["ResponseContentType"] = response_content_type
+        if response_content_disposition is not None:
+            params["ResponseContentDisposition"] = response_content_disposition
+
         async with self.get_client() as s3:
             url = await s3.generate_presigned_url(
                 "get_object",
-                Params={
-                    "Bucket": self.settings.s3_bucket,
-                    "Key": path,
-                },
+                Params=params,
                 ExpiresIn=expires_in,
             )
         return self._rewrite_presigned_url(url)

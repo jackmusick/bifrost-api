@@ -2397,7 +2397,11 @@ async def sdk_read_artifact(
     preview: bool = False,
 ) -> Response:
     """Read an opaque artifact after enforcing caller scope."""
-    from src.services.artifacts import ArtifactAccessError, ArtifactService
+    from src.services.artifacts import (
+        ArtifactAccessError,
+        ArtifactService,
+        is_browser_active_content_type,
+    )
 
     service = ArtifactService(db)
     try:
@@ -2431,10 +2435,13 @@ async def sdk_read_artifact(
                     "X-Content-Type-Options": "nosniff",
                 },
             )
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if is_browser_active_content_type(artifact.content_type):
+        headers["Content-Disposition"] = "attachment"
     return Response(
         content=content,
         media_type=artifact.content_type,
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers=headers,
     )
 
 
@@ -2446,10 +2453,10 @@ async def sdk_artifact_download_url(
 ) -> ArtifactDownloadResponse:
     """Create a short-lived download URL for an opaque artifact."""
     from src.services.artifacts import ArtifactAccessError, ArtifactService
-    from src.services.file_storage.service import get_file_storage_service
 
     try:
-        artifact = await ArtifactService(db).get_authorized(
+        service = ArtifactService(db)
+        artifact = await service.get_authorized(
             artifact_id,
             user_id=current_user.user_id,
             organization_id=current_user.organization_id,
@@ -2459,9 +2466,7 @@ async def sdk_artifact_download_url(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
-    url = await get_file_storage_service(db).generate_presigned_download_url(
-        artifact.s3_key
-    )
+    url = await service.generate_download_url(artifact)
     return ArtifactDownloadResponse(url=url)
 
 

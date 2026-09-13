@@ -44,12 +44,6 @@ async def test_workflow_artifact_results_become_mcp_media_and_resources(
     async def fake_db_context():
         yield object()
 
-    storage = AsyncMock()
-    storage.read_uploaded_file.return_value = b"png-data"
-    storage.generate_presigned_download_url.return_value = (
-        "https://files.example.test/brief.pdf"
-    )
-
     class FakeArtifactService:
         def __init__(self, db) -> None:
             pass
@@ -64,16 +58,14 @@ async def test_workflow_artifact_results_become_mcp_media_and_resources(
         async def read(self, artifact):
             return b"png-data"
 
+        async def generate_download_url(self, artifact):
+            return "https://files.example.test/brief.pdf"
+
     monkeypatch.setattr("src.core.database.get_db_context", fake_db_context)
     monkeypatch.setattr(
         "src.services.artifacts.ArtifactService",
         FakeArtifactService,
     )
-    monkeypatch.setattr(
-        "src.services.file_storage.service.get_file_storage_service",
-        lambda db: storage,
-    )
-
     tool = server.WorkflowTool(
         name="create_brief",
         description="Create files",
