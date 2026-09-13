@@ -628,7 +628,7 @@ describe("Solutions — bulk SDK updates", () => {
 			],
 			skipped: [],
 		});
-		const { user } = await renderPage();
+		const { user, rerender } = await renderPage();
 		await screen.findByText("Dispatch Solution");
 
 		await user.click(
@@ -645,6 +645,22 @@ describe("Solutions — bulk SDK updates", () => {
 		expect(
 			screen.queryByRole("button", {
 				name: "Update SDKs for Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+
+		mockSdkStates = { "app-1": "idle", "app-2": "updating" };
+		rerender(<Solutions />);
+		await waitFor(() =>
+			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
+		);
+		expect(
+			screen.getByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("button", {
+				name: "Update SDKs for Runbook Solution",
 			}),
 		).not.toBeInTheDocument();
 	});

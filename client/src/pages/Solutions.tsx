@@ -79,8 +79,8 @@ function canUpdateSolutionSdk(sol: Solution): boolean {
 	return sol.status !== "inactive" && (sol.sdk_actionable_count ?? 0) > 0;
 }
 
-type LocalUpdatingRequest = {
-	solutionIds: string[];
+type LocalUpdatingSolution = {
+	solutionId: string;
 	acceptedApplicationIds: string[];
 };
 
@@ -100,7 +100,7 @@ export function Solutions() {
 		Set<string>
 	>(new Set());
 	const [localUpdatingRequests, setLocalUpdatingRequests] = useState<
-		LocalUpdatingRequest[]
+		LocalUpdatingSolution[]
 	>([]);
 	const [batchUpdatePending, setBatchUpdatePending] = useState(false);
 	// undefined = all organizations, null = global only, string = one org.
@@ -173,7 +173,7 @@ export function Solutions() {
 	const isSolutionUpdating = (sol: Solution) =>
 		localUpdatingRequests.some(
 			(request) =>
-				request.solutionIds.includes(sol.id) &&
+				request.solutionId === sol.id &&
 				request.acceptedApplicationIds.some(
 					(appId) =>
 						!sdkUpdateJobs.hasUpdateState(appId) ||
@@ -281,13 +281,13 @@ export function Solutions() {
 				),
 			);
 			if (acceptedApplicationIds.length > 0) {
-				const solutionIds = Array.from(
-					new Set(
-						(result.accepted ?? []).map(
-							(operation) => operation.solution_id,
-						),
-					),
-				);
+				const acceptedBySolution = new Map<string, string[]>();
+				for (const operation of result.accepted ?? []) {
+					const appIds =
+						acceptedBySolution.get(operation.solution_id) ?? [];
+					appIds.push(operation.application_id);
+					acceptedBySolution.set(operation.solution_id, appIds);
+				}
 				setLocalUpdatingRequests((current) => {
 					const active = current.filter((request) =>
 						request.acceptedApplicationIds.some(
@@ -297,7 +297,16 @@ export function Solutions() {
 									"updating",
 						),
 					);
-					return [...active, { solutionIds, acceptedApplicationIds }];
+					return [
+						...active,
+						...Array.from(
+							acceptedBySolution,
+							([solutionId, appIds]) => ({
+								solutionId,
+								acceptedApplicationIds: appIds,
+							}),
+						),
+					];
 				});
 			}
 			if (options.clearSelection) {
