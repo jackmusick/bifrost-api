@@ -49,7 +49,10 @@ import {
 } from "@/components/ui/data-table";
 import { SearchBox } from "@/components/search/SearchBox";
 import { EntityLogo } from "@/components/EntityLogo";
-import { ApplicationSdkStatusBadge } from "@/components/applications/ApplicationSdkStatusBadge";
+import {
+	ApplicationSdkStatusBadge,
+	type ApplicationSdkUpdateState,
+} from "@/components/applications/ApplicationSdkStatusBadge";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
@@ -76,6 +79,11 @@ function canUpdateSolutionSdk(sol: Solution): boolean {
 	return sol.status !== "inactive" && (sol.sdk_actionable_count ?? 0) > 0;
 }
 
+type LocalUpdatingRequest = {
+	solutionIds: string[];
+	acceptedApplicationIds: string[];
+};
+
 export function Solutions() {
 	const updateAllSdkDescriptionId = useId();
 	const navigate = useNavigate();
@@ -91,6 +99,9 @@ export function Solutions() {
 	const [selectedSdkUpdateIds, setSelectedSdkUpdateIds] = useState<
 		Set<string>
 	>(new Set());
+	const [localUpdatingRequests, setLocalUpdatingRequests] = useState<
+		LocalUpdatingRequest[]
+	>([]);
 	const [batchUpdatePending, setBatchUpdatePending] = useState(false);
 	// undefined = all organizations, null = global only, string = one org.
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
@@ -159,8 +170,28 @@ export function Solutions() {
 		? scopeFiltered
 		: scopeFiltered.filter((sol) => sol.status !== "inactive");
 	const filtered = useSearch(activeFiltered, searchTerm, ["name", "slug"]);
-	const actionableSolutions = activeFiltered.filter(canUpdateSolutionSdk);
-	const visibleActionableSolutions = filtered.filter(canUpdateSolutionSdk);
+	const isSolutionUpdating = (sol: Solution) =>
+		localUpdatingRequests.some(
+			(request) =>
+				request.solutionIds.includes(sol.id) &&
+				request.acceptedApplicationIds.some(
+					(appId) =>
+						!sdkUpdateJobs.hasUpdateState(appId) ||
+						sdkUpdateJobs.getUpdateState(appId) === "updating",
+				),
+		);
+	const getSolutionUpdateState = (
+		sol: Solution,
+	): ApplicationSdkUpdateState =>
+		isSolutionUpdating(sol) ? "updating" : "idle";
+	const canSelectOrUpdateSolution = (sol: Solution) =>
+		canUpdateSolutionSdk(sol) && !isSolutionUpdating(sol);
+	const actionableSolutions = activeFiltered.filter(
+		canSelectOrUpdateSolution,
+	);
+	const visibleActionableSolutions = filtered.filter(
+		canSelectOrUpdateSolution,
+	);
 	const selectedActionableSolutions = actionableSolutions.filter((sol) =>
 		selectedSdkUpdateIds.has(sol.id),
 	);
@@ -175,7 +206,9 @@ export function Solutions() {
 		hasSearch && hiddenActionableCount > 0
 			? `Includes all actionable Solutions in the current organization scope, including ${hiddenActionableCount} hidden by search.`
 			: undefined;
-	const selectableVisibleSolutions = filtered.filter(canUpdateSolutionSdk);
+	const selectableVisibleSolutions = filtered.filter(
+		canSelectOrUpdateSolution,
+	);
 	const allVisibleSelected =
 		selectableVisibleSolutions.length > 0 &&
 		selectableVisibleSolutions.every((sol) =>
@@ -186,7 +219,7 @@ export function Solutions() {
 	);
 
 	function toggleSdkUpdateSelection(sol: Solution) {
-		if (!canUpdateSolutionSdk(sol)) return;
+		if (!canSelectOrUpdateSolution(sol)) return;
 		setSelectedSdkUpdateIds((current) => {
 			const next = new Set(current);
 			if (next.has(sol.id)) next.delete(sol.id);
@@ -240,6 +273,27 @@ export function Solutions() {
 				solutionsToUpdate.map((sol) => sol.id),
 			);
 			reportBatchResult(result);
+			const acceptedApplicationIds = Array.from(
+				new Set(
+					(result.accepted ?? []).map(
+						(operation) => operation.application_id,
+					),
+				),
+			);
+			if (acceptedApplicationIds.length > 0) {
+				const solutionIds = solutionsToUpdate.map((sol) => sol.id);
+				setLocalUpdatingRequests((current) => {
+					const active = current.filter((request) =>
+						request.acceptedApplicationIds.some(
+							(appId) =>
+								!sdkUpdateJobs.hasUpdateState(appId) ||
+								sdkUpdateJobs.getUpdateState(appId) ===
+									"updating",
+						),
+					);
+					return [...active, { solutionIds, acceptedApplicationIds }];
+				});
+			}
 			if (options.clearSelection) {
 				setSelectedSdkUpdateIds(new Set());
 				setSelectionMode(false);
@@ -326,8 +380,11 @@ export function Solutions() {
 		if (sol.sdk_status === "not_applicable") return null;
 		return (
 			<span className="inline-flex items-center gap-1.5">
-				<ApplicationSdkStatusBadge status={sol.sdk_status} />
-				{sol.sdk_actionable_count > 0 && (
+				<ApplicationSdkStatusBadge
+					status={sol.sdk_status}
+					updateState={getSolutionUpdateState(sol)}
+				/>
+				{sol.sdk_actionable_count > 0 && !isSolutionUpdating(sol) && (
 					<Badge
 						variant="outline"
 						className="border-muted-foreground/30 bg-muted text-xs text-muted-foreground"
@@ -610,43 +667,41 @@ export function Solutions() {
 				) : !isDesktop || viewMode === "grid" ? (
 					<div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))]">
 						{filtered.map((sol) => {
-							const selectable = canUpdateSolutionSdk(sol);
+							const selectable = canSelectOrUpdateSolution(sol);
 							const selected = selectedSdkUpdateIds.has(sol.id);
+							const selectionCardProps = selectionMode
+								? {
+										role: "button",
+										tabIndex: selectable ? 0 : -1,
+										"aria-disabled": !selectable,
+										"aria-pressed": selectable
+											? selected
+											: undefined,
+										"aria-label": sol.name,
+										onClick: () =>
+											toggleSdkUpdateSelection(sol),
+										onKeyDown: (
+											event: React.KeyboardEvent<HTMLDivElement>,
+										) => {
+											if (
+												event.key !== "Enter" &&
+												event.key !== " "
+											) {
+												return;
+											}
+											event.preventDefault();
+											toggleSdkUpdateSelection(sol);
+										},
+									}
+								: {
+										role: "article",
+										"aria-label": sol.name,
+									};
 							return (
 								<div
 									key={sol.id}
 									data-testid="install-card"
-									role={selectionMode ? "button" : "article"}
-									tabIndex={
-										selectable || !selectionMode ? 0 : -1
-									}
-									aria-disabled={selectionMode && !selectable}
-									aria-pressed={
-										selectionMode && selectable
-											? selected
-											: undefined
-									}
-									aria-label={sol.name}
-									onClick={() => {
-										if (selectionMode) {
-											toggleSdkUpdateSelection(sol);
-										} else {
-											navigate(`/solutions/${sol.id}`);
-										}
-									}}
-									onKeyDown={(event) => {
-										if (
-											event.key !== "Enter" &&
-											event.key !== " "
-										)
-											return;
-										event.preventDefault();
-										if (selectionMode) {
-											toggleSdkUpdateSelection(sol);
-										} else {
-											navigate(`/solutions/${sol.id}`);
-										}
-									}}
+									{...selectionCardProps}
 									className={[
 										"group relative flex cursor-pointer flex-col overflow-hidden rounded-[var(--bf-radius-surface)] border transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 										selectionMode && selected
@@ -685,18 +740,18 @@ export function Solutions() {
 												className="h-5 w-5 rounded object-cover shrink-0"
 											/>
 											<div className="min-w-0">
-												<Link
-													to={`/solutions/${sol.id}`}
-													onClick={(event) => {
-														if (selectionMode) {
-															event.preventDefault();
-														}
-														event.stopPropagation();
-													}}
-													className="block text-sm font-semibold [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-												>
-													{sol.name}
-												</Link>
+												{selectionMode ? (
+													<div className="text-sm font-semibold [overflow-wrap:anywhere]">
+														{sol.name}
+													</div>
+												) : (
+													<Link
+														to={`/solutions/${sol.id}`}
+														className="block text-sm font-semibold [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+													>
+														{sol.name}
+													</Link>
+												)}
 												<div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
 													{sol.slug}
 												</div>
@@ -786,7 +841,7 @@ export function Solutions() {
 									data-testid="install-row"
 									className={
 										selectionMode
-											? canUpdateSolutionSdk(sol)
+											? canSelectOrUpdateSolution(sol)
 												? "cursor-pointer"
 												: "opacity-60"
 											: "cursor-pointer"
@@ -809,7 +864,9 @@ export function Solutions() {
 													sol.id,
 												)}
 												disabled={
-													!canUpdateSolutionSdk(sol)
+													!canSelectOrUpdateSolution(
+														sol,
+													)
 												}
 												onCheckedChange={() =>
 													toggleSdkUpdateSelection(

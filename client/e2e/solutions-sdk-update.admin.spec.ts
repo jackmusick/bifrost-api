@@ -79,6 +79,8 @@ function entities() {
 async function mockSolutionSdkFixtures(page: Page) {
 	let sendSocketMessage:
 		((payload: Record<string, unknown>) => void) | undefined;
+	let listSdkStatus = "update_available";
+	let listActionableCount = 1;
 	await page.routeWebSocket(/\/ws\/connect/, (socket) => {
 		sendSocketMessage = (payload) => socket.send(JSON.stringify(payload));
 		socket.onMessage((raw) => {
@@ -98,7 +100,10 @@ async function mockSolutionSdkFixtures(page: Page) {
 		await route.fulfill({
 			json: {
 				solutions: [
-					solution(),
+					solution({
+						sdk_status: listSdkStatus,
+						sdk_actionable_count: listActionableCount,
+					}),
 					solution({
 						id: "dddddddd-4444-4444-8444-dddddddddddd",
 						slug: "current-solution",
@@ -247,6 +252,38 @@ async function mockSolutionSdkFixtures(page: Page) {
 				},
 			});
 		},
+		completeUpdate() {
+			if (!sendSocketMessage) {
+				throw new Error(
+					"Solution SDK update websocket did not connect",
+				);
+			}
+			listSdkStatus = "current";
+			listActionableCount = 0;
+			sendSocketMessage({
+				type: "platform_job_updated",
+				job: {
+					id: JOB_ID,
+					job_type: "application.sdk_update",
+					payload_version: 1,
+					resource_type: "application",
+					resource_id: APP_ID,
+					resource_lock_key: `application:${APP_ID}`,
+					priority: 100,
+					title: "Updating SDK for Solution Console",
+					requested_by_user_id: "fixture-user",
+					requested_by_name: "Fixture Admin",
+					status: "succeeded",
+					progress: { current: 1, total: 1, percent: 100 },
+					revision: 3,
+					attempt: 1,
+					max_attempts: 1,
+					can_cancel: false,
+					created_at: NOW,
+					updated_at: NOW,
+				},
+			});
+		},
 	};
 }
 
@@ -264,13 +301,7 @@ test.describe("Solutions SDK aggregate UI", () => {
 		await expect(page.getByText("SDK Solution")).toBeVisible();
 		await expect(page.getByLabel("SDK update available")).toBeVisible();
 		await expect(page.getByLabel("1 app can update SDK")).toBeVisible();
-		await page.getByRole("button", { name: "Update all SDKs (1)" }).click();
-		await page.screenshot({
-			path: test.info().outputPath("solution-sdk-list-update-all.png"),
-			fullPage: true,
-		});
 
-		await page.reload();
 		await page.getByRole("button", { name: "Select" }).click();
 		await page.getByRole("button", { name: "Select all" }).click();
 		await expect(
@@ -281,6 +312,33 @@ test.describe("Solutions SDK aggregate UI", () => {
 			fullPage: true,
 		});
 		await page.getByRole("button", { name: "Done" }).click();
+
+		await page.getByRole("button", { name: "Update all SDKs (1)" }).click();
+		await expect(
+			page.getByText("Queued SDK updates for 1 App."),
+		).toBeVisible();
+		const sdkSolutionCard = page.getByRole("article", {
+			name: "SDK Solution",
+		});
+		await expect(sdkSolutionCard.getByLabel("Updating SDK")).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Select" }),
+		).toBeDisabled();
+		await expect(
+			page.getByRole("button", { name: "Update all SDKs (1)" }),
+		).toBeHidden();
+		await expect(
+			page.getByRole("button", { name: "Update SDKs for SDK Solution" }),
+		).toBeHidden();
+		await page.screenshot({
+			path: test.info().outputPath("solution-sdk-list-pending.png"),
+			fullPage: true,
+		});
+		fixture.completeUpdate();
+		await expect(sdkSolutionCard.getByLabel("Updating SDK")).toBeHidden();
+		await expect(
+			page.getByRole("button", { name: "Update all SDKs (1)" }),
+		).toBeHidden();
 
 		await page.getByRole("link", { name: /SDK Solution/ }).click();
 		await expect(page.getByTestId("solution-detail")).toBeVisible();

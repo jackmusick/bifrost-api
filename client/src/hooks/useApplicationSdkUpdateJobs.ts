@@ -86,5 +86,10 @@ export function useApplicationSdkUpdateJobs({
 		[states],
 	);
 
-	return { getUpdateState, isAnyUpdating, trackAccepted };
+	const hasUpdateState = useCallback(
+		(appId: string): boolean => appId in states,
+		[states],
+	);
+
+	return { getUpdateState, hasUpdateState, isAnyUpdating, trackAccepted };
 }
