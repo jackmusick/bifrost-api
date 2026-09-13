@@ -1149,7 +1149,10 @@ function EntityTabContent({
 										application_id: app.id,
 									},
 								]),
-							);
+							)
+							.catch(() => {
+								// useUpdateApplicationSdk owns the user-facing error toast.
+							});
 					}}
 					getSdkUpdateState={(app) =>
 						sdkUpdateJobs.getUpdateState(app.id)
@@ -2611,11 +2614,6 @@ export function SolutionDetail() {
 	};
 
 	const requiredUnset = data?.required_configs_unset ?? [];
-	const solutionSdkSourceAvailable =
-		!solutionSdkStatus ||
-		solutionSdkStatus.actionable_count > 0 ||
-		solutionSdkStatus.sdk_status === "current" ||
-		solutionSdkStatus.sdk_status === "not_applicable";
 	const solutionAppIds =
 		solutionSdkStatus?.apps?.map((app) => app.application_id) ?? [];
 	const solutionSdkUpdating =
@@ -2731,30 +2729,24 @@ export function SolutionDetail() {
 										? "Git-connected"
 										: "Manual"}
 								</Badge>
-								{sol.update_available_version && (
-									<Badge
-										variant="default"
+									{sol.update_available_version && (
+										<Badge
+											variant="default"
 										className="gap-1"
 										data-testid="update-available-badge"
 									>
 										<ArrowUp className="h-3 w-3" />
 										Update available · v
-										{sol.update_available_version}
-									</Badge>
-								)}
-								{solutionSdkStatus && (
-									<ApplicationSdkStatusBadge
-										status={solutionSdkStatus.sdk_status}
-										sourceAvailable={
-											solutionSdkSourceAvailable
-										}
-										sourceUnavailable={
-											!solutionSdkSourceAvailable
-										}
-										showCurrent
-									/>
-								)}
-							</div>
+											{sol.update_available_version}
+										</Badge>
+									)}
+									{solutionSdkStatus && (
+										<ApplicationSdkStatusBadge
+											status={solutionSdkStatus.sdk_status}
+											showCurrent
+										/>
+									)}
+								</div>
 							{sol.git_connected && sol.git_repo_url && (
 								<p
 									className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"

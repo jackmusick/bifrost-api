@@ -91,36 +91,29 @@ function sdkStatusPresentation(
 
 export function ApplicationSdkStatusBadge({
 	status,
-	sourceAvailable: _sourceAvailable,
 	updateState = "idle",
-	sourceUnavailable = false,
 	showCurrent = false,
 	className,
 }: {
 	status: ApplicationSdkStatus;
-	sourceAvailable: boolean;
 	updateState?: ApplicationSdkUpdateState;
-	sourceUnavailable?: boolean;
 	showCurrent?: boolean;
 	className?: string;
 }) {
 	if (status === "not_applicable") return null;
 	if (status === "current" && !showCurrent) return null;
-	const presentation = sdkStatusPresentation(
-		status,
-		updateState,
-	);
+	const presentation = sdkStatusPresentation(status, updateState);
 	const Icon = presentation.icon;
 
 	return (
 		<Badge
 			variant="outline"
-			aria-label={
-				sourceUnavailable
-					? `${presentation.label}; source unavailable`
-					: presentation.label
-			}
-			className={cn("gap-1 whitespace-nowrap text-xs", presentation.className, className)}
+			aria-label={presentation.label}
+			className={cn(
+				"gap-1 whitespace-nowrap text-xs",
+				presentation.className,
+				className,
+			)}
 		>
 			<Icon
 				aria-hidden="true"

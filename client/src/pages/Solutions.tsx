@@ -62,15 +62,6 @@ import {
 	listSolutions,
 	type Solution,
 } from "@/services/solutions";
-import { ApplicationSdkStatusBadge } from "@/components/applications/ApplicationSdkStatusBadge";
-import {
-	useApplications,
-	type ApplicationPublic,
-} from "@/hooks/useApplications";
-import type { components } from "@/lib/v1";
-
-type ApplicationSdkStatus =
-	components["schemas"]["ApplicationPublic"]["sdk_status"];
 
 export function Solutions() {
 	const navigate = useNavigate();
@@ -129,9 +120,7 @@ export function Solutions() {
 		queryKey: ["solutions"],
 		queryFn: () => listSolutions(),
 	});
-	const { data: applicationsData } = useApplications();
 	const solutions = solutionsData?.solutions ?? [];
-	const applications = applicationsData?.applications ?? [];
 
 	const getOrgName = (orgId: string | null | undefined): string => {
 		if (!orgId) return "Global";
@@ -150,13 +139,6 @@ export function Solutions() {
 		? scopeFiltered
 		: scopeFiltered.filter((sol) => sol.status !== "inactive");
 	const filtered = useSearch(activeFiltered, searchTerm, ["name", "slug"]);
-	const appsBySolutionId = new Map<string, ApplicationPublic[]>();
-	for (const app of applications) {
-		if (!app.solution_id) continue;
-		const entries = appsBySolutionId.get(app.solution_id) ?? [];
-		entries.push(app);
-		appsBySolutionId.set(app.solution_id, entries);
-	}
 
 	// Whole-page drag-and-drop: dropping a .zip opens the install dialog
 	// prefilled with that file.
@@ -226,50 +208,6 @@ export function Solutions() {
 			>
 				<ArrowUp className="h-3 w-3" />v{sol.update_available_version}
 			</Badge>
-		);
-	}
-
-	function aggregateSdkStatus(apps: ApplicationPublic[]) {
-		if (apps.length === 0) {
-			return {
-				sdk_status: "not_applicable" as const,
-				actionable_count: 0,
-			};
-		}
-		const actionable = apps.filter(
-			(app) =>
-				app.sdk_source_available &&
-				(app.sdk_status === "update_required" ||
-					app.sdk_status === "update_available" ||
-					app.sdk_status === "unknown"),
-		).length;
-		const sdk_status: ApplicationSdkStatus = apps.some(
-			(app) => app.sdk_status === "update_required",
-		)
-			? "update_required"
-			: apps.some((app) => app.sdk_status === "update_available")
-				? "update_available"
-				: apps.some((app) => app.sdk_status === "unknown")
-					? "unknown"
-					: apps.every((app) => app.sdk_status === "not_applicable")
-						? "not_applicable"
-						: "current";
-		return { sdk_status, actionable_count: actionable };
-	}
-
-	function sdkBadge(sol: Solution) {
-		const apps = appsBySolutionId.get(sol.id) ?? [];
-		const status = aggregateSdkStatus(apps);
-		if (!status) return null;
-		return (
-			<ApplicationSdkStatusBadge
-				status={status.sdk_status}
-				sourceAvailable={
-					status.actionable_count > 0 ||
-					status.sdk_status === "current" ||
-					status.sdk_status === "not_applicable"
-				}
-			/>
 		);
 	}
 
@@ -479,7 +417,6 @@ export function Solutions() {
 										</Badge>
 									)}
 									{updateBadge(sol)}
-									{sdkBadge(sol)}
 								</div>
 								<div
 									className="mt-auto flex flex-wrap gap-1.5 border-t bg-muted/20 px-4 py-2.5"
@@ -551,7 +488,6 @@ export function Solutions() {
 												? `v${sol.version}`
 												: "—"}
 											{updateBadge(sol)}
-											{sdkBadge(sol)}
 										</span>
 									</DataTableCell>
 								</DataTableRow>

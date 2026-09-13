@@ -124,12 +124,16 @@ export function Applications() {
 	};
 
 	const handleUpdateSdk = async (app: ApplicationListItem) => {
-		const operation = await updateApplicationSdk.mutateAsync({
-			params: { path: { app_id: app.id } },
-		});
-		sdkUpdateJobs.trackAccepted([
-			{ ...operation, application_id: app.id },
-		]);
+		try {
+			const operation = await updateApplicationSdk.mutateAsync({
+				params: { path: { app_id: app.id } },
+			});
+			sdkUpdateJobs.trackAccepted([
+				{ ...operation, application_id: app.id },
+			]);
+		} catch {
+			// useUpdateApplicationSdk owns the user-facing error toast.
+		}
 	};
 
 	const handleConfirmDelete = async () => {

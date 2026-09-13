@@ -8,12 +8,7 @@ import {
 
 describe("ApplicationSdkStatusBadge", () => {
 	it("labels actionable SDK drift with accessible copy", () => {
-		render(
-			<ApplicationSdkStatusBadge
-				status="update_available"
-				sourceAvailable={true}
-			/>,
-		);
+		render(<ApplicationSdkStatusBadge status="update_available" />);
 
 		expect(
 			screen.getByLabelText("SDK update available"),
@@ -25,7 +20,6 @@ describe("ApplicationSdkStatusBadge", () => {
 		const { rerender } = render(
 			<ApplicationSdkStatusBadge
 				status="update_required"
-				sourceAvailable={true}
 				updateState="updating"
 			/>,
 		);
@@ -35,7 +29,6 @@ describe("ApplicationSdkStatusBadge", () => {
 		rerender(
 			<ApplicationSdkStatusBadge
 				status="update_required"
-				sourceAvailable={true}
 				updateState="failed"
 			/>,
 		);
@@ -43,37 +36,25 @@ describe("ApplicationSdkStatusBadge", () => {
 		expect(screen.getByText("SDK update failed")).toBeVisible();
 	});
 
-	it("uses source unavailable copy when retained source cannot be used", () => {
-		render(
-			<ApplicationSdkStatusBadge
-				status="unknown"
-				sourceAvailable={false}
-				sourceUnavailable
-			/>,
-		);
+	it("preserves the SDK status copy when retained source cannot be used", () => {
+		render(<ApplicationSdkStatusBadge status="unknown" />);
 
 		expect(screen.getByText("SDK unknown")).toBeVisible();
-		expect(screen.getByLabelText("SDK unknown; source unavailable")).toBeVisible();
+		expect(screen.getByLabelText("SDK unknown")).toBeVisible();
 	});
 
 	it("omits not-applicable and default current badges in compact density", () => {
 		const { container, rerender } = render(
-			<ApplicationSdkStatusBadge
-				status="not_applicable"
-				sourceAvailable={false}
-			/>,
+			<ApplicationSdkStatusBadge status="not_applicable" />,
 		);
 		expect(container).toBeEmptyDOMElement();
 
-		rerender(
-			<ApplicationSdkStatusBadge status="current" sourceAvailable />,
-		);
+		rerender(<ApplicationSdkStatusBadge status="current" />);
 		expect(container).toBeEmptyDOMElement();
 
 		rerender(
 			<ApplicationSdkStatusBadge
 				status="current"
-				sourceAvailable
 				showCurrent
 			/>,
 		);

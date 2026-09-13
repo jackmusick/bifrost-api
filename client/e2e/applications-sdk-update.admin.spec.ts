@@ -11,10 +11,16 @@ import { test, expect } from "./fixtures/api-fixture";
 import type { Page } from "@playwright/test";
 
 const NOW = "2026-09-12T12:00:00Z";
+const DISPATCH_APP_ID = "11111111-1111-1111-1111-111111111111";
+const ASSET_APP_ID = "22222222-2222-2222-2222-222222222222";
+const PORTAL_APP_ID = "33333333-3333-3333-3333-333333333333";
+const MONITOR_APP_ID = "44444444-4444-4444-4444-444444444444";
+const RUNBOOK_APP_ID = "55555555-5555-5555-5555-555555555555";
+const RUNBOOK_JOB_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
 function app(overrides: Record<string, unknown>) {
 	return {
-		id: "11111111-1111-1111-1111-111111111111",
+		id: DISPATCH_APP_ID,
 		name: "Dispatch Board",
 		description: "Routes technician work.",
 		icon: null,
@@ -47,13 +53,29 @@ function app(overrides: Record<string, unknown>) {
 }
 
 async function mockSdkUpdateFixtures(page: Page) {
+	let sendSocketMessage: ((payload: Record<string, unknown>) => void) | undefined;
+	await page.routeWebSocket(/\/ws\/connect/, (socket) => {
+		sendSocketMessage = (payload) => socket.send(JSON.stringify(payload));
+		socket.onMessage((raw) => {
+			const payload = JSON.parse(String(raw)) as Record<string, unknown>;
+			if (payload.type === "subscribe") {
+				for (const channel of (payload.channels as string[]) ?? []) {
+					sendSocketMessage?.({ type: "subscribed", channel });
+				}
+			}
+			if (payload.type === "ping") {
+				socket.send(JSON.stringify({ type: "pong" }));
+			}
+		});
+	});
+
 	await page.route("**/api/applications**", async (route) => {
 		await route.fulfill({
 			json: {
 				applications: [
 					app({}),
 					app({
-						id: "22222222-2222-2222-2222-222222222222",
+						id: ASSET_APP_ID,
 						name: "Asset Intake",
 						slug: "asset-intake",
 						description: "Source was not retained.",
@@ -61,20 +83,36 @@ async function mockSdkUpdateFixtures(page: Page) {
 						sdk_source_available: false,
 					}),
 					app({
-						id: "33333333-3333-3333-3333-333333333333",
+						id: PORTAL_APP_ID,
 						name: "Client Portal",
 						slug: "client-portal",
 						description: "Already rebuilt.",
 						sdk_status: "current",
 						sdk_source_available: true,
 					}),
+					app({
+						id: MONITOR_APP_ID,
+						name: "Workflow Monitor",
+						slug: "workflow-monitor",
+						description: "SDK provenance needs a rebuild check.",
+						sdk_status: "unknown",
+						sdk_source_available: true,
+					}),
+					app({
+						id: RUNBOOK_APP_ID,
+						name: "Runbook Viewer",
+						slug: "runbook-viewer",
+						description: "Previous SDK update failed.",
+						sdk_status: "update_available",
+						sdk_source_available: true,
+					}),
 				],
-				total: 3,
+				total: 5,
 			},
 		});
 	});
 	await page.route(
-		"**/api/applications/11111111-1111-1111-1111-111111111111/sdk/update",
+		`**/api/applications/${DISPATCH_APP_ID}/sdk/update`,
 		async (route) => {
 			await route.fulfill({
 				json: {
@@ -86,6 +124,50 @@ async function mockSdkUpdateFixtures(page: Page) {
 			});
 		},
 	);
+	await page.route(
+		`**/api/applications/${RUNBOOK_APP_ID}/sdk/update`,
+		async (route) => {
+			await route.fulfill({
+				json: {
+					job_id: RUNBOOK_JOB_ID,
+					status: "queued",
+					reused: false,
+					notification_id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+				},
+			});
+		},
+	);
+
+	return {
+		failRunbookUpdate() {
+			if (!sendSocketMessage) {
+				throw new Error("SDK update websocket did not connect");
+			}
+			sendSocketMessage({
+				type: "platform_job_updated",
+				job: {
+					id: RUNBOOK_JOB_ID,
+					job_type: "application.sdk_update",
+					payload_version: 1,
+					resource_type: "application",
+					resource_id: RUNBOOK_APP_ID,
+					resource_lock_key: `application:${RUNBOOK_APP_ID}`,
+					priority: 100,
+					title: "Update application SDK",
+					requested_by_user_id: "fixture-user",
+					requested_by_name: "Fixture Admin",
+					status: "failed",
+					progress: { current: 1, total: 1, percent: 100 },
+					revision: 2,
+					attempt: 1,
+					max_attempts: 1,
+					can_cancel: false,
+					created_at: NOW,
+					updated_at: NOW,
+				},
+			});
+		},
+	};
 }
 
 test.describe("Applications SDK update UI", () => {
@@ -93,11 +175,17 @@ test.describe("Applications SDK update UI", () => {
 		page,
 	}) => {
 		await page.setViewportSize({ width: 1280, height: 900 });
-		await mockSdkUpdateFixtures(page);
+		const sdkFixture = await mockSdkUpdateFixtures(page);
 
 		await page.goto("/apps");
-		await expect(page.getByText("SDK update available")).toBeVisible();
-		await expect(page.getByText("SDK update required")).toBeVisible();
+		await expect(
+			page
+				.getByRole("article")
+				.filter({ hasText: "Dispatch Board" })
+				.getByLabel("SDK update available"),
+		).toBeVisible();
+		await expect(page.getByLabel("SDK update required")).toBeVisible();
+		await expect(page.getByLabel("SDK unknown")).toBeVisible();
 
 		await page
 			.getByRole("button", { name: "Dispatch Board actions" })
@@ -111,10 +199,37 @@ test.describe("Applications SDK update UI", () => {
 			.getByRole("button", { name: "Asset Intake actions" })
 			.click();
 		await expect(
-			page.getByRole("menuitem", { name: "Source unavailable" }),
+			page.getByRole("menuitem", {
+				name: "Source unavailable — cannot rebuild SDK",
+			}),
 		).toHaveAttribute("aria-disabled", "true");
 		await page.keyboard.press("Escape");
 
+		await page
+			.getByRole("button", { name: "Workflow Monitor actions" })
+			.click();
+		await expect(
+			page.getByRole("menuitem", { name: "Rebuild SDK" }),
+		).toBeVisible();
+		await page.keyboard.press("Escape");
+
+		await page
+			.getByRole("button", { name: "Runbook Viewer actions" })
+			.click();
+		await page.getByRole("menuitem", { name: "Update SDK" }).click();
+		sdkFixture.failRunbookUpdate();
+		await expect(page.getByLabel("SDK update failed")).toBeVisible();
+		await page
+			.getByRole("button", { name: "Runbook Viewer actions" })
+			.click();
+		await expect(
+			page.getByRole("menuitem", { name: "Retry SDK update" }),
+		).toBeVisible();
+		await page.screenshot({
+			path: test.info().outputPath("sdk-update-failed-retry.png"),
+			fullPage: true,
+		});
+		await page.keyboard.press("Escape");
 		await page.screenshot({
 			path: test.info().outputPath("sdk-update-desktop.png"),
 			fullPage: true,
@@ -122,14 +237,14 @@ test.describe("Applications SDK update UI", () => {
 
 		await page.getByRole("radio", { name: "Table view" }).click();
 		await expect(page.getByRole("cell", { name: /SDK current/ })).toBeVisible();
-		await expect(
-			page.getByLabel("SDK update required; source unavailable"),
-		).toBeVisible();
+		await expect(page.getByLabel("SDK update required")).toBeVisible();
+		await expect(page.getByLabel("SDK unknown")).toBeVisible();
+		await expect(page.getByLabel("Source unavailable")).toBeVisible();
 		await page
 			.getByRole("button", { name: "Dispatch Board actions" })
 			.click();
 		await expect(
-			page.getByRole("menuitem", { name: "Updating SDK" }),
+			page.getByRole("menuitem", { name: "Updating SDK…" }),
 		).toHaveAttribute("aria-disabled", "true");
 		await page.screenshot({
 			path: test.info().outputPath("sdk-update-table.png"),
@@ -144,8 +259,13 @@ test.describe("Applications SDK update UI", () => {
 		await mockSdkUpdateFixtures(page);
 
 		await page.goto("/apps");
-		await expect(page.getByText("SDK update available")).toBeVisible();
-		await expect(page.getByText("SDK update required")).toBeVisible();
+		await expect(
+			page
+				.getByRole("article")
+				.filter({ hasText: "Dispatch Board" })
+				.getByLabel("SDK update available"),
+		).toBeVisible();
+		await expect(page.getByLabel("SDK update required")).toBeVisible();
 
 		await page
 			.getByRole("button", { name: "Dispatch Board actions" })

@@ -171,9 +171,9 @@ function ApplicationActions({
 						/>
 					)}
 					{!app.sdk_source_available
-						? "Source unavailable"
+						? "Source unavailable — cannot rebuild SDK"
 						: updateState === "updating"
-							? "Updating SDK"
+							? "Updating SDK…"
 							: updateState === "failed"
 								? "Retry SDK update"
 								: app.sdk_status === "unknown"
@@ -216,12 +216,32 @@ export function ApplicationListSurface({
 	const renderSdkBadge = (app: ApplicationListItem, showCurrent = false) => (
 		<ApplicationSdkStatusBadge
 			status={app.sdk_status}
-			sourceAvailable={app.sdk_source_available}
-			sourceUnavailable={!app.sdk_source_available}
 			showCurrent={showCurrent}
 			updateState={getSdkUpdateState?.(app) ?? "idle"}
 		/>
 	);
+	const renderSourceUnavailableBadge = (app: ApplicationListItem) => {
+		if (
+			app.sdk_source_available ||
+			!(
+				app.sdk_status === "update_available" ||
+				app.sdk_status === "update_required" ||
+				app.sdk_status === "unknown"
+			)
+		) {
+			return null;
+		}
+		return (
+			<Badge
+				variant="outline"
+				aria-label="Source unavailable"
+				className="gap-1 border-muted-foreground/30 bg-muted text-xs text-muted-foreground"
+			>
+				<CircleSlash aria-hidden="true" className="h-3 w-3" />
+				Source unavailable
+			</Badge>
+		);
+	};
 	const renderName = (app: ApplicationListItem) => {
 		const open = getApplicationPrimaryAction(app, { onLaunch, onPreview });
 		return (
@@ -402,6 +422,7 @@ export function ApplicationListSurface({
 													</Badge>
 												)}
 											{renderSdkBadge(app, true)}
+											{renderSourceUnavailableBadge(app)}
 										</div>
 									</DataTableCell>
 									<DataTableCell
@@ -617,6 +638,7 @@ export function ApplicationListSurface({
 										</Badge>
 									)}
 								{renderSdkBadge(app)}
+								{renderSourceUnavailableBadge(app)}
 							</div>
 						</ResourceCatalogCard>
 					</div>

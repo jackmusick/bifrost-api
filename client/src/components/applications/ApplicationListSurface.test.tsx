@@ -102,6 +102,7 @@ describe("ApplicationListSurface SDK update affordances", () => {
 		});
 
 		expect(screen.getByText("SDK update required")).toBeVisible();
+		expect(screen.getByText("Source unavailable")).toBeVisible();
 
 		await user.click(
 			screen.getByRole("button", { name: "Dispatch Board actions" }),
@@ -133,6 +134,32 @@ describe("ApplicationListSurface SDK update affordances", () => {
 		);
 		await user.click(
 			screen.getByRole("menuitem", { name: /rebuild sdk/i }),
+		);
+
+		expect(onUpdateSdk).toHaveBeenCalledOnce();
+	});
+
+	it("offers retry when the tracked SDK update job failed and source is available", async () => {
+		const user = userEvent.setup();
+		const onUpdateSdk = vi.fn();
+		renderSurface({
+			apps: [
+				makeApp({
+					sdk_status: "update_available",
+					sdk_source_available: true,
+				}),
+			],
+			getSdkUpdateState: () => "failed",
+			onUpdateSdk,
+		});
+
+		expect(screen.getByText("SDK update failed")).toBeVisible();
+
+		await user.click(
+			screen.getByRole("button", { name: "Dispatch Board actions" }),
+		);
+		await user.click(
+			screen.getByRole("menuitem", { name: /retry sdk update/i }),
 		);
 
 		expect(onUpdateSdk).toHaveBeenCalledOnce();
