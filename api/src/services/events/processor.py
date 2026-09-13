@@ -513,6 +513,7 @@ class EventProcessor:
             return Deliver(
                 data=deliver.data,
                 event_type=deliver.event_type,
+                event_id=event.id,
             )
 
         deliveries_created = 0
@@ -564,6 +565,7 @@ class EventProcessor:
         return Deliver(
             data=deliver.data,
             event_type=deliver.event_type,
+            event_id=event.id,
         )
 
     async def _broadcast_event_update(

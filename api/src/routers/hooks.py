@@ -205,26 +205,15 @@ async def receive_webhook(
         # Queue workflow executions asynchronously
         # This is done after commit to ensure delivery records exist
         try:
-            from sqlalchemy import select
-            from src.models.orm.events import Event
-
-            event_result = await db.execute(
-                select(Event)
-                .where(Event.event_source_id == event_source.id)
-                .order_by(Event.created_at.desc())
-                .limit(1)
-            )
-            event = event_result.scalar_one_or_none()
-
-            if event:
-                queued = await processor.queue_event_deliveries(event.id)
+            if result.event_id:
+                queued = await processor.queue_event_deliveries(result.event_id)
                 await db.commit()
 
                 logger.info(
                     f"Webhook accepted: {log_safe(source_id)}",
                     extra={
                         "source_id": log_safe(source_id),
-                        "event_id": str(event.id),
+                        "event_id": str(result.event_id),
                         "deliveries_queued": queued,
                     },
                 )
