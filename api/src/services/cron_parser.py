@@ -4,12 +4,28 @@ Provides validation, next run calculation, and human-readable descriptions for C
 """
 
 import logging
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
 from src.core.log_safety import log_safe
 
 logger = logging.getLogger(__name__)
+
+SCHEDULE_TIMEZONE_ALIASES = {
+    # Legacy Bifrost schedules used this common tzdb link. Some slim runtime
+    # images ship only the canonical zone file.
+    "America/Indianapolis": "America/Indiana/Indianapolis",
+}
+
+
+def get_schedule_zone(timezone_name: str) -> ZoneInfo:
+    """Resolve supported legacy timezone names to their canonical IANA zone."""
+    resolved_name = SCHEDULE_TIMEZONE_ALIASES.get(timezone_name, timezone_name)
+    try:
+        return ZoneInfo(resolved_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"Unknown timezone: {timezone_name}") from exc
 
 
 def validate_cron_expression(expression: str) -> bool:

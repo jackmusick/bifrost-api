@@ -46,3 +46,18 @@ async def test_validate_cron_rejects_unknown_timezone():
     assert result.valid is False
     assert result.human_readable == "Invalid timezone"
     assert result.error == "Unknown timezone: Not/AZone"
+
+
+@pytest.mark.asyncio
+async def test_validate_cron_accepts_legacy_indianapolis_alias():
+    result = await validate_cron_expression(
+        CronValidationRequest(
+            expression="0 9 * * *",
+            timezone="America/Indianapolis",
+        ),
+        ctx=object(),
+        user=object(),
+    )
+
+    assert result.valid is True
+    assert result.next_runs is not None
