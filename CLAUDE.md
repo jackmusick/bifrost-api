@@ -182,6 +182,12 @@ The git sync system uses a **manifest** (`.bifrost/*.yaml`) to round-trip platfo
 
 `ManifestApp` in `.bifrost/apps.yaml` carries all app metadata (name, description, dependencies, access_level, roles). The `path` field points to the app source directory (e.g. `apps/my-app`), which contains only TSX/TS/CSS source code — no metadata files. App npm dependencies are stored in the `Application.dependencies` JSON column in the DB.
 
+## V2 App SDK updates and retained source
+
+The web SDK source of truth is `client/src/lib/app-sdk/`; the platform packages and injects it at build time. Every successful V2 build must stamp `sdk_package_version`, the content-derived `sdk_fingerprint`, `sdk_contract_version`, and `sdk_built_at` on the active App. Change `client/src/lib/app-sdk/sdk-contract.json` only for an intentionally breaking SDK↔server wire-contract change; ordinary compatible SDK edits change the fingerprint automatically.
+
+Independent V2 deploys and Solution deploys retain sanitized source so the platform can rebuild an App without a full Solution reconciliation. Retained source excludes `.env*`, `node_modules`, build output, caches, and VCS data; never add secrets or generated dependencies to it. An SDK-only rebuild must use the shared `application.sdk_update` PlatformJob, atomically activate its new deployment, and leave Git state, manifests, Solution metadata, and other Solution entities untouched. See `docs/runbooks/application-sdk-update.md` and `docs/runbooks/web-sdk.md`.
+
 ### Critical: non-destructive upsert pattern
 
 `_resolve_integration` syncs config schema and mappings using **upsert-by-natural-key** (not delete-all + re-insert):
