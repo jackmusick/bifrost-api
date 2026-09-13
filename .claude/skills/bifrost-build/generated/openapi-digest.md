@@ -505,6 +505,7 @@
 | POST | `/api/solutions/install/from-repo` |
 | POST | `/api/solutions/install/preview` |
 | POST | `/api/solutions/install/preview-repo` |
+| POST | `/api/solutions/sdk/update` |
 | DELETE | `/api/solutions/{solution_id}` |
 | GET | `/api/solutions/{solution_id}` |
 | PATCH | `/api/solutions/{solution_id}` |
