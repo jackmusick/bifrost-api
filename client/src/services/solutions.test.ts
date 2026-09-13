@@ -240,6 +240,7 @@ describe("solutions service", () => {
 				accepted: [
 					{
 						application_id: "app-1",
+						solution_id: "sol-1",
 						job_id: "job-1",
 						status: "queued",
 						reused: false,

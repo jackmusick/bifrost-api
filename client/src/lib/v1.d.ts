@@ -25861,6 +25861,36 @@ export interface components {
             apps?: components["schemas"]["SolutionAppSdkStatus"][];
         };
         /**
+         * SolutionSdkUpdateAccepted
+         * @description One accepted App SDK update, attributed to its Solution.
+         */
+        SolutionSdkUpdateAccepted: {
+            /**
+             * Application Id
+             * Format: uuid
+             */
+            application_id: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+            /**
+             * Solution Id
+             * Format: uuid
+             */
+            solution_id: string;
+        };
+        /**
          * SolutionSdkUpdateBatchRequest
          * @description Request to enqueue SDK updates for Apps in selected Solutions.
          */
@@ -25874,7 +25904,7 @@ export interface components {
          */
         SolutionSdkUpdateBatchResponse: {
             /** Accepted */
-            accepted?: components["schemas"]["ApplicationSdkUpdateAccepted"][];
+            accepted?: components["schemas"]["SolutionSdkUpdateAccepted"][];
             /** Skipped */
             skipped?: components["schemas"]["ApplicationSdkUpdateSkipped"][];
         };

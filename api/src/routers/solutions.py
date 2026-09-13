@@ -37,7 +37,6 @@ from bifrost.solution_jobs import (
 from shared.logo_processing import is_logo_thumbnail_version
 from src.core.auth import Context, CurrentSuperuser
 from src.models.contracts.applications import (
-    ApplicationSdkUpdateAccepted,
     ApplicationSdkUpdateSkipped,
 )
 from src.models.contracts.solutions import (
@@ -71,6 +70,7 @@ from src.models.contracts.solutions import (
     SolutionSetupStatus,
     SolutionSdkUpdateBatchRequest,
     SolutionSdkUpdateBatchResponse,
+    SolutionSdkUpdateAccepted,
     SolutionSdkStatus,
     SolutionSdkUpdateResponse,
     SolutionAppSdkStatus,
@@ -590,14 +590,15 @@ async def batch_update_solution_app_sdks(
         _sdk_update_action_skip_reason,
     )
 
-    accepted: list[ApplicationSdkUpdateAccepted] = []
+    accepted: list[SolutionSdkUpdateAccepted] = []
     skipped: list[ApplicationSdkUpdateSkipped] = []
     jobs = []
     for app in apps:
         solution = solutions_by_id.get(app.solution_id) if app.solution_id else None
+        assert solution is not None
         reason = (
             "not_applicable"
-            if solution is not None and solution.status != "active"
+            if solution.status != "active"
             else _sdk_update_action_skip_reason(app, current_sdk=current_sdk)
         )
         if reason is not None:
@@ -613,7 +614,12 @@ async def batch_update_solution_app_sdks(
             user=user,
             application=app,
         )
-        accepted.append(_accepted_item(app.id, job_accepted))
+        accepted.append(
+            SolutionSdkUpdateAccepted(
+                **_accepted_item(app.id, job_accepted).model_dump(),
+                solution_id=solution.id,
+            )
+        )
         jobs.append(job)
 
     await ctx.db.commit()

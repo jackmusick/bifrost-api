@@ -281,7 +281,13 @@ export function Solutions() {
 				),
 			);
 			if (acceptedApplicationIds.length > 0) {
-				const solutionIds = solutionsToUpdate.map((sol) => sol.id);
+				const solutionIds = Array.from(
+					new Set(
+						(result.accepted ?? []).map(
+							(operation) => operation.solution_id,
+						),
+					),
+				);
 				setLocalUpdatingRequests((current) => {
 					const active = current.filter((request) =>
 						request.acceptedApplicationIds.some(

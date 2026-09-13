@@ -12,7 +12,6 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from src.models.contracts.applications import ApplicationSdkUpdateBatchResponse
 from src.models.contracts.solutions import (
     Solution as SolutionDTO,
     SolutionSdkUpdateBatchRequest,
@@ -62,6 +61,7 @@ def test_solution_sdk_update_batch_request_requires_explicit_solution_ids() -> N
 
 
 def test_solution_sdk_update_batch_response_contains_per_app_results() -> None:
+    solution_id = uuid.uuid4()
     accepted_app_id = uuid.uuid4()
     skipped_app_id = uuid.uuid4()
     job_id = uuid.uuid4()
@@ -70,6 +70,7 @@ def test_solution_sdk_update_batch_response_contains_per_app_results() -> None:
         accepted=[
             {
                 "application_id": accepted_app_id,
+                "solution_id": solution_id,
                 "job_id": job_id,
                 "status": "queued",
                 "reused": False,
@@ -85,6 +86,7 @@ def test_solution_sdk_update_batch_response_contains_per_app_results() -> None:
     )
 
     assert response.accepted[0].application_id == accepted_app_id
+    assert response.accepted[0].solution_id == solution_id
     assert response.accepted[0].job_id == job_id
     assert response.skipped[0].application_id == skipped_app_id
     assert response.skipped[0].reason == "current"
@@ -143,7 +145,7 @@ async def test_solution_sdk_update_batch_uses_bounded_set_based_queries() -> Non
 
     response = await batch_update_solution_app_sdks(request, ctx, user)
 
-    assert isinstance(response, ApplicationSdkUpdateBatchResponse)
+    assert isinstance(response, SolutionSdkUpdateBatchResponse)
     assert response.accepted == []
     assert response.skipped == []
     assert db.commits == 1

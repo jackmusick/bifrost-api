@@ -458,6 +458,7 @@ describe("Solutions — bulk SDK updates", () => {
 			accepted: [
 				{
 					application_id: "app-1",
+					solution_id: "sol-1",
 					job_id: "job-1",
 					status: "queued",
 					reused: false,
@@ -505,6 +506,7 @@ describe("Solutions — bulk SDK updates", () => {
 			accepted: [
 				{
 					application_id: "app-1",
+					solution_id: "sol-1",
 					job_id: "job-1",
 					status: "queued",
 					reused: false,
@@ -611,7 +613,15 @@ describe("Solutions — bulk SDK updates", () => {
 			accepted: [
 				{
 					application_id: "app-1",
+					solution_id: "sol-1",
 					job_id: "job-1",
+					status: "queued",
+					reused: false,
+				},
+				{
+					application_id: "app-2",
+					solution_id: "sol-2",
+					job_id: "job-2",
 					status: "queued",
 					reused: false,
 				},
@@ -662,6 +672,7 @@ describe("Solutions — bulk SDK updates", () => {
 			accepted: [
 				{
 					application_id: "app-1",
+					solution_id: "sol-1",
 					job_id: "job-1",
 					status: "queued",
 					reused: false,
@@ -677,12 +688,25 @@ describe("Solutions — bulk SDK updates", () => {
 		);
 
 		await waitFor(() =>
-			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(2),
+			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
 		);
+		expect(
+			screen.getByRole("button", { name: "Update all SDKs (1)" }),
+		).toBeVisible();
+		expect(
+			screen.queryByRole("button", {
+				name: "Update SDKs for Dispatch Solution",
+			}),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: "Update SDKs for Runbook Solution",
+			}),
+		).toBeVisible();
 		mockSdkStates = { "app-1": "updating" };
 		rerender(<Solutions />);
 		await waitFor(() =>
-			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(2),
+			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
 		);
 
 		mockSdkStates = { "app-1": "idle" };

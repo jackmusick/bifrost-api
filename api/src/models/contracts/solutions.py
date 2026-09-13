@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from src.models.contracts.applications import (
     ApplicationSdkStatus,
+    ApplicationSdkUpdateAccepted,
     ApplicationSdkUpdateBatchResponse,
+    ApplicationSdkUpdateSkipped,
 )
 
 SolutionScope = Literal["org", "global"]
@@ -106,8 +108,17 @@ class SolutionSdkUpdateBatchRequest(BaseModel):
     solution_ids: list[UUID] = Field(min_length=1)
 
 
-class SolutionSdkUpdateBatchResponse(ApplicationSdkUpdateBatchResponse):
+class SolutionSdkUpdateAccepted(ApplicationSdkUpdateAccepted):
+    """One accepted App SDK update, attributed to its Solution."""
+
+    solution_id: UUID
+
+
+class SolutionSdkUpdateBatchResponse(BaseModel):
     """Batch SDK update enqueue result across selected Solutions."""
+
+    accepted: list[SolutionSdkUpdateAccepted] = Field(default_factory=list)
+    skipped: list[ApplicationSdkUpdateSkipped] = Field(default_factory=list)
 
 
 class SolutionEntityCounts(BaseModel):

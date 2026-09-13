@@ -191,6 +191,7 @@ async function mockSolutionSdkFixtures(page: Page) {
 						? [
 								{
 									application_id: APP_ID,
+									solution_id: SOLUTION_ID,
 									job_id: JOB_ID,
 									status: "queued",
 									reused: false,

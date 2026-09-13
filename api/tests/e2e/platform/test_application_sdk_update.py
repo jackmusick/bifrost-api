@@ -274,6 +274,12 @@ async def test_batch_solution_sdk_update_enqueues_actionable_apps_from_selected_
         str(first_actionable.id),
         str(second_actionable.id),
     }, body
+    assert {
+        item["application_id"]: item["solution_id"] for item in body["accepted"]
+    } == {
+        str(first_actionable.id): str(first_solution.id),
+        str(second_actionable.id): str(second_solution.id),
+    }
     skipped = {item["application_id"]: item["reason"] for item in body["skipped"]}
     assert skipped[str(unavailable_app.id)] == "source_unavailable"
     jobs = (
