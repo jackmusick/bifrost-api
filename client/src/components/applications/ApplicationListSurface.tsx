@@ -109,6 +109,7 @@ function ApplicationActions({
 	const sdkUpdateAllowed = canUpdateApplicationSdk(app, updateState);
 	const sdkStatusNeedsMenu =
 		updateState === "failed" ||
+		updateState === "queued" ||
 		updateState === "updating" ||
 		app.sdk_status === "update_available" ||
 		app.sdk_status === "update_required" ||
@@ -178,13 +179,15 @@ function ApplicationActions({
 					)}
 					{!app.sdk_source_available
 						? "Source unavailable — cannot rebuild SDK"
-						: updateState === "updating"
-							? "Updating SDK…"
-							: updateState === "failed"
-								? "Retry SDK update"
-								: app.sdk_status === "unknown"
-									? "Rebuild SDK"
-									: "Update SDK"}
+						: updateState === "queued"
+							? "SDK update queued…"
+							: updateState === "updating"
+								? "Updating SDK…"
+								: updateState === "failed"
+									? "Retry SDK update"
+									: app.sdk_status === "unknown"
+										? "Rebuild SDK"
+										: "Update SDK"}
 				</DropdownMenuItem>
 			)}
 			{onDelete && (

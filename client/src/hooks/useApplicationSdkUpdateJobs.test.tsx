@@ -112,8 +112,9 @@ describe("useApplicationSdkUpdateJobs", () => {
 			]);
 		});
 
-		expect(result.current.getUpdateState("app-2")).toBe("updating");
+		expect(result.current.getUpdateState("app-2")).toBe("queued");
 		expect(result.current.hasUpdateState("app-2")).toBe(true);
+		expect(result.current.isAnyUpdating(["app-1", "app-2"])).toBe(true);
 	});
 
 	it("ignores application jobs that are not the SDK update job type", () => {

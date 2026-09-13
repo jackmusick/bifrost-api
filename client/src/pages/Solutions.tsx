@@ -170,20 +170,25 @@ export function Solutions() {
 		? scopeFiltered
 		: scopeFiltered.filter((sol) => sol.status !== "inactive");
 	const filtered = useSearch(activeFiltered, searchTerm, ["name", "slug"]);
-	const isSolutionUpdating = (sol: Solution) =>
-		localUpdatingRequests.some(
-			(request) =>
-				request.solutionId === sol.id &&
-				request.acceptedApplicationIds.some(
-					(appId) =>
-						!sdkUpdateJobs.hasUpdateState(appId) ||
-						sdkUpdateJobs.getUpdateState(appId) === "updating",
-				),
-		);
 	const getSolutionUpdateState = (
 		sol: Solution,
-	): ApplicationSdkUpdateState =>
-		isSolutionUpdating(sol) ? "updating" : "idle";
+	): ApplicationSdkUpdateState => {
+		const request = localUpdatingRequests.find(
+			(candidate) => candidate.solutionId === sol.id,
+		);
+		if (!request) return "idle";
+		const states = request.acceptedApplicationIds.map((appId) =>
+			sdkUpdateJobs.hasUpdateState(appId)
+				? sdkUpdateJobs.getUpdateState(appId)
+				: "queued",
+		);
+		if (states.includes("updating")) return "updating";
+		if (states.includes("queued")) return "queued";
+		return "idle";
+	};
+	const isSolutionUpdating = (sol: Solution) =>
+		getSolutionUpdateState(sol) === "queued" ||
+		getSolutionUpdateState(sol) === "updating";
 	const canSelectOrUpdateSolution = (sol: Solution) =>
 		canUpdateSolutionSdk(sol) && !isSolutionUpdating(sol);
 	const actionableSolutions = activeFiltered.filter(
@@ -291,10 +296,11 @@ export function Solutions() {
 				setLocalUpdatingRequests((current) => {
 					const active = current.filter((request) =>
 						request.acceptedApplicationIds.some(
-							(appId) =>
-								!sdkUpdateJobs.hasUpdateState(appId) ||
-								sdkUpdateJobs.getUpdateState(appId) ===
-									"updating",
+							(appId) => {
+								if (!sdkUpdateJobs.hasUpdateState(appId)) return true;
+								const state = sdkUpdateJobs.getUpdateState(appId);
+								return state === "queued" || state === "updating";
+							},
 						),
 					);
 					return [

@@ -1,6 +1,7 @@
 import {
 	AlertTriangle,
 	CheckCircle2,
+	Clock3,
 	HelpCircle,
 	Loader2,
 	RefreshCw,
@@ -14,7 +15,11 @@ import type { components } from "@/lib/v1";
 type ApplicationSdkStatus =
 	components["schemas"]["ApplicationPublic"]["sdk_status"];
 
-export type ApplicationSdkUpdateState = "idle" | "updating" | "failed";
+export type ApplicationSdkUpdateState =
+	| "idle"
+	| "queued"
+	| "updating"
+	| "failed";
 
 type SdkStatusInput = {
 	sdk_status: ApplicationSdkStatus;
@@ -25,7 +30,7 @@ export function canUpdateApplicationSdk(
 	app: SdkStatusInput,
 	updateState: ApplicationSdkUpdateState = "idle",
 ): boolean {
-	if (updateState === "updating") return false;
+	if (updateState === "queued" || updateState === "updating") return false;
 	if (!app.sdk_source_available) return false;
 	if (updateState === "failed") return true;
 	return (
@@ -39,6 +44,14 @@ function sdkStatusPresentation(
 	status: ApplicationSdkStatus,
 	updateState: ApplicationSdkUpdateState,
 ) {
+	if (updateState === "queued") {
+		return {
+			label: "SDK update queued",
+			icon: Clock3,
+			className:
+				"border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+		};
+	}
 	if (updateState === "updating") {
 		return {
 			label: "Updating SDK",

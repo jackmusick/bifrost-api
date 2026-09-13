@@ -4,7 +4,7 @@
  * Uses dev fixture route data to keep screenshots deterministic while still
  * rendering the real Applications page/components and overflow interaction.
  * No browser polling is mocked or used; the queued durable job response drives
- * the local "Updating SDK" state until platform-job WebSocket updates arrive.
+ * the local queued state until platform-job WebSocket updates arrive.
  */
 
 import { test, expect } from "./fixtures/api-fixture";
@@ -289,7 +289,7 @@ test.describe("Applications SDK update UI", () => {
 			.click();
 		await page.getByRole("menuitem", { name: "Update SDK" }).click();
 
-		await expect(page.getByLabel("Updating SDK")).toBeVisible();
+		await expect(page.getByLabel("SDK update queued")).toBeVisible();
 		await page.keyboard.press("Escape");
 
 		await page
@@ -341,7 +341,7 @@ test.describe("Applications SDK update UI", () => {
 			.getByRole("button", { name: "Dispatch Board actions" })
 			.click();
 		await expect(
-			page.getByRole("menuitem", { name: "Updating SDK…" }),
+			page.getByRole("menuitem", { name: "SDK update queued…" }),
 		).toHaveAttribute("aria-disabled", "true");
 		await page.screenshot({
 			path: test.info().outputPath("sdk-update-table.png"),
@@ -368,7 +368,7 @@ test.describe("Applications SDK update UI", () => {
 			.getByRole("button", { name: "Dispatch Board actions" })
 			.click();
 		await page.getByRole("menuitem", { name: "Update SDK" }).click();
-		await expect(page.getByLabel("Updating SDK")).toBeVisible();
+		await expect(page.getByLabel("SDK update queued")).toBeVisible();
 
 		await page.screenshot({
 			path: test.info().outputPath("sdk-update-mobile.png"),

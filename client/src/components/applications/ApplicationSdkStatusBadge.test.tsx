@@ -16,8 +16,17 @@ describe("ApplicationSdkStatusBadge", () => {
 		expect(screen.getByText("SDK update available")).toBeVisible();
 	});
 
-	it("prioritizes active and failed update job states over drift", () => {
+	it("distinguishes queued, active, and failed update job states from drift", () => {
 		const { rerender } = render(
+			<ApplicationSdkStatusBadge
+				status="update_required"
+				updateState="queued"
+			/>,
+		);
+
+		expect(screen.getByText("SDK update queued")).toBeVisible();
+
+		rerender(
 			<ApplicationSdkStatusBadge
 				status="update_required"
 				updateState="updating"
@@ -104,6 +113,15 @@ describe("canUpdateApplicationSdk", () => {
 					sdk_source_available: true,
 				},
 				"updating",
+			),
+		).toBe(false);
+		expect(
+			canUpdateApplicationSdk(
+				{
+					sdk_status: "update_available",
+					sdk_source_available: true,
+				},
+				"queued",
 			),
 		).toBe(false);
 	});

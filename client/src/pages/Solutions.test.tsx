@@ -80,7 +80,11 @@ vi.mock("@/hooks/useApplicationSdkUpdateJobs", () => ({
 		getUpdateState: (id: string) => mockSdkStates[id] ?? "idle",
 		hasUpdateState: (id: string) => id in mockSdkStates,
 		isAnyUpdating: (ids: string[]) =>
-			ids.some((id) => mockSdkStates[id] === "updating"),
+			ids.some(
+				(id) =>
+					mockSdkStates[id] === "queued" ||
+					mockSdkStates[id] === "updating",
+			),
 	}),
 }));
 
@@ -639,7 +643,7 @@ describe("Solutions — bulk SDK updates", () => {
 		);
 
 		await waitFor(() =>
-			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(2),
+			expect(screen.getAllByLabelText("SDK update queued")).toHaveLength(2),
 		);
 		expect(
 			screen.queryByRole("button", { name: "Update all SDKs (2)" }),
@@ -668,7 +672,7 @@ describe("Solutions — bulk SDK updates", () => {
 		).not.toBeInTheDocument();
 	});
 
-	it("clears submitted solution updating state after accepted app jobs finish", async () => {
+	it("moves submitted solutions from queued to updating and clears them after completion", async () => {
 		mockListSolutions.mockResolvedValue({
 			solutions: [
 				makeSolution({
@@ -707,7 +711,7 @@ describe("Solutions — bulk SDK updates", () => {
 		);
 
 		await waitFor(() =>
-			expect(screen.getAllByLabelText("Updating SDK")).toHaveLength(1),
+			expect(screen.getAllByLabelText("SDK update queued")).toHaveLength(1),
 		);
 		expect(
 			screen.getByRole("button", { name: "Update all SDKs (1)" }),
@@ -736,6 +740,9 @@ describe("Solutions — bulk SDK updates", () => {
 				screen.queryByLabelText("Updating SDK"),
 			).not.toBeInTheDocument(),
 		);
+		expect(
+			screen.queryByLabelText("SDK update queued"),
+		).not.toBeInTheDocument();
 		expect(
 			screen.getByRole("button", { name: "Update all SDKs (2)" }),
 		).toBeVisible();

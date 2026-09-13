@@ -321,7 +321,9 @@ test.describe("Solutions SDK aggregate UI", () => {
 		const sdkSolutionCard = page.getByRole("article", {
 			name: "SDK Solution",
 		});
-		await expect(sdkSolutionCard.getByLabel("Updating SDK")).toBeVisible();
+		await expect(
+			sdkSolutionCard.getByLabel("SDK update queued"),
+		).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Select" }),
 		).toBeDisabled();
@@ -336,7 +338,9 @@ test.describe("Solutions SDK aggregate UI", () => {
 			fullPage: true,
 		});
 		fixture.completeUpdate();
-		await expect(sdkSolutionCard.getByLabel("Updating SDK")).toBeHidden();
+		await expect(
+			sdkSolutionCard.getByLabel("SDK update queued"),
+		).toBeHidden();
 		await expect(
 			page.getByRole("button", { name: "Update all SDKs (1)" }),
 		).toBeHidden();

@@ -20,6 +20,7 @@ function appIdFromJob(job: PlatformJobUpdate): string | null {
 function stateFromStatus(status: string): ApplicationSdkUpdateState {
 	if (status === "failed" || status === "cancelled") return "failed";
 	if (status === "succeeded") return "idle";
+	if (status === "queued") return "queued";
 	return "updating";
 }
 
@@ -82,7 +83,10 @@ export function useApplicationSdkUpdateJobs({
 
 	const isAnyUpdating = useCallback(
 		(appIds: string[]): boolean =>
-			appIds.some((appId) => states[appId] === "updating"),
+			appIds.some(
+				(appId) =>
+					states[appId] === "queued" || states[appId] === "updating",
+			),
 		[states],
 	);
 
