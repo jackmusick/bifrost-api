@@ -77,7 +77,8 @@ function entities() {
 }
 
 async function mockSolutionSdkFixtures(page: Page) {
-	let sendSocketMessage: ((payload: Record<string, unknown>) => void) | undefined;
+	let sendSocketMessage:
+		((payload: Record<string, unknown>) => void) | undefined;
 	await page.routeWebSocket(/\/ws\/connect/, (socket) => {
 		sendSocketMessage = (payload) => socket.send(JSON.stringify(payload));
 		socket.onMessage((raw) => {
@@ -112,49 +113,87 @@ async function mockSolutionSdkFixtures(page: Page) {
 	await page.route("**/api/notifications", async (route) => {
 		await route.fulfill({ json: { notifications: [] } });
 	});
-	await page.route(`**/api/solutions/${SOLUTION_ID}/entities`, async (route) => {
-		await route.fulfill({ json: entities() });
-	});
+	await page.route(
+		`**/api/solutions/${SOLUTION_ID}/entities`,
+		async (route) => {
+			await route.fulfill({ json: entities() });
+		},
+	);
 	await page.route(`**/api/solutions/${SOLUTION_ID}/setup`, async (route) => {
 		await route.fulfill({ json: { setup_complete: true, items: [] } });
 	});
-	await page.route(`**/api/solutions/${SOLUTION_ID}/readme`, async (route) => {
-		await route.fulfill({ json: { readme: null } });
-	});
-	await page.route(`**/api/solutions/${SOLUTION_ID}/export-jobs`, async (route) => {
-		await route.fulfill({ json: { jobs: [] } });
-	});
-	await page.route(`**/api/solutions/${SOLUTION_ID}/sdk/status`, async (route) => {
+	await page.route(
+		`**/api/solutions/${SOLUTION_ID}/readme`,
+		async (route) => {
+			await route.fulfill({ json: { readme: null } });
+		},
+	);
+	await page.route(
+		`**/api/solutions/${SOLUTION_ID}/export-jobs`,
+		async (route) => {
+			await route.fulfill({ json: { jobs: [] } });
+		},
+	);
+	await page.route(
+		`**/api/solutions/${SOLUTION_ID}/sdk/status`,
+		async (route) => {
+			await route.fulfill({
+				json: {
+					solution_id: SOLUTION_ID,
+					sdk_status: "update_available",
+					actionable_count: 1,
+					apps: [
+						{
+							application_id: APP_ID,
+							slug: "solution-console",
+							sdk_status: "update_available",
+							sdk_source_available: true,
+							actionable: true,
+						},
+					],
+				},
+			});
+		},
+	);
+	await page.route(
+		`**/api/solutions/${SOLUTION_ID}/sdk/update`,
+		async (route) => {
+			await route.fulfill({
+				json: {
+					solution_id: SOLUTION_ID,
+					accepted: [
+						{
+							application_id: APP_ID,
+							job_id: JOB_ID,
+							status: "queued",
+							reused: false,
+							notification_id: null,
+						},
+					],
+					skipped: [],
+				},
+			});
+		},
+	);
+	await page.route("**/api/solutions/sdk/update", async (route) => {
+		const body = route.request().postDataJSON() as {
+			solution_ids?: string[];
+		};
 		await route.fulfill({
 			json: {
-				solution_id: SOLUTION_ID,
-				sdk_status: "update_available",
-				actionable_count: 1,
-				apps: [
-					{
-						application_id: APP_ID,
-						slug: "solution-console",
-						sdk_status: "update_available",
-						sdk_source_available: true,
-						actionable: true,
-					},
-				],
-			},
-		});
-	});
-	await page.route(`**/api/solutions/${SOLUTION_ID}/sdk/update`, async (route) => {
-		await route.fulfill({
-			json: {
-				solution_id: SOLUTION_ID,
-				accepted: [
-					{
-						application_id: APP_ID,
-						job_id: JOB_ID,
-						status: "queued",
-						reused: false,
-						notification_id: null,
-					},
-				],
+				accepted: (body.solution_ids ?? []).flatMap((solutionId) =>
+					solutionId === SOLUTION_ID
+						? [
+								{
+									application_id: APP_ID,
+									job_id: JOB_ID,
+									status: "queued",
+									reused: false,
+									notification_id: null,
+								},
+							]
+						: [],
+				),
 				skipped: [],
 			},
 		});
@@ -163,7 +202,9 @@ async function mockSolutionSdkFixtures(page: Page) {
 	return {
 		startUpdate() {
 			if (!sendSocketMessage) {
-				throw new Error("Solution SDK update websocket did not connect");
+				throw new Error(
+					"Solution SDK update websocket did not connect",
+				);
 			}
 			sendSocketMessage({
 				type: "platform_job_updated",
@@ -217,14 +258,29 @@ test.describe("Solutions SDK aggregate UI", () => {
 		const fixture = await mockSolutionSdkFixtures(page);
 
 		await page.goto("/solutions");
-		await expect(page.getByRole("heading", { name: "Solutions" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Solutions" }),
+		).toBeVisible();
 		await expect(page.getByText("SDK Solution")).toBeVisible();
 		await expect(page.getByLabel("SDK update available")).toBeVisible();
 		await expect(page.getByLabel("1 app can update SDK")).toBeVisible();
+		await page.getByRole("button", { name: "Update all SDKs (1)" }).click();
 		await page.screenshot({
-			path: test.info().outputPath("solution-sdk-list.png"),
+			path: test.info().outputPath("solution-sdk-list-update-all.png"),
 			fullPage: true,
 		});
+
+		await page.reload();
+		await page.getByRole("button", { name: "Select" }).click();
+		await page.getByRole("button", { name: "Select all" }).click();
+		await expect(
+			page.getByRole("button", { name: "Update selected (1)" }),
+		).toBeVisible();
+		await page.screenshot({
+			path: test.info().outputPath("solution-sdk-list-selection.png"),
+			fullPage: true,
+		});
+		await page.getByRole("button", { name: "Done" }).click();
 
 		await page.getByRole("link", { name: /SDK Solution/ }).click();
 		await expect(page.getByTestId("solution-detail")).toBeVisible();
@@ -255,7 +311,9 @@ test.describe("Solutions SDK aggregate UI", () => {
 		await expect(notification).toBeVisible();
 		await expect(notification.getByText("Rebuilding App")).toBeVisible();
 		await page.screenshot({
-			path: test.info().outputPath("solution-sdk-notification-progress.png"),
+			path: test
+				.info()
+				.outputPath("solution-sdk-notification-progress.png"),
 			fullPage: true,
 			animations: "disabled",
 		});

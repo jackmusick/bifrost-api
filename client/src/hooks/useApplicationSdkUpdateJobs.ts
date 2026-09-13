@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import type {
-	ApplicationSdkUpdateState,
-} from "@/components/applications/ApplicationSdkStatusBadge";
+import type { ApplicationSdkUpdateState } from "@/components/applications/ApplicationSdkStatusBadge";
 import { webSocketService, type PlatformJobUpdate } from "@/services/websocket";
 import type { components } from "@/lib/v1";
 
-type AcceptedSdkUpdate =
-	components["schemas"]["ApplicationSdkUpdateAccepted"];
+type AcceptedSdkUpdate = components["schemas"]["ApplicationSdkUpdateAccepted"];
 
 const TERMINAL_STATUSES = new Set(["succeeded", "failed", "cancelled"]);
 
@@ -38,6 +35,7 @@ export function useApplicationSdkUpdateJobs({
 		void queryClient.invalidateQueries({
 			queryKey: ["get", "/api/applications"],
 		});
+		void queryClient.invalidateQueries({ queryKey: ["solutions"] });
 		if (solutionId) {
 			void queryClient.invalidateQueries({
 				queryKey: ["solutions", solutionId, "entities"],

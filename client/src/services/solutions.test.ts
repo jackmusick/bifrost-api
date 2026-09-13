@@ -35,6 +35,7 @@ import {
 	previewSolutionFromRepo,
 	putSolutionReadme,
 	syncSolution,
+	updateSelectedSolutionAppSdks,
 	updateSolutionAppSdks,
 	updateSolution,
 } from "./solutions";
@@ -231,6 +232,30 @@ describe("solutions service", () => {
 			{ params: { path: { solution_id: "sol-1" } } },
 		);
 		expect(out.accepted?.[0]?.application_id).toBe("app-1");
+	});
+
+	it("queues app SDK updates for selected solutions in one request", async () => {
+		mockPost.mockResolvedValue({
+			data: {
+				accepted: [
+					{
+						application_id: "app-1",
+						job_id: "job-1",
+						status: "queued",
+						reused: false,
+					},
+				],
+				skipped: [{ application_id: "app-2", reason: "current" }],
+			},
+		});
+
+		const out = await updateSelectedSolutionAppSdks(["sol-1", "sol-2"]);
+
+		expect(mockPost).toHaveBeenCalledWith("/api/solutions/sdk/update", {
+			body: { solution_ids: ["sol-1", "sol-2"] },
+		});
+		expect(out.accepted?.[0]?.application_id).toBe("app-1");
+		expect(out.skipped).toHaveLength(1);
 	});
 
 	it("previews a solution from a repo with the body", async () => {

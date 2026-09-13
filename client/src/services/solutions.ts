@@ -47,6 +47,8 @@ export type SolutionDeployJobStatus =
 export type SolutionSdkStatus = components["schemas"]["SolutionSdkStatus"];
 export type SolutionSdkUpdateResponse =
 	components["schemas"]["SolutionSdkUpdateResponse"];
+export type SolutionSdkUpdateBatchResponse =
+	components["schemas"]["SolutionSdkUpdateBatchResponse"];
 
 interface RequestOptions {
 	signal?: AbortSignal;
@@ -231,6 +233,23 @@ export async function updateSolutionAppSdks(
 		"/api/solutions/{solution_id}/sdk/update",
 		{ params: { path: { solution_id: solutionId } }, signal },
 	);
+	if (error) {
+		throw new Error(
+			getErrorMessage(error, "Failed to queue Solution app SDK updates"),
+		);
+	}
+	return data;
+}
+
+export async function updateSelectedSolutionAppSdks(
+	solutionIds: string[],
+	options: RequestOptions = {},
+): Promise<SolutionSdkUpdateBatchResponse> {
+	const { signal } = options;
+	const { data, error } = await apiClient.POST("/api/solutions/sdk/update", {
+		body: { solution_ids: solutionIds },
+		signal,
+	});
 	if (error) {
 		throw new Error(
 			getErrorMessage(error, "Failed to queue Solution app SDK updates"),
