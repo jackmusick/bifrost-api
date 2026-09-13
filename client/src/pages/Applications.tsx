@@ -5,7 +5,7 @@ import { useIsDesktop } from "@/hooks/useMediaQuery";
  * Lists all App Builder applications with management capabilities.
  */
 
-import { useState, useRef } from "react";
+import { useId, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
 	RefreshCw,
@@ -56,6 +56,7 @@ import { toast } from "sonner";
 type Organization = components["schemas"]["OrganizationPublic"];
 
 export function Applications() {
+	const updateAllSdkDescriptionId = useId();
 	const isDesktop = useIsDesktop();
 	const deleteBusy = useRef(false);
 	const [deletePending, setDeletePending] = useState(false);
@@ -167,7 +168,16 @@ export function Applications() {
 		selectedSdkUpdateIds.has(app.id),
 	);
 	const actionableCount = actionableApps.length;
+	const hiddenActionableCount = Math.max(
+		actionableCount - visibleActionableApps.length,
+		0,
+	);
 	const selectedCount = selectedActionableApps.length;
+	const hasSearch = searchTerm.trim().length > 0;
+	const updateAllSdkDescription =
+		hasSearch && hiddenActionableCount > 0
+			? `Includes all actionable ${term(terminology, "app", "formalPlural")} in the current organization scope, including ${hiddenActionableCount} hidden by search.`
+			: undefined;
 
 	const toggleSdkUpdateSelection = (app: ApplicationListItem) => {
 		if (!canUpdateApplicationSdk(app, sdkUpdateJobs.getUpdateState(app.id))) {
@@ -210,6 +220,12 @@ export function Applications() {
 			skipped.length > 0
 				? ` ${skipped.length} skipped.`
 				: "";
+		if (accepted.length === 0 && skipped.length > 0) {
+			toast.warning(
+				`No SDK updates were queued. ${skipped.length} skipped.`,
+			);
+			return;
+		}
 		toast.success(
 			`Queued SDK updates for ${accepted.length} ${appWord}.${skippedSuffix}`,
 		);
@@ -391,11 +407,28 @@ export function Applications() {
 											)
 										}
 										disabled={batchUpdatePending}
+										aria-describedby={
+											updateAllSdkDescription
+												? updateAllSdkDescriptionId
+												: undefined
+										}
+										aria-description={
+											updateAllSdkDescription
+										}
+										title={updateAllSdkDescription}
 									>
 										{batchUpdatePending
 											? "Queueing…"
 											: `Update all SDKs (${actionableCount})`}
 									</Button>
+								)}
+								{updateAllSdkDescription && (
+									<span
+										id={updateAllSdkDescriptionId}
+										className="sr-only"
+									>
+										{updateAllSdkDescription}
+									</span>
 								)}
 								<Button
 									type="button"

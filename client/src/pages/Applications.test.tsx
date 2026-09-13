@@ -39,6 +39,7 @@ vi.mock("@/hooks/useApplicationSdkUpdateJobs", () => ({
 vi.mock("sonner", () => ({
 	toast: {
 		success: vi.fn(),
+		warning: vi.fn(),
 		error: vi.fn(),
 	},
 }));
@@ -124,6 +125,7 @@ beforeEach(() => {
 	mockTrackAccepted.mockReset();
 	mockSdkStates = {};
 	vi.mocked(toast.success).mockClear();
+	vi.mocked(toast.warning).mockClear();
 	vi.mocked(toast.error).mockClear();
 	mockUseApplications.mockReturnValue({
 		data: { applications: [] },
@@ -169,7 +171,14 @@ describe("Applications — bulk SDK updates", () => {
 		);
 		const { user } = await renderPage();
 
-		await user.type(screen.getByLabelText(/search applications/i), "Live");
+		await user.type(screen.getByLabelText(/search applications/i), "Asset");
+		await waitFor(() =>
+			expect(
+				screen.getByRole("button", { name: "Update all SDKs (2)" }),
+			).toHaveAccessibleDescription(
+				"Includes all actionable Applications in the current organization scope, including 2 hidden by search.",
+			),
+		);
 		await user.click(
 			screen.getByRole("button", { name: "Update all SDKs (2)" }),
 		);
@@ -199,6 +208,38 @@ describe("Applications — bulk SDK updates", () => {
 		expect(mockTrackAccepted).toHaveBeenCalledWith([
 			expect.objectContaining({ application_id: "app-1" }),
 		]);
+	});
+
+	it("warns when every requested SDK update is skipped", async () => {
+		mockUseApplications.mockReturnValue({
+			data: {
+				applications: [
+					makeApp({ id: "app-1", name: "Live Dash" }),
+					makeApp({ id: "app-2", name: "Workflow Monitor" }),
+				],
+			},
+			isLoading: false,
+			refetch: vi.fn(),
+		});
+		mockBatchUpdateApplicationSdks.mockResolvedValue({
+			accepted: [],
+			skipped: [
+				{ application_id: "app-1", reason: "conflict" },
+				{ application_id: "app-2", reason: "conflict" },
+			],
+		});
+		const { user } = await renderPage();
+
+		await user.click(
+			screen.getByRole("button", { name: "Update all SDKs (2)" }),
+		);
+
+		await waitFor(() =>
+			expect(toast.warning).toHaveBeenCalledWith(
+				"No SDK updates were queued. 2 skipped.",
+			),
+		);
+		expect(toast.success).not.toHaveBeenCalled();
 	});
 
 	it("keeps selection after a batch request failure", async () => {
