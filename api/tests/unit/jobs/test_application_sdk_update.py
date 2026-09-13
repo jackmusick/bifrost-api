@@ -57,7 +57,7 @@ async def test_sdk_update_resolves_source_and_uses_shared_build_service(
     class Context:
         job_id = uuid4()
 
-        async def report(self, message: str, *, percent: int):
+        async def report(self, message: str, *, percent: int | None = None):
             events.append(("report", (message, percent)))
 
     @asynccontextmanager
@@ -108,6 +108,12 @@ async def test_sdk_update_resolves_source_and_uses_shared_build_service(
         "report",
         "build",
         "report",
+    ]
+    assert [value for name, value in events if name == "report"] == [
+        ("Loading App", None),
+        ("Resolving retained source", None),
+        ("Rebuilding App", None),
+        ("App SDK updated", 100),
     ]
 
 

@@ -35,7 +35,7 @@ class ApplicationSdkUpdatePayload(BaseModel):
 async def run_application_sdk_update(
     context: PlatformJobContext, payload: ApplicationSdkUpdatePayload
 ) -> dict[str, str]:
-    await context.report("Loading App", percent=5)
+    await context.report("Loading App")
     async with get_db_context() as db:
         app = await db.get(Application, payload.application_id)
         if app is None or app.app_model != "standalone_v2":
@@ -44,13 +44,13 @@ async def run_application_sdk_update(
                 "The App no longer supports SDK updates.",
             )
 
-    await context.report("Resolving retained source", percent=15)
+    await context.report("Resolving retained source")
     try:
         source = await resolve_application_source(app)
     except ApplicationSourceUnavailable as exc:
         raise PlatformJobFailure(exc.code, str(exc)) from exc
 
-    await context.report("Rebuilding App", percent=35)
+    await context.report("Rebuilding App")
     result = await rebuild_application_from_source(
         application=app,
         deployment_id=payload.deployment_id,
