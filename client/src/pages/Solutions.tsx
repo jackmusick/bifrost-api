@@ -711,6 +711,8 @@ export function Solutions() {
 								: {
 										role: "article",
 										"aria-label": sol.name,
+										onClick: () =>
+											navigate(`/solutions/${sol.id}`),
 									};
 							return (
 								<div
@@ -762,6 +764,9 @@ export function Solutions() {
 												) : (
 													<Link
 														to={`/solutions/${sol.id}`}
+														onClick={(event) =>
+															event.stopPropagation()
+														}
 														className="block text-sm font-semibold [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 													>
 														{sol.name}

@@ -572,6 +572,9 @@ describe("Solutions — bulk SDK updates", () => {
 				name: "Update SDKs for Dispatch Solution",
 			}),
 		).toBeInTheDocument();
+		await user.click(normalCard);
+		expect(mockNavigate).toHaveBeenCalledWith("/solutions/sol-1");
+		mockNavigate.mockClear();
 
 		await user.click(screen.getByRole("button", { name: "Select" }));
 		const selectionCard = screen.getByRole("button", {
