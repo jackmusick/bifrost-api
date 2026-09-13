@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import AsyncGenerator
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -12,10 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.models.orm.scheduler_leases import SchedulerLease
 from src.scheduler import leadership
-from src.scheduler.leadership import (
-    TRIGGER_LEASE_NAME,
-    SchedulerLeadershipLease,
-)
+from src.scheduler.leadership import SchedulerLeadershipLease
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -23,6 +21,9 @@ async def scheduler_lease_context(
     async_session_factory: async_sessionmaker[AsyncSession],
     monkeypatch: pytest.MonkeyPatch,
 ):
+    test_lease_name = f"scheduler-triggers-test-{uuid4()}"
+    monkeypatch.setattr(leadership, "TRIGGER_LEASE_NAME", test_lease_name)
+
     @asynccontextmanager
     async def test_context() -> AsyncGenerator[AsyncSession, None]:
         async with async_session_factory() as session:
@@ -35,10 +36,14 @@ async def scheduler_lease_context(
 
     monkeypatch.setattr(leadership, "get_db_context", test_context)
     async with test_context() as db:
-        await db.execute(delete(SchedulerLease))
+        await db.execute(
+            delete(SchedulerLease).where(SchedulerLease.name == test_lease_name)
+        )
     yield
     async with test_context() as db:
-        await db.execute(delete(SchedulerLease))
+        await db.execute(
+            delete(SchedulerLease).where(SchedulerLease.name == test_lease_name)
+        )
 
 
 @pytest.mark.asyncio
@@ -70,7 +75,7 @@ async def test_expired_generation_cannot_renew_or_release_new_leader() -> None:
     async with leadership.get_db_context() as db:
         await db.execute(
             update(SchedulerLease)
-            .where(SchedulerLease.name == TRIGGER_LEASE_NAME)
+            .where(SchedulerLease.name == leadership.TRIGGER_LEASE_NAME)
             .values(lease_expires_at=func.now() - timedelta(seconds=1))
         )
 
