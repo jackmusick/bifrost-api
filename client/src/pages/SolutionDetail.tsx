@@ -2729,24 +2729,24 @@ export function SolutionDetail() {
 										? "Git-connected"
 										: "Manual"}
 								</Badge>
-									{sol.update_available_version && (
-										<Badge
-											variant="default"
+								{sol.update_available_version && (
+									<Badge
+										variant="default"
 										className="gap-1"
 										data-testid="update-available-badge"
 									>
 										<ArrowUp className="h-3 w-3" />
 										Update available · v
-											{sol.update_available_version}
-										</Badge>
-									)}
-									{solutionSdkStatus && (
-										<ApplicationSdkStatusBadge
-											status={solutionSdkStatus.sdk_status}
-											showCurrent
-										/>
-									)}
-								</div>
+										{sol.update_available_version}
+									</Badge>
+								)}
+								{solutionSdkStatus && (
+									<ApplicationSdkStatusBadge
+										status={solutionSdkStatus.sdk_status}
+										showCurrent
+									/>
+								)}
+							</div>
 							{sol.git_connected && sol.git_repo_url && (
 								<p
 									className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"

@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/data-table";
 import { SearchBox } from "@/components/search/SearchBox";
 import { EntityLogo } from "@/components/EntityLogo";
+import { ApplicationSdkStatusBadge } from "@/components/applications/ApplicationSdkStatusBadge";
 import { OrganizationSelect } from "@/components/forms/OrganizationSelect";
 import { ListPageHeader } from "@/components/layout/ListPageHeader";
 import { ListToolbar } from "@/components/layout/ListToolbar";
@@ -208,6 +209,25 @@ export function Solutions() {
 			>
 				<ArrowUp className="h-3 w-3" />v{sol.update_available_version}
 			</Badge>
+		);
+	}
+
+	function sdkBadge(sol: Solution) {
+		if (sol.sdk_status === "not_applicable") return null;
+		return (
+			<span className="inline-flex items-center gap-1.5">
+				<ApplicationSdkStatusBadge status={sol.sdk_status} />
+				{sol.sdk_actionable_count > 0 && (
+					<Badge
+						variant="outline"
+						className="border-muted-foreground/30 bg-muted text-xs text-muted-foreground"
+						aria-label={`${sol.sdk_actionable_count} app${sol.sdk_actionable_count === 1 ? "" : "s"} can update SDK`}
+					>
+						{sol.sdk_actionable_count}{" "}
+						{sol.sdk_actionable_count === 1 ? "app" : "apps"}
+					</Badge>
+				)}
+			</span>
 		);
 	}
 
@@ -417,6 +437,7 @@ export function Solutions() {
 										</Badge>
 									)}
 									{updateBadge(sol)}
+									{sdkBadge(sol)}
 								</div>
 								<div
 									className="mt-auto flex flex-wrap gap-1.5 border-t bg-muted/20 px-4 py-2.5"
@@ -488,6 +509,7 @@ export function Solutions() {
 												? `v${sol.version}`
 												: "—"}
 											{updateBadge(sol)}
+											{sdkBadge(sol)}
 										</span>
 									</DataTableCell>
 								</DataTableRow>

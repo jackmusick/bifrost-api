@@ -76,6 +76,10 @@ function makeSolution(overrides: Record<string, unknown> = {}) {
 		global_repo_access: false,
 		git_connected: false,
 		git_repo_url: null,
+		setup_complete: true,
+		status: "active",
+		sdk_status: "not_applicable",
+		sdk_actionable_count: 0,
 		scope: "global",
 		...overrides,
 	};
@@ -163,6 +167,27 @@ describe("Solutions — list", () => {
 		await renderPage();
 		await screen.findByText("Versioned");
 		expect(screen.getByText("v1.2.3")).toBeInTheDocument();
+	});
+
+	it("renders Solution SDK aggregate status from the list response without per-Solution status calls", async () => {
+		mockListSolutions.mockResolvedValue({
+			solutions: [
+				makeSolution({
+					id: "sdk",
+					name: "SDK Solution",
+					slug: "sdk-solution",
+					sdk_status: "update_available",
+					sdk_actionable_count: 2,
+				}),
+			],
+		});
+		await renderPage();
+
+		await screen.findByText("SDK Solution");
+		expect(screen.getByLabelText("SDK update available")).toBeVisible();
+		expect(
+			screen.getByLabelText("2 apps can update SDK"),
+		).toHaveTextContent("2 apps");
 	});
 
 	it("renders colored entity count badges in a wrapping card footer", async () => {
