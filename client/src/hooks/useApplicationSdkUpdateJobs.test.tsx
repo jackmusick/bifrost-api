@@ -78,6 +78,7 @@ describe("useApplicationSdkUpdateJobs", () => {
 		act(() => {
 			mocks.callback?.(makeJob({ status: "running" }));
 		});
+		expect(result.current.hasUpdateState("app-1")).toBe(true);
 		expect(result.current.getUpdateState("app-1")).toBe("updating");
 		expect(result.current.isAnyUpdating(["app-1", "app-2"])).toBe(true);
 
@@ -112,6 +113,7 @@ describe("useApplicationSdkUpdateJobs", () => {
 		});
 
 		expect(result.current.getUpdateState("app-2")).toBe("updating");
+		expect(result.current.hasUpdateState("app-2")).toBe(true);
 	});
 
 	it("ignores application jobs that are not the SDK update job type", () => {
@@ -133,5 +135,6 @@ describe("useApplicationSdkUpdateJobs", () => {
 		});
 
 		expect(result.current.getUpdateState("app-1")).toBe("idle");
+		expect(result.current.hasUpdateState("app-1")).toBe(false);
 	});
 });
