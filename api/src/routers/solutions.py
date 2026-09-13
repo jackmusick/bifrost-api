@@ -487,6 +487,25 @@ async def _solution_deploy_in_progress(ctx: Context, solution_id: UUID) -> bool:
     ).scalar_one_or_none() is not None
 
 
+async def _any_solution_deploy_in_progress(
+    ctx: Context, solution_ids: list[UUID]
+) -> bool:
+    if not solution_ids:
+        return False
+    return (
+        await ctx.db.execute(
+            select(PlatformJob.id)
+            .where(
+                PlatformJob.resource_lock_key.in_(
+                    [f"solution:{solution_id}" for solution_id in solution_ids]
+                ),
+                PlatformJob.status.in_(ACTIVE_PLATFORM_JOB_STATUSES),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none() is not None
+
+
 async def _solution_sdk_status(
     ctx: Context, solution_id: UUID
 ) -> tuple[SolutionSdkStatus, list[Application]]:
@@ -548,12 +567,11 @@ async def batch_update_solution_app_sdks(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Solution not found: {missing_ids[0]}",
         )
-    for solution_id in solution_ids:
-        if await _solution_deploy_in_progress(ctx, solution_id):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A Solution deployment is already in progress.",
-            )
+    if await _any_solution_deploy_in_progress(ctx, solution_ids):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A Solution deployment is already in progress.",
+        )
 
     apps = (
         (

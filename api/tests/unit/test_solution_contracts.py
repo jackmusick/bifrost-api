@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from src.models.contracts.applications import ApplicationSdkUpdateBatchResponse
 from src.models.contracts.solutions import (
     Solution as SolutionDTO,
     SolutionSdkUpdateBatchRequest,
@@ -87,3 +88,58 @@ def test_solution_sdk_update_batch_response_contains_per_app_results() -> None:
     assert response.accepted[0].job_id == job_id
     assert response.skipped[0].application_id == skipped_app_id
     assert response.skipped[0].reason == "current"
+
+
+class _FakeScalarResult:
+    def __init__(self, rows: list[object], scalar: object | None = None):
+        self._rows = rows
+        self._scalar = scalar
+
+    def scalars(self):
+        return self
+
+    def all(self) -> list[object]:
+        return self._rows
+
+    def scalar_one_or_none(self) -> object | None:
+        return self._scalar
+
+
+class _FakeDb:
+    def __init__(self, solutions: list[object]):
+        self.solutions = solutions
+        self.statements: list[object] = []
+        self.commits = 0
+
+    async def execute(self, statement):
+        self.statements.append(statement)
+        if len(self.statements) == 1:
+            return _FakeScalarResult(self.solutions)
+        return _FakeScalarResult([])
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
+@pytest.mark.asyncio
+async def test_solution_sdk_update_batch_uses_bounded_set_based_queries() -> None:
+    from src.routers.solutions import batch_update_solution_app_sdks
+
+    solutions = [
+        SimpleNamespace(id=uuid.uuid4(), status="active")
+        for _ in range(3)
+    ]
+    db = _FakeDb(solutions)
+    request = SolutionSdkUpdateBatchRequest(
+        solution_ids=[solution.id for solution in solutions]
+    )
+    ctx = SimpleNamespace(db=db)
+    user = SimpleNamespace()
+
+    response = await batch_update_solution_app_sdks(request, ctx, user)
+
+    assert isinstance(response, ApplicationSdkUpdateBatchResponse)
+    assert response.accepted == []
+    assert response.skipped == []
+    assert db.commits == 1
+    assert len(db.statements) == 3
