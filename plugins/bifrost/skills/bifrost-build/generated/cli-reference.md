@@ -277,7 +277,9 @@ Commands:
   list      List all applications (wrapped ``{applications, total}``...
   publish   Rebuild and publish an application, polling durable progress.
   replace   Repoint an application's source directory.
+  sdk       Inspect or update deployed App SDK bundles.
   set-deps  Replace an application's npm dependencies.
+  source    Download retained deployed App source artifacts.
   update    Update application metadata (patch-without-draft).
 ```
 
@@ -400,6 +402,45 @@ Options:
   --help            Show this message and exit.
 ```
 
+### `apps sdk`
+
+```
+Usage: apps sdk [OPTIONS] COMMAND [ARGS]...
+
+  Inspect or update deployed App SDK bundles.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  status  Show SDK provenance/status for one deployed App, or all visible...
+  update  Queue deployed App SDK rebuild/update jobs and follow their...
+```
+
+#### `apps sdk status`
+
+```
+Usage: apps sdk status [OPTIONS] [REF]
+
+  Show SDK provenance/status for one deployed App, or all visible Apps.
+
+Options:
+  --help  Show this message and exit.
+```
+
+#### `apps sdk update`
+
+```
+Usage: apps sdk update [OPTIONS] [REF]
+
+  Queue deployed App SDK rebuild/update jobs and follow their progress.
+
+Options:
+  --all   Update every actionable visible App.
+  --help  Show this message and exit.
+```
+
 ### `apps set-deps`
 
 ```
@@ -416,6 +457,32 @@ Options:
                {name: version} file.  [required]
   --json       Emit JSON instead of human-readable output.
   --help       Show this message and exit.
+```
+
+### `apps source`
+
+```
+Usage: apps source [OPTIONS] COMMAND [ARGS]...
+
+  Download retained deployed App source artifacts.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  export  Write the retained deployed source zip for an independent App.
+```
+
+#### `apps source export`
+
+```
+Usage: apps source export [OPTIONS] REF DESTINATION
+
+  Write the retained deployed source zip for an independent App.
+
+Options:
+  --help  Show this message and exit.
 ```
 
 ### `apps update`
@@ -2164,7 +2231,31 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  update  Re-vendor the Bifrost SDK into the app (re-download + reinstall).
+  deployed-status  Show deployed SDK status for Apps owned by a Solution...
+  deployed-update  Queue deployed SDK update jobs for Apps owned by a...
+  update           Re-vendor the Bifrost SDK into the app (re-download +...
+```
+
+#### `solution sdk deployed-status`
+
+```
+Usage: solution sdk deployed-status [OPTIONS] SOLUTION_REF
+
+  Show deployed SDK status for Apps owned by a Solution install.
+
+Options:
+  --help  Show this message and exit.
+```
+
+#### `solution sdk deployed-update`
+
+```
+Usage: solution sdk deployed-update [OPTIONS] SOLUTION_REF
+
+  Queue deployed SDK update jobs for Apps owned by a Solution install.
+
+Options:
+  --help  Show this message and exit.
 ```
 
 #### `solution sdk update`
