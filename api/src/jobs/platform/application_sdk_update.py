@@ -74,6 +74,7 @@ APPLICATION_SDK_UPDATE_DEFINITION = PlatformJobDefinition(
     policy=PlatformJobPolicy(
         timeout_seconds=20 * 60,
         max_attempts=1,
+        max_concurrency=1,
         min_memory_headroom_mb=512,
     ),
 )

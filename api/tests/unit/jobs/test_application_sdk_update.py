@@ -24,6 +24,7 @@ def test_sdk_update_definition_is_registered_with_expected_policy() -> None:
     assert definition.payload_model is ApplicationSdkUpdatePayload
     assert definition.policy.timeout_seconds == 20 * 60
     assert definition.policy.max_attempts == 1
+    assert definition.policy.max_concurrency == 1
     assert definition.policy.min_memory_headroom_mb == 512
 
 
